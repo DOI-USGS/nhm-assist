@@ -542,7 +542,7 @@ def create_ecy_sf_df(control, model_dir, output_netcdf_filename, hru_gdf, gages_
                 ecy_df = pd.DataFrame()
     else:
         ecy_domain_txt = "; the model domain is outside the Washinton state boundary."
-        ecy_df = pd.DataFrame()
+        #ecy_df = pd.DataFrame()
     ecy_df = pd.DataFrame()
     con.print(ecy_domain_txt)
     return ecy_df
