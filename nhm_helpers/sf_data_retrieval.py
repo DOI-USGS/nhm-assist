@@ -405,6 +405,7 @@ def create_ecy_sf_df(control, model_dir, output_netcdf_filename, hru_gdf, gages_
     # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
     huc2_gdf = gpd.read_file("./data_dependencies/HUC2/HUC2.shp").to_crs(crs)
     model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
+    ecy_df = pd.DataFrame()
 
     if any(item in ecy_regions for item in model_domain_regions):
         ecy_domain_txt = "The model domain intersects the Washington state boundary."
@@ -431,7 +432,7 @@ def create_ecy_sf_df(control, model_dir, output_netcdf_filename, hru_gdf, gages_
                 con.print(
                     f"{ecy_domain_txt} Retrieving all available streamflow observations from ECY database for ECY gages in the gages file."
                 )
-                ecy_df = pd.DataFrame()
+                #ecy_df = pd.DataFrame()
                 ecy_df_list = []
                 ecy_cache_file = (
                     model_dir / "notebook_output_files" / "nc_files" / "ecy_cache.nc"
@@ -539,11 +540,11 @@ def create_ecy_sf_df(control, model_dir, output_netcdf_filename, hru_gdf, gages_
                     ecy_ds.to_netcdf(ecy_cache_file)
             else:
                 ecy_domain_txt += " No gages in the gages file are ECY managed gages."
-                ecy_df = pd.DataFrame()
+                #ecy_df = pd.DataFrame()
     else:
         ecy_domain_txt = "; the model domain is outside the Washinton state boundary."
         #ecy_df = pd.DataFrame()
-    ecy_df = pd.DataFrame()
+    #ecy_df = pd.DataFrame()
     con.print(ecy_domain_txt)
     return ecy_df
 
