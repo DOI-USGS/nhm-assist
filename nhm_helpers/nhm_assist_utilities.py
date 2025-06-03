@@ -205,6 +205,7 @@ def fetch_nwis_gage_info(
                 huc=i,
                 siteType="ST",
                 agencyCd="USGS",
+                ssl_check = False
             )[0]
             siteINFO_huc = pd.concat([siteINFO_huc, zz])
 
@@ -220,6 +221,7 @@ def fetch_nwis_gage_info(
                 endDt=en_date,
                 seriesCatalogOutput=True,
                 parameterCd="00060",
+                ssl_check = False
             )[0]
             siteINFO_huc = pd.concat([siteINFO_huc, zz])
 
