@@ -12,6 +12,7 @@ dependencies:
   - pywatershed>=2.0.1
   - tobler==0.12.0
   - gdptools==0.2.20
+  - numpy<=2.2
   - pip:
       - hydroeval==0.1
       - jupyter_black
