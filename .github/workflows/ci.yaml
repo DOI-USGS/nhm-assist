@@ -68,43 +68,43 @@ jobs:
           cache-environment: true
           cache-downloads: true
 
-      - name: Cache Wilamette River domain data
-        id: cache-wilamette
-        uses: actions/cache@v4
-        with:
-          path: domain_data
-          enableCrossOsArchive: true
-          key: willamette_data
+      # - name: Cache Wilamette River domain data
+      #   id: cache-wilamette
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: domain_data
+      #     enableCrossOsArchive: true
+      #     key: willamette_data
 
-      - name: Pull Willamette River domain data
-        if: steps.cache-willamette.outputs.cache-hit != 'true'
-        run: |
-          ./pull_domain.py --name=willamette_river_ci
+      # - name: Pull Willamette River domain data
+      #   if: steps.cache-willamette.outputs.cache-hit != 'true'
+      #   run: |
+      #     ./pull_domain.py --name=willamette_river_ci
 
-      - name: Scheduled - move cache files to test data retrievals
-        if: github.event.schedule == '0 6 * * *'
-        working-directory: .github/scripts
-        run: |
-          python mv_cache_files_for_scheduled_tests.py
+      # - name: Scheduled - move cache files to test data retrievals
+      #   if: github.event.schedule == '0 6 * * *'
+      #   working-directory: .github/scripts
+      #   run: |
+      #     python mv_cache_files_for_scheduled_tests.py
 
-      # Osx and Linux start with nearly the same speed, Windows is slower.
-      - name: Scheduled - delay Linux to not hit ORDWR servers simultaneously
-        if: ${{ (github.event.schedule == '0 6 * * *') && (runner.os == 'Linux') }}
-        run: |
-          python -c "import time; time.sleep(210)"
+      # # Osx and Linux start with nearly the same speed, Windows is slower.
+      # - name: Scheduled - delay Linux to not hit ORDWR servers simultaneously
+      #   if: ${{ (github.event.schedule == '0 6 * * *') && (runner.os == 'Linux') }}
+      #   run: |
+      #     python -c "import time; time.sleep(210)"
 
       - name: Test notebooks
         working-directory: .github/scripts
         run: |
           python test_notebooks.py
 
-      - name: Remove test output files from cache
-        working-directory: .github/scripts
-        run: |
-          python rm_test_output_files_from_cache.py --name=willamette_river_ci
+      # - name: Remove test output files from cache
+      #   working-directory: .github/scripts
+      #   run: |
+      #     python rm_test_output_files_from_cache.py --name=willamette_river_ci
 
-      - name: Scheduled - restore cache files after scheduled tests
-        if: github.event.schedule == '0 6 * * *'
-        working-directory: .github/scripts
-        run: |
-          python restore_cache_files_after_scheduled_tests.py
+      # - name: Scheduled - restore cache files after scheduled tests
+      #   if: github.event.schedule == '0 6 * * *'
+      #   working-directory: .github/scripts
+      #   run: |
+      #     python restore_cache_files_after_scheduled_tests.py
