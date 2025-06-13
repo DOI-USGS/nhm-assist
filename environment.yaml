@@ -13,6 +13,7 @@ dependencies:
   - tobler==0.12.0
   - gdptools==0.2.20
   - numpy<=2.2
+  - pint-xarray
   - pip:
       - hydroeval==0.1
       - jupyter_black
