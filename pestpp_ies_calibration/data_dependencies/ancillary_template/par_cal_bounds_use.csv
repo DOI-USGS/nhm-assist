@@ -1,0 +1,29 @@
+parameter_name,no_use_if_no_snow,par_lower_bound,par_upper_bound,par_default_val,HRU_cal_method,Part2_step,frac_diff_from_lbnd,default_par_start_val,new_cal_method,value_type,old_HRU_cal_method
+adjmix_rain,1,0.6,1.4,1,Range,4,0.5,1,"Percent, from table",uniform,Not used
+carea_max,NaN,0,1,0.6,Percent,4,0.6,0.6,"Percent, start_val",variable,Percent
+cecn_coef,NaN,4.5,5.5,5,Range,3,0.5,5,"Percent, from table",uniform,Not used
+emis_noppt,1,0.757,1,0.757,Range,4,0,0.7813,"Percent, from table",uniform,Not used
+fastcoef_lin,NaN,0.01,1,0.1,Percent,3,0.152542373,0.1,"Percent, start_val",variable,Percent
+freeh2o_cap,NaN,0.01,0.1,0.05,Range,4,0.444444444,0.05,Range,uniform,Range
+gwflow_coef,NaN,0.001,0.5,0.015,Percent,3,0.141414141,0.015,"Percent, start_val",variable,Percent
+jh_coef,NaN,0,1.5,0.014,Percent,Not used,0.07,0.02,"Percent, start_val",variable,Percent
+mann_n,NaN,0.001,0.15,0.04,Range,4,0.261744966,0.04,"Percent, start_val",variable,Not used
+potet_sublim,1,0.4,0.6,0.5,Range,4,0.5,0.5,"Percent, from table",uniform,Not used
+rad_trncf,1,0,1,0.5,Percent,4,0.5,0.5,"Percent, start val",variable,Percent
+radmax,NaN,0.5,1,0.8,Range,3,0.6,0.8,Range,uniform,Range
+rain_cbh_adj,NaN,0.5,1.75,1,Range,1,0.4,1,Range,uniform,Range
+slowcoef_sq,NaN,0,1,0.1,Range,2,0.1,0.1,Range,uniform,Range
+smidx_coef,NaN,0.0001,1,0.005,Percent,4,0.006125766,0.08009,"Percent, start val",variable,Not used
+smidx_exp,NaN,0,5,0.3,Percent,Not used,0,0,"Percent, start val",variable,Not used
+snarea_thresh,NaN,0,50,1,Percent,Not used,1,0.95,"Percent, start val",variable,Percent
+snowinfil_max,1,0,20,2,Range,4,0.1,2,"Percent, from table",uniform,Not used
+snow_cbh_adj,1,0.5,1.75,1,Range,1,0.4,1,Range,uniform,Range
+soil2gw_max,NaN,0,0.5,0,Percent,2,0,0.05,"Percent, start val",variable,Percent
+soil_moist_max,NaN,0.001,12,2,Percent,3,0.166597216,2,"Percent, start val",variable,Percent
+soil_rechr_max_frac,NaN,0.1,1,1,Percent,1,1,0.91,"Percent, start val",variable,Percent
+ssr2gw_exp,NaN,0,3,1,Percent,4,0.333333333,1,"Percent, start val",uniform,Not used
+ssr2gw_rate,NaN,0.01,0.8,0.1,Percent,4,0.113924051,0.1,"Percent, start val",variable,Not used
+tmax_allrain_offset,1,0,10,1,Percent,4,0.1,1,"Percent, start val",variable,Percent
+tmax_allsnow,1,25,40,32,Percent,4,0.466666667,32,"Percent, start val",variable,Percent
+tmax_cbh_adj,NaN,-3,3,0,Range,4,0.5,0,Range,uniform,Range
+tmin_cbh_adj,NaN,-3,3,0,Range,4,0.5,0,Range,uniform,Range

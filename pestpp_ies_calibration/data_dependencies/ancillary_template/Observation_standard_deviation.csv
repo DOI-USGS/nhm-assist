@@ -1,0 +1,28 @@
+obsgroup,noise_percent,units,obslbnd,obsubnd,wt_percent
+l_max_actet_mean_mon       ,0.001,in/day,0,1.00E+11,0.2
+g_min_actet_mean_mon       ,0.001,in/day,0,1.00E+11,0.2
+l_max_actet_mon            ,0.001,in/day,0,1.00E+11,0.2
+g_min_actet_mon            ,0.001,in/day,0,1.00E+11,0.2
+l_max_recharge_ann         ,0.001,dimensionless,0,1,0.25
+g_min_recharge_ann         ,0.001,dimensionless,0,1,0.25
+l_max_runoff_mon    ,0.001,cfs,0,1.00E+11,0.1
+g_min_runoff_mon    ,0.001,cfs,0,1.00E+11,0.1
+l_max_sca_daily            ,0.001,dimensionless,0,1,0.15
+g_min_sca_daily            ,0.001,dimensionless,0,1,0.15
+l_max_soil_moist_ann       ,0.001,dimensionless,0,1,0.2
+g_min_soil_moist_ann       ,0.001,dimensionless,0,1,0.2
+l_max_soil_moist_mon       ,0.001,dimensionless,0,1,0.2
+g_min_soil_moist_mon       ,0.001,dimensionless,0,1,0.2
+streamflow_daily_large_asc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_large_dsc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_small_asc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_small_dsc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_pulse_asc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_pulse_dsc ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_low ,0.1,cfs,0,1.00E+11,0.15
+streamflow_daily_exlow ,0.1,cfs,0,1.00E+11,0.15
+streamflow_mean_mon_val  ,0.1,cfs,0,1.00E+11,0.1
+streamflow_mean_mon_cal  ,0.1,cfs,0,1.00E+11,0.1
+streamflow_mon       ,0.1,cfs,0,1.00E+11,0.1
+streamflow_nodata,0.1,cfs,0,1.00E+11,0
+streamflow_no_efc,0.1,cfs,0,1.00E+11,0.15

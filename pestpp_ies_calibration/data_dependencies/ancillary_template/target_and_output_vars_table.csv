@@ -1,0 +1,16 @@
+target (baseline) id,output variable,time aggregation,calibration period
+aet_min,hru_actet,monthly,2000–2010
+aet_max,hru_actet,monthly,2000–2010
+aet_min,hru_actet,mean monthly*,2000–2010
+aet_max,hru_actet,mean monthly*,2000–2010
+runoff_min,hru_outflow,monthly,1982–2010
+runoff_max,hru_outflow,monthly,1982–2010
+runoff_mwbm,hru_outflow,monthly,1982–2010
+recharge_min_norm,recharge,annual,2000–2009
+recharge_max_norm,recharge,annual,2000–2009
+snow_cover_extent,snowcov_area,daily,2000–2010
+sca_clear_index,snowcov_area,daily,2000–2010
+soil_moist_min_norm,soil_rechr,monthly,1982–2010
+soil_moist_max_norm,soil_rechr,monthly,1982–2010
+soil_moist_min_norm,soil_rechr,annual,1982–2010
+soil_moist_max_norm,soil_rechr,annual,1982–2010
