@@ -3,8 +3,11 @@ from pathlib import Path
 import jupytext
 
 # Specify input folders and output folder
-input_folders = [Path('./notebooks/scripts')]
+input_folders = [Path('./notebook_scripts')]
 output_folder = Path('./notebooks')
+
+if not output_folder.exists():
+    output_folder.mkdir(exist_ok=True)
 
 for folder in input_folders:
     # Recursively find all .py files in the folder
