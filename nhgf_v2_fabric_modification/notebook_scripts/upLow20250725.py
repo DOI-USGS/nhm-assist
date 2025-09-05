@@ -56,6 +56,7 @@ from shapely.geometry import (
     MultiPolygon,
     GeometryCollection,
 )
+
 from skimage import measure
 from rasterstats import zonal_stats
 from rasterio.merge import merge
@@ -66,7 +67,7 @@ import io
 from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
 
 # %% [markdown]
-# ## Set/Merge DEM for the model subdomain
+# ## DEM(s) for the model subdomain
 # #### Define the file path for the DEM.
 
 # %%
@@ -75,19 +76,20 @@ dem_folder_path = pl.Path(
 )
 
 # %%
-dem_folder_path
-
-# %%
 dem_files = list(dem_folder_path.glob("*.tif"))
 dem_files
 
 
 # %% [markdown]
-# #### Read the DEM for the model subdomain.
+# ### Functions (will be moved out to module at some point)
 
-# %%
+# %% jupyter={"source_hidden": true}
 def load_subdomain_DEM(dem_folder_path):
-    """ """
+    """ 
+    Merges DEMs in the DEM folder. Assumes that DEMs used are those created for each CONUS NHDPlus Region by the NHGF team.
+    These DEMs are currently available on Hovenweep:
+    /caldera/hovenweep/projects/usgs/water/impd/nhgf/gfv2_param/source_data/NHDPlus_Merged_Rasters
+    """
     from glob import glob
 
     dem_files = list(dem_folder_path.glob("*.tif"))
@@ -129,16 +131,39 @@ def load_subdomain_DEM(dem_folder_path):
 
     return dem_file_path
 
-
-# share w Andy Bock in future filling gaps function, but can also be used to join lines that are multi-line
-from shapely.geometry import LineString, MultiLineString
-from shapely.ops import linemerge
-
-
+# Share below w/ Andy Bock in future filling gaps function, but can also be used to join lines that are multi-line
 def combine_multilines(multilines):
     """
-    Combines Shapely LineString polylines in a list that share start or end points.
-    Returns a merged Shapely LineString or MultiLineString object.
+    Iteratively merges LineString geometries that connect at their endpoints.
+
+    Given a list of Shapely LineString objects, this function attempts to
+    combine them into longer continuous lines wherever two LineStrings
+    share a common start or end point. Matching endpoints are concatenated,
+    taking into account orientation (reversing coordinates if needed).
+    The process continues until no further merges are possible.
+
+    After merging, Shapely's `linemerge` is applied to simplify the result
+    into the longest possible LineStrings.
+
+    Parameters
+    ----------
+    multilines : list of shapely.geometry.LineString
+        A list of LineString objects to merge. The function modifies a copy,
+        so the original list is left unchanged.
+
+    Returns
+    -------
+    shapely.geometry.LineString or shapely.geometry.MultiLineString
+        - A single LineString if merging produces one continuous polyline.
+        - A MultiLineString if multiple disjoint polylines remain.
+
+    Notes
+    -----
+    - Only exact coordinate matches at endpoints are considered connected.
+    - If input lines are not connected, they remain as separate LineStrings
+      in the returned MultiLineString.
+    - For higher tolerance of near-matching endpoints, you may need to
+      snap or simplify the geometries before calling this function.
     """
     merged = []
     multilines = multilines[:]  # copy input
@@ -184,10 +209,6 @@ def combine_multilines(multilines):
     return result
 
 
-import geopandas as gpd
-from shapely.geometry import LineString, MultiLineString
-
-
 def flatten_multilines(geoms):
     """
     Flatten list of LineString and MultiLineString geometries into just LineStrings.
@@ -202,9 +223,45 @@ def flatten_multilines(geoms):
 
 
 def combine_multilines_geodataframe(gdf):
-    """
-    Given a GeoDataFrame with line geometries, combine connected line segments.
-    Returns a GeoDataFrame similar in structure but with merged geometries.
+     """
+    Merge connected line geometries in a GeoDataFrame into longer LineStrings.
+
+    This function takes a GeoDataFrame containing LineString or MultiLineString
+    geometries and produces a new GeoDataFrame where connected line segments are 
+    merged into continuous geometries. Under the hood, it flattens all line 
+    geometries into a list, merges them with `combine_multilines`, and reconstructs
+    a valid GeoDataFrame.
+
+    The attribute columns (all non-geometry columns) are taken from the first row
+    of the input GeoDataFrame and duplicated across all merged geometries in the
+    result.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Input GeoDataFrame containing line-based geometries (LineString or MultiLineString).
+        Must have a valid CRS set if spatial consistency matters.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A new GeoDataFrame whose geometries are merged LineStrings:
+        - If all connected lines form one continuous feature, the result contains
+          a single row with a LineString geometry.
+        - If disjoint groups of lines exist, the result contains one row per
+          continuous feature (MultiLineString components are split into rows).
+
+    Notes
+    -----
+    - Attribute data (besides geometry) is not aggregated; only the values from 
+      the first row of the input `gdf` are preserved.
+    - Only exact coordinate matches at line endpoints are considered connected.
+    - To merge lines that are "almost touching" due to floating-point differences,
+      consider snapping or buffering before running this function.
+
+    See Also
+    --------
+    combine_multilines : function that merges a list of Shapely LineStrings.
     """
     # Flatten geometries to a list of LineStrings
     line_list = flatten_multilines(gdf.geometry)
@@ -228,11 +285,6 @@ def combine_multilines_geodataframe(gdf):
 
     return new_gdf
 
-
-# Example usage:
-# gdf = gpd.read_file('your_lines.shp')
-# combined_gdf = combine_multilines_geodataframe(gdf)
-# combined_gdf.to_file('combined_lines.shp')
 
 # %%
 dem_file_path = load_subdomain_DEM(dem_folder_path)
@@ -261,6 +313,9 @@ hru_gdf.rename(columns={"index": "hru_index"}, inplace=True)
 # %%
 peaks = root_dir / f"nhgf_v2_fabric_modification/domain_data/NHM_OR_domain/OR_peaks.shp"
 
+# %% [markdown]
+# #### Create polygons with radius buff_km (converted to meters) from each peak point
+
 # %%
 # Read the peak points (GeoDataFrame)
 peak_points = gpd.read_file(peaks)
@@ -268,18 +323,18 @@ peak_points = gpd.read_file(peaks)
 # Ensure both GeoDataFrames are in the same CRS
 if peak_points.crs != hru_gdf.crs:
     peak_points = peak_points.to_crs(hru_gdf.crs)
-# peak_points = peak_points.loc[peak_points.elev_ft != 0]
+    
+# Make a polygon with radius buff_km (converted to meters) from each peak point
 buffered_polygons = peak_points.apply(
     lambda row: row["geometry"].buffer(row["buff_km"] * 1000), axis=1
 )
 peak_polygons = gpd.GeoDataFrame(geometry=buffered_polygons, crs=peak_points.crs)
-
 peak_polygons.reset_index(inplace=True)
 peak_polygons["elev_m"] = peak_points["elev_ft"] * 0.3048  # peak_points["elev_ft"]
-peak_polygons = peak_polygons.loc[peak_polygons.elev_m != 0]
+peak_polygons = peak_polygons.loc[peak_polygons.elev_m != 0] # drop the zero values
 
-# %%
-print(peak_points)
+# %% [markdown]
+# #### Make lists of HRUs that intersect polygons
 
 # %%
 # Perform a spatial join to find intersecting boundary polygons
@@ -303,7 +358,7 @@ hru_peaks_gdf = hru_gdf.merge(
 hru_peaks_gdf["max_boundary_elev"] = hru_peaks_gdf["max_boundary_elev"].fillna(0)
 
 # %%
-hru_peaks_gdf.loc[hru_peaks_gdf["or_hru_id"] == 39110]
+#hru_peaks_gdf.loc[hru_peaks_gdf["or_hru_id"] == 39110]
 
 # %%
 print(len(intersecting_data))
@@ -321,16 +376,20 @@ hru_peaks_gdf = hru_peaks_gdf.sort_values(
 hru_peaks_gdf["rounded_elev"] = (hru_peaks_gdf["max_boundary_elev"] / 30).round() * 30
 
 # %% jupyter={"source_hidden": true}
-# Check for multipilygons
+# Check for multipolygons
 has_multipolygons = "MultiPolygon" in hru_peaks_gdf.geometry.geom_type.values
 print(has_multipolygons)
 print(f"length of hru_peaks_gdf is {len(hru_peaks_gdf)}")
 
-# %% jupyter={"source_hidden": true}
+# %%
+# Explode polygons to remove any multipolygons
 hru_peaks_gdf = hru_peaks_gdf.explode(index_parts=True)
 print(f"length of exploded hru_peaks_gdf is {len(hru_peaks_gdf)}")
 
-# %%
+# %% [markdown]
+# ### Make lines to break HRUs associated with peaks
+
+# %% jupyter={"outputs_hidden": true}
 lines_list = []
 line_count = -1
 
@@ -519,7 +578,7 @@ lowland_polygons.loc[lowland_polygons["InPoly_FID"] == 22, "max_elev"] = 1100.00
 lowland_polygons.to_file("lowland_polygons.shp")
 
 # %%
-lowland_polygons.loc[lowland_polygons["InPoly_FID"] == 93]
+#lowland_polygons.loc[lowland_polygons["InPoly_FID"] == 93]
 
 # %%
 # Perform a spatial join to find intersecting boundary polygons
@@ -561,7 +620,7 @@ hru_lowland_gdf["rounded_elev"] = (
 ).round() * 30
 
 # %%
-len(hru_lowland_gdf.rounded_elev)
+#len(hru_lowland_gdf.rounded_elev)
 
 # %% [markdown]
 # ## crs and unit check before buffer
@@ -591,7 +650,7 @@ else:
 # %% [markdown]
 # ## convert line_list to gdf and write
 
-# %%
+# %% jupyter={"outputs_hidden": true}
 # Round elevations to nearest 40
 hru_lowland_gdf["rounded_elev"] = (
     hru_lowland_gdf["max_boundary_elev"] / 30
