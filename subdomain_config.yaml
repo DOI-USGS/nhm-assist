@@ -1,0 +1,72 @@
+Folium_maps_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files/Folium_maps
+GIS_format: .gpkg
+NHM_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/data_dependencies/NHM_v1_1
+control_file_name: control.default.bandit
+default_gages_file: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/default_gages.csv
+end_date: '2022-12-31T00:00:00'
+gages_file: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/gages.csv
+html_maps_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files/html_maps
+html_plots_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files/html_plots
+model_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla
+nc_files_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files/nc_files
+nhru_nmonths_params:
+- adjmix_rain
+- cecn_coef
+- jh_coef
+- radmax
+- rain_cbh_adj
+- snow_cbh_adj
+- tmax_allrain_offset
+- tmax_allsnow
+- tmax_cbh_adj
+- tmin_cbh_adj
+nhru_params:
+- carea_max
+- emis_noppt
+- fastcoef_lin
+- freeh2o_cap
+- gwflow_coef
+- potet_sublim
+- rad_trncf
+- slowcoef_sq
+- smidx_coef
+- smidx_exp
+- snowinfil_max
+- soil2gw_max
+- soil_moist_max
+- soil_rechr_max_frac
+- ssr2gw_exp
+- ssr2gw_rate
+notebook_output_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files
+nwis_gage_nobs_min: 365
+nwis_gages_file: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/NWISgages.csv
+out_dir: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/output
+output_netcdf_filename: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/notebook_output_files/nc_files/sf_efc.nc
+param_file: myparam.param
+param_filename: /mnt/c/Users/pludden/OneDrive - DOI/Documents/nhm-assist-gitlab/nhm-assist/domain_data/Walla_Walla/myparam.param
+selected_output_variables:
+- gwres_flow
+- gwres_flow_vol
+- gwres_sink
+- gwres_stor
+- gwres_stor_change
+- hru_actet
+- net_ppt
+- net_rain
+- net_snow
+- recharge
+- seg_outflow
+- snowmelt
+- sroff
+- sroff_vol
+- ssres_flow
+- ssres_flow_vol
+- ssres_stor
+- unused_potet
+start_date: '2011-01-01T00:00:00'
+subdomain: Walla_Walla
+water_years: true
+workspace_txt: 'NHM model domain: [bold black]Walla_Walla[/bold black], parameter
+  file: [bold black]myparam.param[/bold black]
+
+  Simulation and observation data range: 01/01/2011 - 12/31/2022 (from [bold]control.default.bandit[/bold]).'

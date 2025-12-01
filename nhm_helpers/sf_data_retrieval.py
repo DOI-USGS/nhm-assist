@@ -205,57 +205,27 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
                 owrd_df["agency_id"] = "OWRD"
                 owrd_df.set_index(["poi_id", "time"], inplace=True)
 
-                    # Write df as netcdf fine (.nc)
-                    owrd_ds = xr.Dataset.from_dataframe(owrd_df)
+                # Write to NetCDF
+                owrd_ds = xr.Dataset.from_dataframe(owrd_df)
+                owrd_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
+                owrd_ds["poi_id"].attrs = {"role": "timeseries_id", "long_name": "Point-of-Interest ID", "_Encoding": "ascii"}
+                owrd_ds["agency_id"].attrs = {"_Encoding": "ascii"}
+                owrd_ds["poi_id"].encoding.update({"dtype": "S15", "char_dim_name": "poiid_nchars"})
+                owrd_ds["time"].encoding.update({
+                    "_FillValue": None,
+                    "standard_name": "time",
+                    "calendar": "standard",
+                    "units": "days since 1940-01-01 00:00:00",
+                })
+                owrd_ds["agency_id"].encoding.update({"dtype": "S5", "char_dim_name": "agency_nchars"})
+                var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
+                for cvar in owrd_ds.data_vars:
+                    if cvar != "agency_id":
+                        owrd_ds[cvar].encoding.update(var_encoding)
+                owrd_ds.attrs = {"Description": "Streamflow data for PRMS", "FeatureType": "timeSeries"}
 
-                    # Set attributes for the variables
-                    owrd_ds["discharge"].attrs = {
-                        "units": "ft3 s-1",
-                        "long_name": "discharge",
-                    }
-                    owrd_ds["poi_id"].attrs = {
-                        "role": "timeseries_id",
-                        "long_name": "Point-of-Interest ID",
-                        "_Encoding": "ascii",
-                    }
-                    owrd_ds["agency_id"].attrs = {"_Encoding": "ascii"}
-
-                    # Set encoding (see 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html)
-                    owrd_ds["poi_id"].encoding.update(
-                        {"dtype": "S15", "char_dim_name": "poiid_nchars"}
-                    )
-
-                    owrd_ds["time"].encoding.update(
-                        {
-                            "_FillValue": None,
-                            "standard_name": "time",
-                            "calendar": "standard",
-                            "units": "days since 1940-01-01 00:00:00",
-                        }
-                    )
-
-                    owrd_ds["agency_id"].encoding.update(
-                        {"dtype": "S5", "char_dim_name": "agency_nchars"}
-                    )
-
-                    # Add fill values to the data variables
-                    var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
-
-                    for cvar in owrd_ds.data_vars:
-                        if cvar not in ["agency_id"]:
-                            owrd_ds[cvar].encoding.update(var_encoding)
-
-                    # add global attribute metadata
-                    owrd_ds.attrs = {
-                        "Description": "Streamflow data for PRMS",
-                        "FeatureType": "timeSeries",
-                    }
-
-                    # Write the dataset to a netcdf file
-                    print(
-                        f"OWRD daily streamflow observations retrieved for {len(owrd_df.index)}, writing data to {owrd_cache_file}."
-                    )
-                    owrd_ds.to_netcdf(owrd_cache_file)
+                print(f"OWRD daily streamflow observations retrieved for {len(owrd_df.index)}, writing data to {owrd_cache_file}.")
+                owrd_ds.to_netcdf(owrd_cache_file)
 
                 if failed_gages:
                     print(f"{len(failed_gages)} gages failed to retrieve data from OWRD: {failed_gages}")
@@ -266,8 +236,10 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     else:
         owrd_domain_txt = "; the model domain is outside the Oregon state boundary."
         owrd_df = pd.DataFrame()
+
     con.print(owrd_domain_txt)
     return owrd_df
+
 
 
 def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
@@ -763,10 +735,11 @@ def create_nwis_sf_df(
         )
         NWIS_ds.to_netcdf(nwis_cache_file)
 
-        nwis_gage_info_aoi = nwis_gage_info_aoi[
-            ~nwis_gage_info_aoi["poi_id"].isin(nobs_min_list)
-        ]
-        nwis_gage_info_aoi.to_csv(nwis_gages_file, index=False)  # , sep='\t')
+    nwis_gage_info_aoi = nwis_gage_info_aoi[~nwis_gage_info_aoi["poi_id"].isin(nobs_min_list)]
+    nwis_gage_info_aoi.to_csv(nwis_gages_file, index=False)
+
+    con.print(f"{len(nobs_min_list)} gages had fewer obs than nwis_gage_nobs_min and will be omitted from nwis_gages_cache.nc and NWIS gages.csv unless they appear in the parameter file.")
+    con.print(f"{len(err_list)} gages were **NOT** found in NWIS for the model period: {err_list}")
 
     return NWIS_df
 
