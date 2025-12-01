@@ -8,6 +8,8 @@ import geopandas as gpd
 import netCDF4
 import numpy as np
 import pandas as pd
+import pathlib as pl
+
 import pywatershed as pws
 import xarray as xr
 from rich.console import Console
@@ -549,6 +551,40 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     con.print(ecy_domain_txt)
     return ecy_df
 
+def fetch_single_nwis_gage(ii, nwis_start, nwis_end, poi_df, nwis_gage_nobs_min):
+    try:
+        NWISgage_data = nwis.get_record(
+            sites=str(ii),
+            service="dv",
+            start=nwis_start,
+            end=nwis_end,
+            parameterCd="00060",
+            StatCd="00003",
+        )
+
+        # Drop _cd columns
+        dropped = NWISgage_data.columns[NWISgage_data.columns.str.contains("_cd|_aux")]
+        if not dropped.empty:
+            print("Dropped columns:", list(dropped))
+            NWISgage_data = NWISgage_data.drop(columns=dropped)
+
+        # Rename column if needed
+        mean_col = [col for col in NWISgage_data.columns if "_Mean" in col][0]
+        if mean_col != "00060_Mean":
+            print(f"For gage {ii}, column '{mean_col}' was renamed '00060_Mean'.")
+            NWISgage_data.rename(columns={mean_col: "00060_Mean"}, inplace=True)
+
+        if NWISgage_data.empty:
+            return ii, "NO_DATA_IN_PERIOD"
+
+        if len(NWISgage_data.index) >= nwis_gage_nobs_min or ii in poi_df["poi_id"].unique().tolist():
+            return ii, NWISgage_data
+        else:
+            return ii, "TOO_FEW_OBS"
+    except Exception as e:
+        return ii, f"ERROR: {e}"
+
+
 
 def create_nwis_sf_df(
     *,
@@ -560,13 +596,7 @@ def create_nwis_sf_df(
     poi_df,
     nwis_gage_nobs_min,
     seg_gdf,
-):  # add neis_gage_nobs_min, hru_gdf,
-    nwis_cache_file = model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
-    control = pws.Control.load_prms(
-        pl.Path(model_dir / control_file_name, warn_unused_options=False)
-    )
-    nwis_gages_file = model_dir / "NWISgages.csv"
-
+):  
     """
     Create a dataframe for NWIS gages in the model domain
 
@@ -591,7 +621,11 @@ def create_nwis_sf_df(
         Dataframe of NWIS gages.
         
     """
-    
+    nwis_cache_file = model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
+    control = pws.Control.load_prms(
+        pl.Path(model_dir / control_file_name, warn_unused_options=False)
+    )
+    nwis_gages_file = model_dir / "NWISgages.csv"
     nwis_gage_info_aoi = fetch_nwis_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
@@ -618,57 +652,33 @@ def create_nwis_sf_df(
         Note: all gages in the gages_df that are not found in NWIS will be ignored.
         """
 
-        nwis_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
-        nwis_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
-        NWIS_tmp = []
+    nwis_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
+    nwis_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
-        with Progress() as progress:
-            task = progress.add_task(
-                    "[red]Downloading...", total=len(nwis_gage_info_aoi)
-            )
-            err_list = []
-            nobs_min_list = []
-            for ii in nwis_gage_info_aoi.poi_id:
-                try:
-                    NWISgage_data = nwis.get_record(
-                        sites=(str(ii)),
-                        service="dv",
-                        start=nwis_start,
-                        end=nwis_end,
-                        parameterCd="00060",
-                        StatCd="00003",
-                    )
-                    # Drop the _cd column--needed to do this due to NWIS updates 8/20/25
-                    try:
-                        dropped = NWISgage_data.columns[NWISgage_data.columns.str.contains("_cd|_2|_aux")]
-                        print("Dropped columns:", list(dropped))
-                        NWISgage_data = NWISgage_data.drop(columns=dropped)
-            
-                        # Check and rename if conditions are met --needed to do this due to NWIS updates 8/20/25
-                        mean_index = NWISgage_data.columns.get_loc(
-                            [col for col in NWISgage_data.columns if "_Mean" in col][0]
-                        )
-                        mean_col = NWISgage_data.columns[mean_index]
-            
-                        if mean_col != "00060_Mean":
-                            print(f"For gage {ii}, column '{mean_col}' was renamed '00060_Mean'.")
-                            NWISgage_data.rename(columns = {mean_col : "00060_Mean"}, inplace=True)
-                        
-                        if len(NWISgage_data.index) >= nwis_gage_nobs_min:
-                            NWIS_tmp.append(NWISgage_data)
-                            print(NWISgage_data.columns)
-                        elif ii in poi_df["poi_id"].unique().tolist():
-                            NWIS_tmp.append(NWISgage_data)
-                            print(NWISgage_data.columns)
-                        else:
-                            nobs_min_list.append(ii)
-                            # con.print(f"Gage id {ii} fewer obs than nwis_gage_nobs_min.")
-                        
-                    except IndexError:
-                        print(f" WTF! Gage {ii} has no data in nwis for the model period?")
-                        pass
-                                  
-                except ValueError:
+    NWIS_tmp = []
+    err_list = []
+    nobs_min_list = []
+    no_data_list = []
+
+    with Progress() as progress:
+        task = progress.add_task("[red]Downloading...", total=len(nwis_gage_info_aoi))
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {
+                executor.submit(fetch_single_nwis_gage, ii, nwis_start, nwis_end, poi_df, nwis_gage_nobs_min): ii
+                for ii in nwis_gage_info_aoi.poi_id
+            }
+
+            for future in as_completed(futures):
+                ii, result = future.result()
+                if isinstance(result, pd.DataFrame):
+                    NWIS_tmp.append(result)
+                elif result == "TOO_FEW_OBS":
+                    nobs_min_list.append(ii)
+                elif result == "NO_DATA_IN_PERIOD":
+                    print(f"Gage {ii} returned no data for the model period.")
+                    no_data_list.append(ii)
+                else:
                     err_list.append(ii)
                     # con.print(f"Gage id {ii} not found in NWIS.")
                     pass
