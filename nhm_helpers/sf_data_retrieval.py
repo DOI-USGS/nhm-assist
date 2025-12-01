@@ -157,60 +157,51 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
         if output_netcdf_filename.exists():
             owrd_domain_txt += "All available streamflow observations for gages in the gages file were previously retrieved from OWRD database and included in the sf_efc.nc file. [bold]To update OWRD data, delete sf_efc.nc and owrd_cache.nc[/bold] and rerun 1_Create_Streamflow_Observations.ipynb."
             owrd_df = pd.DataFrame()
-            pass
+        elif owrd_cache_file.exists():
+            with xr.open_dataset(owrd_cache_file) as owrd_ds:
+                owrd_df = owrd_ds.to_dataframe()
+            print("Cached copy of OWRD data exists. To re-download the data, remove the cache file.")
         else:
-            if owrd_cache_file.exists():
-                with xr.open_dataset(owrd_cache_file) as owrd_ds:
-                    owrd_df = owrd_ds.to_dataframe()
-                    print(
-                        "Cached copy of OWRD data exists. To re-download the data, remove the cache file."
-                    )
-                del owrd_ds
+            print("Retrieving all available streamflow observations from OWRD database for gages in the gages file.")
+            owrd_df_list = []
+            failed_gages = []
 
-            else:
-                print(
-                    "Retrieving all available streamflow observations from OWRD database for gages in the gages file."
-                )
-                lst = []
+            with Progress() as progress:
+                task = progress.add_task("[cyan]Downloading OWRD data...", total=len(gages_df.index))
 
-                for ii in gages_df.index:
-                    lst.append(owrd_scraper(ii, start_date, end_date))
+                def fetch_owrd(ii):
+                    try:
+                        return ii, owrd_scraper(ii, start_date, end_date)
+                    except Exception as e:
+                        return ii, None
 
-                if lst:
-                    owrd_df = pd.concat(
-                        lst
-                    )  # Converts the list of df's to a single df  maybe move this to the owrd scraper function
+                with ThreadPoolExecutor(max_workers=10) as executor:
+                    futures = {executor.submit(fetch_owrd, ii): ii for ii in gages_df.index}
+                    for future in as_completed(futures):
+                        ii, result = future.result()
+                        if result is not None and not result.empty:
+                            owrd_df_list.append(result)
+                        else:
+                            failed_gages.append(ii)
+                        progress.update(task, advance=1)
 
-                    # Reformat owrd_df headers and data types
-                    # Rename column headers
-                    field_map = {
-                        "station_nbr": "poi_id",
-                        "record_date": "time",
-                        "mean_daily_flow_cfs": "discharge",
-                        "station_name": "poi_name",
-                    }
-                    owrd_df.rename(columns=field_map, inplace=True)
+            if owrd_df_list:
+                owrd_df = pd.concat(owrd_df_list)
 
-                    # Change the datatype for 'poi_id' and 'time'
-                    dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
-                    owrd_df = owrd_df.astype(dtype_map)
-
-                    # Drop the columns we don't need
-                    drop_cols = [
-                        "download_date",
-                        "estimated",
-                        "revised",
-                        "published_status",
-                    ]
-                    owrd_df.drop(columns=drop_cols, inplace=True)
-
-                    # Add new field(s): 'agency_id' and set to 'OWRD'
-                    owrd_df["agency_id"] = (
-                        "OWRD"  # Creates tags for all OWRD daily streamflow data
-                    )
-
-                    # Set multi-index for df
-                    owrd_df.set_index(["poi_id", "time"], inplace=True)
+                # Rename and format
+                field_map = {
+                    "station_nbr": "poi_id",
+                    "record_date": "time",
+                    "mean_daily_flow_cfs": "discharge",
+                    "station_name": "poi_name",
+                }
+                owrd_df.rename(columns=field_map, inplace=True)
+                dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
+                owrd_df = owrd_df.astype(dtype_map)
+                drop_cols = ["download_date", "estimated", "revised", "published_status"]
+                owrd_df.drop(columns=[col for col in drop_cols if col in owrd_df.columns], inplace=True)
+                owrd_df["agency_id"] = "OWRD"
+                owrd_df.set_index(["poi_id", "time"], inplace=True)
 
                     # Write df as netcdf fine (.nc)
                     owrd_ds = xr.Dataset.from_dataframe(owrd_df)
@@ -264,10 +255,12 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
                     )
                     owrd_ds.to_netcdf(owrd_cache_file)
 
-                    owrd_domain_txt += " All available streamflow observations for gages in the gages file were retrieved from OWRD database."
-                else:
-                    owrd_domain_txt += " No available streamflow observations for gages in the gages file exist in the OWRD database."
-                    owrd_df = pd.DataFrame()
+                if failed_gages:
+                    print(f"{len(failed_gages)} gages failed to retrieve data from OWRD: {failed_gages}")
+                owrd_domain_txt += " All available streamflow observations for gages in the gages file were retrieved from OWRD database."
+            else:
+                owrd_domain_txt += " No available streamflow observations for gages in the gages file exist in the OWRD database."
+                owrd_df = pd.DataFrame()
     else:
         owrd_domain_txt = "; the model domain is outside the Oregon state boundary."
         owrd_df = pd.DataFrame()
