@@ -11,5 +11,16 @@ domain_data/
 
 # subdomain_config.yaml has PPI
 subdomain_config.yaml
-
 .env
+
+# For now ignore all data in these folders
+nhf-assist/data_dependencies/
+nhf-assist/hydrofabric_domain_data/
+nhf-assist/domain_data/
+nhf-assist/make_pws_model/
+nhf-assist/modify_hydrofabric/
+nhf-assist/notebooks/
+nhf-assist/.env
+
+pestpp_ies_calibration/data_dependencies/
+pestpp_ies_calibration/notebooks/
