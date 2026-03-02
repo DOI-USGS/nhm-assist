@@ -1,23 +1,19 @@
 from ipywidgets import widgets
 from IPython.display import display, clear_output
-from nhm_helpers.map_template_v2 import make_var_map
-from nhm_helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from nhm_helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
+from helpers.map_template_v2 import make_var_map
+from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
+from helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
 from ipywidgets import VBox
-from nhm_helpers.output_plots_v2 import plot_colors
-from nhm_helpers.output_plots_v2 import (
+from helpers.output_plots_v2 import plot_colors
+from helpers.output_plots_v2 import (
     var_colors_dict,
     leg_only_dict,
     make_plot_var_for_hrus_in_poi_basin,
     oopla,
 )
-from nhm_helpers.output_plots_v2 import create_streamflow_plot
-from nhm_helpers.map_template_v2 import make_streamflow_map
-from nhm_helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
-
-# import pathlib as pl
-# import os
-# root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+from helpers.output_plots_v2 import create_streamflow_plot
+from helpers.map_template_v2 import make_streamflow_map
+from helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
 
 def warn(msg: str):
     """Display a bold red warning in the notebook."""

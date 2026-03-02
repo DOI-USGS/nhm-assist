@@ -34,11 +34,11 @@ con = Console()
 
 import sys
 import os
-root_folder = "nhm-assist"
+root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir))
 
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
+from helpers.nhm_assist_utilities_v2 import load_subdomain_config
 config = load_subdomain_config(root_dir)
 # con.print(config)
 
@@ -65,7 +65,9 @@ import xarray as xr
 
 # %%
 pws_prcp_input_file = config['model_dir'] / "prcp.nc"
+
 pws_tmin_input_file = config['model_dir'] / "tmin.nc"
+
 pws_tmax_input_file = config['model_dir'] / "tmax.nc"
 
 
@@ -103,6 +105,12 @@ con.print(
 #         new_name = f.with_suffix(".renamed.nc")
 #         ds2 = ds.rename({"hruid": "nhm_id"})
 #         ds2.to_netcdf(new_name)
+
+
+
+# %%
+with xr.open_dataset(pws_prcp_input_file) as ds:
+    print(ds)
 
 # %% [markdown]
 # ### Parameter file check

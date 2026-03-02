@@ -22,12 +22,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rich import pretty
 from rich.progress import Progress
-from nhm_helpers.efc import efc
-from nhm_helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info
+from helpers.efc import efc
+from helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info
 
 import sys
 import os
-root_folder = "nhm-assist"
+root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 print(root_dir)
 from dotenv import load_dotenv

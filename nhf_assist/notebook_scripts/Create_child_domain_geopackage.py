@@ -75,7 +75,7 @@ def remove_holes(geom):
 
 # %%
 child_model_nhrus_path = (
-    root_dir / "nhf-assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_models.shp"
+    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_models.shp"
 )
 gdf_child_models = gpd.read_file(child_model_nhrus_path)
 
@@ -113,7 +113,7 @@ basin_polygons.explore(column="basin_id")  # opens in a browser or Jupyter
 # path to your GeoPackage
 basin_gpkg = (
     root_dir
-    / "nhf-assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
+    / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
 )
 
 # make sure basin_id is a column
@@ -139,7 +139,7 @@ for _, row in basin_polygons.iterrows():
     gdf_one = gpd.GeoDataFrame([row], crs=basin_polygons.crs)
 
     # Make a new domain directory for each child
-    child_dir = root_dir / f"nhf-assist/hydrofabric_domain_data/{layer_name}"
+    child_dir = root_dir / f"nhf_assist/hydrofabric_domain_data/{layer_name}"
     child_dir.mkdir(parents=True, exist_ok=True)
     child_gis_dir = child_dir / "GIS"
     child_gis_dir.mkdir(parents=True, exist_ok=True)
@@ -154,12 +154,12 @@ for _, row in basin_polygons.iterrows():
 # 1) GeoPackage with one layer per basin
 basin_gpkg = (
     root_dir
-    / "nhf-assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
+    / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
 )
 
 # 2) GeoPackage whose layers you want to subset
 source_gpkg = (
-    root_dir / "nhf-assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
+    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
 )
 
 # %%
@@ -187,7 +187,7 @@ for basin_layer in basin_layers:
     # output GeoPackage for this basin
     out_gpkg = (
         root_dir
-        / f"nhf-assist/hydrofabric_domain_data/{basin_id}/GIS/child_nhf_domain.gpkg"
+        / f"nhf_assist/hydrofabric_domain_data/{basin_id}/GIS/child_nhf_domain.gpkg"
     )
     basin_gdf.to_file(
         out_gpkg, layer=f"domain", driver="GPKG"
@@ -223,7 +223,7 @@ for basin_layer in basin_layers:
 
 # %%
 # List of model names
-domains_dir = Path(root_dir / f"nhf-assist/hydrofabric_domain_data")
+domains_dir = Path(root_dir / f"nhf_assist/hydrofabric_domain_data")
 
 folders = [p for p in domains_dir.iterdir() if p.is_dir()]
 

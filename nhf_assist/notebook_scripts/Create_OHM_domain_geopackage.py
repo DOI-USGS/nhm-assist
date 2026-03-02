@@ -76,7 +76,7 @@ def remove_holes(geom):
 # %%
 child_model_nhrus_path = (
     root_dir
-    / "nhf-assist/make_pws_model/domain_data/OHM_2026_02_21/GIS/child_models.shp"
+    / "nhf_assist/make_pws_model/domain_data/OHM_2026_02_21/GIS/child_models.shp"
 )
 gdf_child_models = gpd.read_file(child_model_nhrus_path)
 
@@ -97,7 +97,7 @@ auto_list[0:5]
 # %%
 manual_gpkg_path = (
     root_dir
-    / "nhf-assist/make_pws_model/domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
+    / "nhf_assist/make_pws_model/domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
 )
 manual_layers = fiona.listlayers(manual_gpkg_path)
 # manual_layers

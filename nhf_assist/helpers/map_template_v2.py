@@ -16,10 +16,10 @@ from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from rich.console import Console
-from nhm_helpers.nhm_output_visualization_v2 import (
+from helpers.nhm_output_visualization_v2 import (
     create_streamflow_obs_datasets, create_sum_seg_var_dataarrays,
     create_sum_var_annual_gdf)
-from nhm_helpers.output_plots_v2 import calculate_monthly_kge_in_poi_df
+from helpers.output_plots_v2 import calculate_monthly_kge_in_poi_df
 import subprocess
 import os
 import webbrowser

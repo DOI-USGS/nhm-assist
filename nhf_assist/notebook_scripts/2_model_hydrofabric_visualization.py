@@ -29,11 +29,11 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
-from nhm_helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from nhm_helpers.map_template_v2 import make_hf_map
-from nhm_helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
+from helpers.map_template_v2 import make_hf_map
+from helpers.nhm_assist_utilities_v2 import load_subdomain_config
 import topojson
 
 config = load_subdomain_config(root_dir)
@@ -44,6 +44,9 @@ config = load_subdomain_config(root_dir)
 # The purpose of this notebook is to assist in verifying NHM subdomain model location, HRU to segment connections, segment routing order, and the locations of gages and associated streamflow segments. This notebook displays hydrofabric elements: HRUs, streamflow segments, and gages both in the parameter file and additional NWIS gages in the domain (potential streamflow gages).
 #
 # The cell below reads the NHM subdomain model hydrofabric elements for mapping purposes using make_hf_map_elements() and writes general NHM subdomain model run and hydrofabric information.
+
+# %%
+config["gages_file"]
 
 # %% [markdown]
 # ## Make interactive map of hydrofabric elements
@@ -108,5 +111,8 @@ config["Folium_maps_dir"]
 
 # %%
 hru_gdf.columns
+
+# %%
+seg_gdf.columns
 
 # %%

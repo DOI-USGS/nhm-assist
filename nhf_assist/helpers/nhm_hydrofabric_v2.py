@@ -6,12 +6,12 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from nhm_helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info #,make_HW_cal_level_files
+from helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info
 
 import sys
 import pathlib as pl
 import os
-root_folder = "nhm-assist"
+root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 print(root_dir)
 from dotenv import load_dotenv
@@ -277,32 +277,44 @@ def create_segment_gdf(
     # df["model_idx"] = df.index + 1
     df["segment_id"] = df.index + 1
     df.index.name = "index"  # Index column must be renamed
-    df.drop
     print(df.columns)
+    
     #Pre merge check
-    df_by_segment_id = df.set_index("nhm_seg", drop=False).fillna(
-            0
-        )  # Set an index for HRU geodatabase.
-    if df_by_segment_id["segment_id"].equals(seg_gdb["segment_id"]):
-        print("GIS segment_id matches order found in myparam.param")
-        df.drop(columns=["segment_id"], inplace=True)
+    # df_by_segment_id = df.set_index("nhm_seg", drop=False).fillna(
+    #         0
+    #     )  # Set an index for HRU geodatabase.
+    
+    # Ensure both contain the same IDs
+    ids_df = df["nhm_seg"].tolist()
+    print(len(ids_df))
+    ids_seg = seg_gdb["nhm_seg"].tolist()
+    print(len(ids_seg))
+    
+    if ids_df != ids_seg:
+        raise ValueError("nhm_seg indices in the parameter file and the .gpkg are not the same.")
     else:
-        print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")
-        diff = df_by_segment_id.loc[~same, ["segment_id"]].join(
-            seg_gdb.loc[~same, ["segment_id"]],
-            lsuffix="_df_by_segment_id",
-            rsuffix="_seg_gdb"
-        )
-        print(diff)
+        print("nhm_seg indices in the parameter file and the .gpkg match")
+    
+    # if df_by_segment_id["segment_id"].equals(seg_gdb["segment_id"]):
+    #     print("GIS segment_id matches order found in myparam.param")
+    #     df.drop(columns=["segment_id"], inplace=True)
+    # else:
+    #     print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")
+    #     diff = df_by_segment_id.loc[~same, ["segment_id"]].join(
+    #         seg_gdb.loc[~same, ["segment_id"]],
+    #         lsuffix="_df_by_segment_id",
+    #         rsuffix="_seg_gdb"
+    #     )
+    #     print(diff)
 
-    # Join the HRU params values to the HRU geodatabase using Merge
-    seg_gdb = pd.merge(df, seg_gdb, on="nhm_seg")
-    #seg_gdb = pd.merge(df, seg_gdb, left_on="nhm_seg", right_on = "model_seg_idx")
-
-    # Create a Goepandas GeoDataFrame for the HRU geodatabase
-    seg_gdf = gpd.GeoDataFrame(seg_gdb, geometry="geometry")
-
-    seg_txt = f", {len(seg_gdf.index)} [bold]segments[/bold]"
+        # Join the HRU params values to the HRU geodatabase using Merge
+        seg_gdb.drop(columns=["segment_id"], inplace=True)
+        seg_gdb = pd.merge(df, seg_gdb, on="nhm_seg")
+    
+        # Create a Goepandas GeoDataFrame for the HRU geodatabase
+        seg_gdf = gpd.GeoDataFrame(seg_gdb, geometry="geometry")
+    
+        seg_txt = f", {len(seg_gdf.index)} [bold]segments[/bold]"
 
     return seg_gdf, seg_txt
 
@@ -397,7 +409,7 @@ def create_poi_df(
             poi_df=poi_df,
             gages_file=gages_file,
         )
-
+        
         for idx, row in poi_df.iterrows():
             """
             Checks the gages_df for missing meta data and replace.
@@ -419,10 +431,10 @@ def create_poi_df(
             poi_df=poi_df,
             gages_file=gages_file,
         )
-
+        
         for idx, row in poi_df.iterrows():
             """
-            Checks the gages_df for missing meta data and replace.
+            Checks the poi_df for missing meta data and replace.
             """
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             for item in columns:

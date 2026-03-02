@@ -42,7 +42,7 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
 from dotenv import load_dotenv
@@ -51,21 +51,21 @@ load_dotenv(
     dotenv_path=root_dir / ".env"
 )  # this will load the environment variables from the .env file
 
-from nhm_helpers.sf_data_retrieval_v2 import (
+from helpers.sf_data_retrieval_v2 import (
     create_nwis_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from nhm_helpers.nhm_hydrofabric_v2 import (
+from helpers.nhm_hydrofabric_v2 import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from nhm_helpers.efc import plot_efc
-from nhm_helpers.nhm_assist_utilities_v2 import (
+from helpers.efc import plot_efc
+from helpers.nhm_assist_utilities_v2 import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,
@@ -137,7 +137,7 @@ len(hru_gdf)
 # This function pulls time series data for all NWIS gages in the domain, and then filters data to the simulation period (`nwis_gages_cache.nc`), and creates `NWISgages.csv`. Both the time series data file and the NWISgages.csv contain all site information for gages with a period of record greater than the user specified threshold (`nwis_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** ALL gages in the parameter file regardless of a period of record less than the specified threshold.
 
 # %%
-# from nhm_helpers.nhm_assist_utilities import fetch_nwis_gage_info
+# from nhf_assist.helpers.nhm_assist_utilities import fetch_nwis_gage_info
 
 # nwis_gage_info_aoi = fetch_nwis_gage_info(
 #     root_dir=root_dir,
@@ -190,7 +190,7 @@ len(hru_gdf)
 # ii
 
 # %% jupyter={"source_hidden": true}
-# from nhm_helpers.sf_data_retrieval import fetch_single_nwis_gage
+# from nhf_assist.helpers.sf_data_retrieval import fetch_single_nwis_gage
 # import numpy as np
 # import pandas as pd
 

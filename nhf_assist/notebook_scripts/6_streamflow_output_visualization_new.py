@@ -29,18 +29,18 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
 # %%
-from nhm_helpers.output_plots_v2 import create_streamflow_plot
-from nhm_helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from nhm_helpers.map_template_v2 import make_streamflow_map
-from nhm_helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
+from helpers.output_plots_v2 import create_streamflow_plot
+from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
+from helpers.map_template_v2 import make_streamflow_map
+from helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
 from ipywidgets import widgets
 from IPython.display import display
 
-from nhm_helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from helpers.nhm_assist_utilities_v2 import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 
@@ -129,7 +129,7 @@ map_file = make_streamflow_map(
 # %matplotlib inline
 import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
-import nhm_helpers.display_controls_v2 as dc
+import helpers.display_controls_v2 as dc
 
 gage_txt = widgets.Text(
     description="Streamgage ID:",

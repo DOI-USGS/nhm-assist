@@ -30,10 +30,10 @@ import jupyter_black
 jupyter_black.load()
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
-from nhm_helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
+from helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
 
 
 # %%
@@ -127,7 +127,7 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
     Third, metadata is sought for in USGS WaterData database.
 
     """
-    npoigages_data_dir = root_dir / "nhf-assist/data_dependencies/"
+    npoigages_data_dir = root_dir / "data_dependencies/"
 
     pws_dir.mkdir(parents=True, exist_ok=True)
 
@@ -486,7 +486,7 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
 # The parent domain may be CONUS in scale or a regional domain. In this case, the parent domain is portions of Region 16, 17, and 18 that cover contributing areas to the Oregon Satae watersheds.
 
 # %%
-parent_dir = root_dir / f"nhf-assist/hydrofabric_domain_data/OHM_2026_02_21"
+parent_dir = root_dir / f"hydrofabric_domain_data/OHM_2026_02_21"
 
 # %% [markdown]
 # The directory for all the paramerter .csv files:
@@ -509,7 +509,7 @@ gf_files.sort()
 # The control file used for the parent pywatershed model is somewhat universal and not model dependent
 
 # %%
-default_ctl_filename = root_dir / f"nhf-assist/data_dependencies/control.default.bandit"
+default_ctl_filename = root_dir / f"data_dependencies/control.default.bandit"
 prms_meta = MetaData(verbose=False).metadata
 ctl = ControlFile(default_ctl_filename, metadata=prms_meta, verbose=True)
 
@@ -584,14 +584,14 @@ parent_pdb.check()
 
 # %%
 child_name = "Rogue_River"
-child_path = f"nhf-assist/hydrofabric_domain_data/{child_name}"
+child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
-    child_pws_dir = root_dir / f"nhf-assist/domain_data/{child_name}"
+    child_pws_dir = root_dir / f"domain_data/{child_name}"
     child_pws_dir.mkdir(parents=True, exist_ok=True)
 else:
     print(f"The child directory {child_path} does not exist.")
-    p = root_dir / "nhf-assist/hydrofabric_domain_data/"
+    p = root_dir / "hydrofabric_domain_data/"
     print(f"Please choose from the folowing list. ({p.resolve()}):")
     for folder in p.iterdir():
         if folder.is_dir():
@@ -631,7 +631,7 @@ hru_gdb
 
 # %% [markdown]
 # #### Create the nhm_id.csv from the GIS subset domain
-# The nhm_id.csv file contains the parent, or global, hur_id for each hru in the child domain, indexed from 1 to n. The index of the file is essentially the hru_id for each hru in the child domain. This file is key for connecting the child hru to the parent parameter database and for dispaying model parameters and output using the .gpkg in NHM-assist. It is strongly recommended that when creating the child .gpkg, that the nhm_id be indexed in ascending order.
+# The nhm_id.csv file contains the parent, or global, hru index for each hru in the child domain, indexed from 1 to n. The index of the nhm_id.csv file is used by pywatershed for internal processing when running the child model, indexed from 1 to n. This file is key for connecting the child hru to the parent parameter database and for dispaying model parameters and output using the .gpkg in NHM-assist. It is strongly recommended that when creating the child .gpkg, that the nhm_id be indexed in ascending order.
 
 # %%
 param_source_files_dir = child_hf_dir / "param_source_files"
@@ -652,7 +652,7 @@ with open(param_source_files_dir / "nhm_id.csv", "w", newline="") as f:
 
 # %%
 nhm_seg_temp = seg_gdb.segment_id.astype(int)
-nhm_seg_temp = nhm_seg_temp.sort_values()
+nhm_seg_temp = nhm_seg_temp.sort_values()  # Sorting may be causing errors
 nhm_seg_temp.index = range(1, len(nhm_seg_temp) + 1)
 
 with open(param_source_files_dir / "nhm_seg.csv", "w", newline="") as f:
@@ -722,9 +722,7 @@ child_npoi_gdf.info()
 # The metadata is referrenced directly from the parent .gpkg
 
 # %%
-gpkg_path = (
-    root_dir / "nhf-assist/hydrofabric_domain_data/OR_v2_domain/GIS/NHM_OR_draft.gpkg"
-)
+gpkg_path = root_dir / "hydrofabric_domain_data/OR_v2_domain/GIS/NHM_OR_draft.gpkg"
 npoi_data = gpd.read_file(gpkg_path, layer="npoi_data")
 
 gage_data_df = npoi_data.loc[
@@ -1025,9 +1023,6 @@ gpkg_dir = child_pws_dir / "GIS"
 gpkg_path = gpkg_dir / "model_layers.gpkg"
 
 # %%
-hru_child_gdf.columns
-
-# %%
 # new HRUs
 hru_mapping_series = pd.Series(nhm_id_temp.index, index=nhm_id_temp.values)
 hru_mapping_df = hru_mapping_series.reset_index()
@@ -1055,11 +1050,7 @@ hru_child_gdf.hru_segment = hru_child_gdf.hru_segment.astype(int)
 hru_child_gdf
 
 # %%
-hru_child_gdf.columns
-
-# %%
 # Change to column names to match child poigages gdf
-
 seg_child_gdf = seg_gdb.copy()
 seg_child_gdf.drop(columns="nhm_seg_id", inplace=True)  # vestigial ids
 seg_child_gdf.drop(columns="to_nhm_seg", inplace=True)  # vestigial ids
@@ -1560,11 +1551,7 @@ npoigages_info_df.to_csv(npoigages_file, index=False)
 from pathlib import Path
 import shutil
 
-child_model_name = child_dir.stem
-child_model_dir = child_dir / f"pywatershed_model_files"
-child_model_dir.mkdir(parents=True, exist_ok=True)
-
-child_model_gis_dir = child_model_dir / "GIS"
+child_model_gis_dir = child_pws_dir / "GIS"
 child_model_gis_dir.mkdir(parents=True, exist_ok=True)
 
 pyprms_proj = "ESRI:102039"
@@ -1573,56 +1560,71 @@ pyprms_proj = "ESRI:102039"
 # Mapping for parent nhm_id and nhm_seg_id to child hru_id and seg_id
 
 # %%
-hru_mapping_series = pd.Series(nhm_id_temp.index, index=nhm_id_temp.values)
-hru_mapping_df = hru_mapping_series.reset_index()
-hru_mapping_df.columns = ["nhm_id", "hru_id"]  # rename as needed
-hru_mapping = hru_mapping_df.set_index("nhm_id")["hru_id"]
+# hru_mapping_series = pd.Series(nhm_id_temp.index, index=nhm_id_temp.values)
+# hru_mapping_df = hru_mapping_series.reset_index()
+# hru_mapping_df.columns = ["nhm_id", "hru_id"]  # rename as needed
+# hru_mapping = hru_mapping_df.set_index("nhm_id")["hru_id"]
 
-seg_mapping_series = pd.Series(nhm_seg_temp.index, index=nhm_seg_temp.values)
-seg_mapping_df = seg_mapping_series.reset_index()
-seg_mapping_df.columns = ["nhm_seg_id", "segment_id"]  # rename as needed
-seg_mapping = seg_mapping_df.set_index("nhm_seg_id")["segment_id"]
+# seg_mapping_series = pd.Series(nhm_seg_temp.index, index=nhm_seg_temp.values)
+# seg_mapping_df = seg_mapping_series.reset_index()
+# seg_mapping_df.columns = ["nhm_seg_id", "segment_id"]  # rename as needed
+# seg_mapping = seg_mapping_df.set_index("nhm_seg_id")["segment_id"]
 
 # %%
-# nhru layer
-nhru_layer_gdf = hru_gdb.copy()
-nhru_layer_gdf.drop(
-    columns="nhm_seg_id", inplace=True
-)  # This was for the regional extraction from CONUS
-nhru_layer_gdf.rename(
-    columns={"hru_segment": "nhm_hru_seg", "hru_id": "nhm_id"}, inplace=True
-)
-nhru_layer_gdf["hru_segment"] = nhru_layer_gdf["nhm_hru_seg"].map(
-    seg_mapping
-)  # makes the OHM segment_id from parent and mapping
-nhru_layer_gdf["hru_segment"] = nhru_layer_gdf["hru_segment"].fillna(
-    0
-)  # HRU's with Nan flow directly to the ocean; 0 = Ocean
-nhru_layer_gdf.hru_segment = nhru_layer_gdf.hru_segment.astype(int)
+# # nhru layer
+# nhru_layer_gdf = hru_gdb.copy()
+# nhru_layer_gdf.drop(
+#     columns="nhm_seg_id", inplace=True
+# )  # This was for the regional extraction from CONUS
+# nhru_layer_gdf.rename(
+#     columns={"hru_segment": "nhm_hru_seg", "hru_id": "nhm_id"}, inplace=True
+# )
+# nhru_layer_gdf["hru_segment"] = nhru_layer_gdf["nhm_hru_seg"].map(
+#     seg_mapping
+# )  # makes the OHM segment_id from parent and mapping
+# nhru_layer_gdf["hru_segment"] = nhru_layer_gdf["hru_segment"].fillna(
+#     0
+# )  # HRU's with Nan flow directly to the ocean; 0 = Ocean
+# nhru_layer_gdf.hru_segment = nhru_layer_gdf.hru_segment.astype(int)
 
-nhru_layer_gdf["hru_id"] = nhru_layer_gdf["nhm_id"].map(
-    hru_mapping
-)  # makes the OHM hru_id from parent and mapping
-# hru_child_gdf
-nhru_layer_gdf["model_hru_idx"] = nhru_layer_gdf["hru_id"]
-nhru_layer_gdf.to_file(
+# nhru_layer_gdf["hru_id"] = nhru_layer_gdf["nhm_id"].map(
+#     hru_mapping
+# )  # makes the OHM hru_id from parent and mapping
+# # hru_child_gdf
+# nhru_layer_gdf["model_hru_idx"] = nhru_layer_gdf["hru_id"]
+# nhru_layer_gdf.to_file(
+#     f"{child_model_gis_dir}/model_layers.gpkg",
+#     layer="nhru",
+#     driver="GPKG",
+# )
+
+# print(nhru_layer_df[~nhru_layer_df.geometry.is_valid])
+# Check validity for each geometry
+validity_series = hru_child_gdf.geometry.is_valid
+
+# Check if ALL geometries are valid
+all_valid = validity_series.all()
+print("All nhru geometries valid?", all_valid)
+
+# If some are invalid, print their hru_id values (and optionally why)
+if not all_valid:
+    bad_rows = hru_child_gdf.loc[~validity_series, ["hru_id", "geometry"]]
+    print("Rows with invalid geometry (by hru_id):")
+    print(bad_rows["hru_id"].tolist())
+
+    # Optional: show validity reason for each bad geometry
+    bad_rows = bad_rows.assign(
+        validity_reason=bad_rows["geometry"].apply(explain_validity)
+    )
+    print(bad_rows[["hru_id", "validity_reason"]])
+
+hru_child_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
     layer="nhru",
     driver="GPKG",
 )
 
-# print(nhru_layer_df[~nhru_layer_df.geometry.is_valid])
-# Check validity for each geometry
-validity_series = nhru_layer_gdf.geometry.is_valid
-print(validity_series.head())
-
-# Check if ALL geometries are valid
-all_valid = validity_series.all()
-print("All geometries valid?", all_valid)
-
-bad = nhru_layer_gdf.geometry.isna() | nhru_layer_gdf.geometry.is_empty
-print("Rows with missing/empty geometry:", len(bad))
-
+# Add the child model domain layer to the model GIS .gdpk
 aoi_layer_df = aoi_gdb.copy().to_crs(pyprms_proj)
 aoi_layer_df.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
@@ -1631,36 +1633,30 @@ aoi_layer_df.to_file(
 )
 
 # %%
-nhru_layer_gdf
+# Check validity for each geometry
+validity_series = seg_child_gdf.geometry.is_valid
 
-# %%
-# nsegment layer
-nsegment_layer_gdf = seg_gdb.copy().to_crs(pyprms_proj)
+# Check if ALL geometries are valid
+all_valid = validity_series.all()
+print("All nsegment geometries valid?", all_valid)
 
-nsegment_layer_gdf.drop(columns="nhm_seg_id", inplace=True)  #
-nsegment_layer_gdf.rename(
-    columns={"segment_id": "nhm_seg_id", "to_segment": "to_nhm_seg"}, inplace=True
-)
-nsegment_layer_gdf.nhm_seg_id = nsegment_layer_gdf.nhm_seg_id.astype(int)
-nsegment_layer_gdf.to_nhm_seg = nsegment_layer_gdf.to_nhm_seg.astype(int)
-nsegment_layer_gdf.sort_values(by="nhm_seg_id", inplace=True)
+# If some are invalid, print their hru_id values (and optionally why)
+if not all_valid:
+    bad_rows = seg_child_gdf.loc[~validity_series, ["segment_id", "geometry"]]
+    print("Rows with invalid geometry (by segment_id):")
+    print(bad_rows["segment_id"].tolist())
 
-nsegment_layer_gdf["segment_id"] = nsegment_layer_gdf["nhm_seg_id"].map(seg_mapping)
-nsegment_layer_gdf.segment_id = nsegment_layer_gdf.segment_id.astype(int)
-nsegment_layer_gdf["model_seg_idx"] = nsegment_layer_gdf["segment_id"]
+    # Optional: show validity reason for each bad geometry
+    bad_rows = bad_rows.assign(
+        validity_reason=bad_rows["geometry"].apply(explain_validity)
+    )
+    print(bad_rows[["segment_id", "validity_reason"]])
 
-nsegment_layer_gdf["to_segment"] = nsegment_layer_gdf["to_nhm_seg"].map(seg_mapping)
-nsegment_layer_gdf["to_segment"] = nsegment_layer_gdf["to_segment"].fillna(
-    0
-)  # to_segments may not be in the model domain; 0 = Ocean
-nsegment_layer_gdf.to_segment = nsegment_layer_gdf.to_segment.astype(int)
-
-nsegment_layer_gdf.to_file(
+seg_child_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
     layer="nsegment",
     driver="GPKG",
 )
-print(nsegment_layer_gdf[~nsegment_layer_gdf.is_valid])
 
 # %%
 # npoigages layer
@@ -1672,27 +1668,51 @@ npoigages_layer_gdf = gpd.GeoDataFrame(
         npoigages_layer_df["longitude"], npoigages_layer_df["latitude"]
     ),
     crs="EPSG:4326",  # WGS84 lat/lon
-).to_crs(nsegment_layer_gdf.crs)
+).to_crs(seg_child_gdf.crs)
 
-# %%
 npoigages_layer_gdf.poi_gage_id = npoigages_layer_gdf.poi_gage_id.astype(str)
 npoigages_layer_gdf.nhm_seg_id = npoigages_layer_gdf.nhm_seg_id.astype(int)
 npoigages_layer_gdf.segment_id = npoigages_layer_gdf.segment_id.astype(int)
 
 npoigages_layer_gdf.sort_values(by="nhm_seg_id", inplace=True)
 
+# Check validity for each geometry
+validity_series = npoigages_layer_gdf.geometry.is_valid
+
+# Check if ALL geometries are valid
+all_valid = validity_series.all()
+print("All npoigage geometries valid?", all_valid)
+
+# If some are invalid, print their hru_id values (and optionally why)
+if not all_valid:
+    bad_rows = npoigages_layer_gdf.loc[~validity_series, ["poi_gage_id", "geometry"]]
+    print("Rows with invalid geometry (by poi_gage_id):")
+    print(bad_rows["poi_gage_id"].tolist())
+
+    # Optional: show validity reason for each bad geometry
+    bad_rows = bad_rows.assign(
+        validity_reason=bad_rows["geometry"].apply(explain_validity)
+    )
+    print(bad_rows[["poi_gage_id", "validity_reason"]])
+
 npoigages_layer_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
     layer="npoigages",
     driver="GPKG",
 )
-print(npoigages_layer_gdf[~npoigages_layer_gdf.is_valid])
 
 # %%
-child_dir
+# child_pws_dir
+child_hf_dir
 
 # %%
-child_params_dir = child_dir / "param_source_files"
+child_params_dir = child_hf_dir / "param_source_files"
+child_params_dir.mkdir(parents=True, exist_ok=True)
+
+# For now, move a copy of snarea_curve.csv into the param_source_files folder
+sc_file_src = root_dir / "nhf_assist" / "data_dependencies" / "snarea_curve.csv"
+sc_file_dst = child_params_dir
+shutil.copy2(sc_file_src, sc_file_dst)
 
 child_pdb = Parameters(metadata=prms_meta, verbose=False)
 child_pdb.control = ctl
@@ -1758,17 +1778,41 @@ for cfile in child_gf_files:
         child_pdb.remove(cname)
 
 # %%
-parent_pdb.get("temp_units").meta["dimensions"]
-
-# %%
-hru_gdb
+# parent_pdb.get("temp_units").meta["dimensions"]
+nhm_id_temp
+hru_list = list(nhm_id_temp)
+len(hru_list)
 
 # %%
 cname_list = [x for x in list(parent_pdb.keys()) if x not in param_ignore_list]
-# Note change the hru_list to nhm_id_lists becuase we changed the columns in the gdb
-hru_list = list(hru_gdb.hru_id)
+
+# Read in the list of hru_id from the parent.
+# Note that the hru_list in the parent was change to nhm_id in the child .gpkg and we are returning to the source.
+# We could use the values in the child. consider on revision
+
+# Or, maybe we need to use the nhm_id.csv already made!
+# hru_list = list(hru_gdb.hru_id)
+hru_list = list(nhm_id_temp)
+
+
+# Move these checks up in the NB, when we make the nhm_id and seg dim pars.
+# # non-strict ascending (allows equal neighbors)
+# is_sorted_asc = hru_list == sorted(hru_list)
+
+# # strict ascending (every next value greater than previous)
+# is_strict_asc = all(hru_list[i] < hru_list[i + 1] for i in range(len(hru_list) - 1))
+
+# if (is_sorted_asc == True) and (is_strict_asc == True):
+#     print("nhrus are in ascending order, and there are no duplicates.")
+# if (is_sorted_asc == True) and (is_strict_asc == False):
+#     print("nhrus are in ascending order, but duplicates are present. Please revise.")
+# if is_sorted_asc == False:
+#     print("nhrus are not in ascending order. This will create errors. Please revise.")
 hru_idx_list = [x - 1 for x in hru_list]  # list/array of index labels
-segment_list = list(seg_gdb.segment_id)
+
+
+# segment_list = list(seg_gdb.segment_id)
+segment_list = list(nhm_seg_temp)
 seg_idx_list = [x - 1 for x in segment_list]
 
 # list(parent_pdb.keys())
@@ -1817,9 +1861,6 @@ for cname in cname_list:
     except ValueError as err:
         con.print(f"[red]{cname}[/]: {err} - skipping")
         child_pdb.remove(cname)
-
-# %%
-hru_gdb
 
 # %%
 # Special
@@ -1940,8 +1981,11 @@ child_pdb.get("tosegment").data = new_data
 od_df
 
 # %%
+child_pdb.parameters.keys()
+
+# %%
 # Build the stream network
-dag_ds = child_pdb.stream_network(tosegment="tosegment")  # , seg_id="segment_id")
+dag_ds = child_pdb.stream_network(tosegment="tosegment_nhm")  # , seg_id="segment_id")
 
 # %%
 dag_ds
@@ -1959,11 +2003,11 @@ P.set_size("0,0")  # 0,0 = no explicit max size; natural size used [web:132]
 P.set_page("")  # no page tiling [web:140]
 P.set_ratio("compress")  # optional: tighter packing if you did set a size [web:135]
 
-P.write_pdf("digraph.pdf")
+P.write_pdf(f"{child_pws_dir}/digraph.pdf")
 
 # %%
 child_pdb.write_parameter_file(
-    f"{child_model_dir}/myparam.param",
+    f"{child_pws_dir}/myparam.param",
     header=["GFv2 derived"],
 )
 # child_pdb.write_parameter_file(
@@ -1972,5 +2016,11 @@ child_pdb.write_parameter_file(
 # )
 
 # %%
+# For now, move a copy of the contro file into the model folder folder
+control_file_src = (
+    root_dir / "nhf_assist" / "data_dependencies" / "control.default.bandit"
+)
+control_file_dst = child_pws_dir
+shutil.copy2(control_file_src, control_file_dst)
 
 # %%

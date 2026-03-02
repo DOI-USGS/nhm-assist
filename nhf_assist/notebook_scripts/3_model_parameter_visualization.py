@@ -16,7 +16,7 @@
 import sys
 import pathlib as pl
 
-#sys.path.append("../")
+# sys.path.append("../")
 
 from ipywidgets import widgets
 from IPython.display import display
@@ -37,13 +37,14 @@ jupyter_black.load()
 
 import pathlib as pl
 import os
-root_folder = "nhm-assist"
+
+root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir))
 
-from nhm_helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from nhm_helpers.map_template_v2 import make_par_map
-from nhm_helpers.nhm_assist_utilities_v2 import make_plots_par_vals, load_subdomain_config
+from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
+from helpers.map_template_v2 import make_par_map
+from helpers.nhm_assist_utilities_v2 import make_plots_par_vals, load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 

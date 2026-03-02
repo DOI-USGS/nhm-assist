@@ -11,8 +11,8 @@ import plotly
 import plotly.graph_objects as go
 import plotly.subplots
 from rich import pretty
-from nhm_helpers.nhm_helpers_v2 import create_poi_group
-from nhm_helpers.nhm_output_visualization_v2 import (
+from helpers.nhm_helpers_v2 import create_poi_group
+from helpers.nhm_output_visualization_v2 import (
     create_mean_var_dataarrays, create_streamflow_obs_datasets,
     create_sum_seg_var_dataarrays, create_sum_var_annual_df,
     create_sum_var_dataarrays, create_sum_var_monthly_df, create_var_daily_df,

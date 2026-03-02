@@ -1,1 +1,0 @@
-Place DEM.tif files here that cover the NHM subdomain. In the future these may be pulled directly from the OSN pod (storage bucket).

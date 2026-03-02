@@ -32,9 +32,9 @@ jupyter_black.load()
 # Find and set the "nhm-assist" root directory
 root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
 sys.path.append(str(root_dir))
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
-from nhm_helpers.map_template import make_hf_map
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
+from nhf_assist.helpers.nhm_hydrofabric_v2 import make_hf_map_elements
+from nhf_assist.helpers.map_template_v2 import make_hf_map
+from nhf_assist.helpers.nhm_assist_utilities_v2 import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 # con.print(config)
@@ -64,7 +64,7 @@ from rasterio.io import MemoryFile
 from rasterio.warp import calculate_default_transform, reproject
 from rasterio.mask import mask
 import io
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
+from nhf_assist.helpers.nhm_hydrofabric_v2 import make_hf_map_elements
 
 # %% [markdown]
 # ## DEM(s) for the model subdomain
@@ -1031,12 +1031,12 @@ from folium.utilities import Element
 
 from rich import pretty
 from rich.console import Console
-from nhm_helpers.nhm_output_visualization import (
+from nhf_assist.helpers.nhm_output_visualization_v2 import (
     create_streamflow_obs_datasets,
     create_sum_seg_var_dataarrays,
     create_sum_var_annual_gdf,
 )
-from nhm_helpers.output_plots import calculate_monthly_kge_in_poi_df
+from nhf_assist.helpers.output_plots_v2 import calculate_monthly_kge_in_poi_df
 import subprocess
 import os
 import webbrowser
