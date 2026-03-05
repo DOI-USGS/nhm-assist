@@ -171,8 +171,6 @@ def fetch_nwis_gage_info(
 
     aoi_bb = hru_gdf.total_bounds.tolist()
 
-    states_name = list(gpd.clip(states_gdf, hru_gdf).loc[:]["NAME"].values)
-    
     """
     Use caution if start and end dates may be modified here. 
     If gages are present in the param file, recommend adding metadata in the gage_resource.csv
@@ -219,7 +217,6 @@ def fetch_nwis_gage_info(
         )
     else:
         domain_discharge, _ = waterdata.get_time_series_metadata(
-            #state_name=states_name,
             bbox=aoi_bb,
             parameter_code="00060",
             statistic_id="00003",
@@ -312,6 +309,8 @@ def fetch_nwis_gage_info(
         nwis_gage_info_aoi.set_index("poi_gage_id", inplace=True)
         nwis_gage_info_aoi = nwis_gage_info_aoi.sort_index()
         nwis_gage_info_aoi.reset_index(inplace=True)
+
+
 
     return nwis_gage_info_aoi
 

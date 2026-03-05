@@ -118,20 +118,21 @@ def read_data(filename):
     return data
 
 
-def find_missing_gage_info(root_dir, pws_dir, gages_list):
+def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
     """
     This is used to find metadata neede for gages in the list provided.
 
-    First, metadata is sought for in the resource gages file (if one exists).
+    First, metadata is sought for in the resource (suuplemental) gages file (if one exists).
     Second, location data specifically is sought for in the usgs_nldi_gages database,
     Third, metadata is sought for in USGS WaterData database.
 
     """
     npoigages_data_dir = root_dir / "data_dependencies/"
 
-    pws_dir.mkdir(parents=True, exist_ok=True)
+    # dest_dir.mkdir(parents=True, exist_ok=True)
 
-    resource_gages_file = pws_dir / "resource_gages_info.csv"
+    info_file_path = dest_dir / f"{info_file_name}.csv"
+    info_supplement_path = dest_dir / f"{info_file_name}_supplemental.csv"
 
     nan_list = [np.nan] * len(gages_list)  # Initialize empty list
     gages_df = pd.DataFrame(
@@ -146,8 +147,8 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
         }
     )  # Initialize empty datafame
 
-    # Check for resource file, if present, append information to gages_df
-    if resource_gages_file.exists():
+    # Check for resource (supplemental) file, if present, append information to gages_df
+    if info_supplement_path.exists():
         col_names_1 = [
             "poi_gage_id",
             "poi_agency",
@@ -159,15 +160,15 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
         ]
         col_types_1 = [np.str_, np.str_, np.str_, float, float, float, float]
         cols = dict(zip(col_names_1, col_types_1))
-        resource_gages_file_df = pd.read_csv(resource_gages_file, dtype=cols)
+        info_supplement_df = pd.read_csv(info_supplement_path, dtype=cols)
 
         gages_lacking_info_list = []
         gages_found_info_list = []
-        check_list = resource_gages_file_df["poi_gage_id"].to_list()
+        check_list = info_supplement_df["poi_gage_id"].to_list()
 
         if len(check_list) > 0:
             print(
-                f"The resource_gages_info.csv exists and has {len(check_list)} gages."
+                f"The {info_file_name}_supplemental.csv exists and has {len(check_list)} gages."
             )
             for idx, row in gages_df.iterrows():
                 columns = ["latitude", "longitude", "poi_name", "poi_agency"]
@@ -181,8 +182,8 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
                         if new_poi_id in check_list:
                             gages_found_info_list.append(row["poi_gage_id"])
                             item_found_list.append(item)
-                            new_item = resource_gages_file_df.loc[
-                                resource_gages_file_df.poi_gage_id == new_poi_id, item
+                            new_item = info_supplement_df.loc[
+                                info_supplement_df.poi_gage_id == new_poi_id, item
                             ].values[0]
                             gages_df.loc[idx, item] = new_item
                         else:
@@ -195,10 +196,10 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
             ]
 
             print(
-                f"{len(gages_found_info_list)} gages founded needed metadata in resource_gages_info.csv"
+                f"{len(gages_found_info_list)} gages found in {info_file_name}_supplemental.csv"
             )
         else:
-            print("The resource_gages_info.csv exists but is empty.")
+            print(f"The {info_file_name}_supplemental.csv exists but is empty.")
 
     else:
         pass
@@ -274,7 +275,7 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
     ]
 
     print(
-        f"Latitude and longitude for {len(gages_found_info_list)} gages found in NLDI database.csv",
+        f"{len(gages_found_info_list)} gages found in NLDI database.csv",
         # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
     )
 
@@ -294,7 +295,7 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
     for site_group in chunks:
         try:
             chunk_data, _ = waterdata.get_monitoring_locations(
-                monitoring_location_id=site_group,
+                monitoring_location_number=site_group,
                 site_type_code="ST",
                 properties=[
                     "monitoring_location_id",
@@ -325,9 +326,10 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
 
         waterdata_info = None
         waterdata_info = (
-            domain_locations.set_index("monitoring_location_number", drop=False)
-            .set_crs("EPSG:4326")
-            .to_crs(crs)
+            domain_locations.set_index(
+                "monitoring_location_number", drop=False
+            ).set_crs("EPSG:4326")
+            # .to_crs(crs)
         )
 
         field_map = {
@@ -344,7 +346,7 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
 
         waterdata_info = waterdata_info.loc[:, include_cols]
         waterdata_info.rename(columns=field_map, inplace=True)
-        waterdata_info.set_index("poi_id", inplace=True)
+        waterdata_info.set_index("poi_gage_id", inplace=True)
         waterdata_info = waterdata_info.sort_index()
         waterdata_info.reset_index(inplace=True)
 
@@ -353,11 +355,17 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
         check_list = waterdata_info["poi_gage_id"].to_list()
 
         for idx, row in gages_df.iterrows():
-            columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+            columns = [
+                "latitude",
+                "longitude",
+                "poi_name",
+                "poi_agency",
+                "drainage_area",
+                "drainage_area_contrib",
+            ]
             item_lacking_list = []
             item_found_list = []
             for item in columns:
-
                 if pd.isnull(row[item]):
                     item_lacking_list.append(item)
                     gages_lacking_info_list.append(row["poi_gage_id"])
@@ -388,18 +396,29 @@ def find_missing_gage_info(root_dir, pws_dir, gages_list):
     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
     gages_missing_info_df = gages_df.loc[gages_df[cols].isna().any(axis=1)]
     print(
-        f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the resource_gages_info.file.",
-        "User must complete needed information and rerun this notebook.",
+        f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the {info_file_name}_supplemental.csv",
+        f"User must complete needed information and rerun this notebook to include these gages {list(gages_missing_info_df['poi_gage_id'])}.",
     )
+    gages_df = gages_df[
+        ~gages_df["poi_gage_id"].isin(gages_missing_info_df["poi_gage_id"])
+    ]
 
-    if resource_gages_file.exists():
-        existing_resource_df = resource_gages_file_df
+    if info_supplement_path.exists():
+        existing_resource_df = info_supplement_df.copy()
         gages_missing_info_df = pd.concat(
             [existing_resource_df, gages_missing_info_df], ignore_index=True
         )
-        gages_missing_info_df.to_csv(resource_gages_file, index=False)
+        gages_missing_info_df.to_csv(info_supplement_path, index=False)
     else:
-        gages_missing_info_df.to_csv(resource_gages_file, index=False)
+        if not gages_missing_info_df.empty:
+            gages_missing_info_df.to_csv(info_supplement_path, index=False)
+        else:
+            print(
+                "All gages in the gage list provided have all required metadata.",
+                f"see gage meta data file at {dest_dir}/npoigages_info.csv",
+            )
+
+    gages_df.to_csv(dest_dir / f"{info_file_name}.csv", index=False)
 
     return gages_df
 
@@ -981,12 +1000,16 @@ else:
 # npoigages_params_df.drop_duplicates(subset=["segment_id"], inplace=True, keep="last")
 
 # %%
-
-# %%
 # Create npoigages_info_df and .csv file
 npoigages_info_df = find_missing_gage_info(
-    root_dir, child_pws_dir, list(npoigages_params_df.poi_gage_id)
+    root_dir, child_pws_dir, list(npoigages_params_df.poi_gage_id), "npoigages_info"
 )
+
+# %%
+# Add all gages in the domain to the info file to be used in all visualization notebooks.
+
+# %%
+
 # make the npoigages_info_df file in the child hf domain folser as well for backup
 npoigages_file = child_hf_dir / "npoigages_info.csv"
 npoigages_info_df.to_csv(npoigages_file, index=False)
@@ -1124,7 +1147,7 @@ print(
 # >1. Gage id number (poi_gage_id)
 
 # %% [markdown]
-# ##### Append first gage file
+# ##### Add Oregon Recharge Project "base-flow" (BF) gages file
 # Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's baseflow study
 
 # %%
@@ -1202,7 +1225,11 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
-# %%
+# %% [markdown]
+# ##### Add Oregon Recharge Project "current" Specific Conductance sites (SC_current)
+# Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's SC data collection sites
+
+# %% jupyter={"source_hidden": true}
 ### List of current gages where SC data was collected (Oregon Recharge Project)
 sc_current_dir = f"{parent_dir}/npoigages_data/OR_SC_sites"
 sc_current_gdf = gpd.read_file(f"{sc_current_dir}/OR_current_SC.shp").to_crs(
@@ -1279,10 +1306,11 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
-# %%
-len(npoigages_info_df)
+# %% [markdown]
+# ##### Add Oregon Recharge Project "possible" Specific Conductance sites (SC_current)
+# Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's SC data collection sites
 
-# %%
+# %% jupyter={"source_hidden": true}
 ### List of possible gages where SC data was collected (Oregon Recharge Project)
 sc_possible_dir = f"{parent_dir}/npoigages_data/OR_SC_sites"
 sc_possible_gdf = gpd.read_file(f"{sc_possible_dir}/OR_possible_SC.shp").to_crs(
@@ -1362,11 +1390,15 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
-# %%
+# %% [markdown]
+# ##### Add Oregon Recharge Project streamflow gages where Flow Management Index was determined (FMI_npoigages)
+# Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's FMI gages
+
+# %% jupyter={"source_hidden": true}
 # If just given a list of Gage IDs
-FMI_GagedWatersheds_dir = f"{parent_dir}/npoigages_data/FMI_gages"
+FMI_GagedWatersheds_dir = pl.Path(f"{parent_dir}/npoigages_data/FMI_gages")
 FMI_GagedWatersheds_gdf = gpd.read_file(
-    f"{FMI_GagedWatersheds_dir}/GagedWatersheds.shp"
+    FMI_GagedWatersheds_dir / "GagedWatersheds.shp"
 ).to_crs(seg_child_gdf.crs)
 col = "Name"
 num = pd.to_numeric(FMI_GagedWatersheds_gdf[col], errors="coerce")
@@ -1404,7 +1436,10 @@ if len(new_gages_list) != 0:
     #
     # new_gages_df = FMI_gages_df[FMI_gages_df["poi_gage_id"].isin(new_gages_list)]
 
-    new_gages_df = find_missing_gage_info(root_dir, child_pws_dir, new_gages_list)
+    # root_dir, dest_dir, gages_list, info_file_name
+    new_gages_df = find_missing_gage_info(
+        root_dir, FMI_GagedWatersheds_dir, new_gages_list, "fmi_npoigages_info"
+    )
     new_gages_df["poi_type"] = 1
 
     ###### Make new gages geodataframe, create needed npoigages params and concatenate to existing
@@ -1456,8 +1491,8 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
-# %%
-new_gages_gdf
+# %% jupyter={"outputs_hidden": true}
+npoigages_info_df
 
 # %% [markdown]
 # #### Write npoigages parameter files (.csv)
@@ -1527,6 +1562,13 @@ with open(
 # make the npoigages_info_df file here to match
 npoigages_file = parent_dir / "npoigages_data/npoigages_info2.csv"
 npoigages_info_df.to_csv(npoigages_file, index=False)
+
+#
+child_npoigages_list = list(npoigages_params_df["poi_gage_id"])
+child_npoigages_info_df = npoigages_info_df[
+    npoigages_info_df["poi_gage_id"].isin(child_npoigages_list)
+]
+child_npoigages_info_df.to_csv(child_pws_dir / "resource_gages.csv", index=False)
 
 # %%
 # gages_gf = list(set(poi_gdf.hl_link))
@@ -1710,7 +1752,7 @@ child_params_dir = child_hf_dir / "param_source_files"
 child_params_dir.mkdir(parents=True, exist_ok=True)
 
 # For now, move a copy of snarea_curve.csv into the param_source_files folder
-sc_file_src = root_dir / "nhf_assist" / "data_dependencies" / "snarea_curve.csv"
+sc_file_src = root_dir / "data_dependencies" / "snarea_curve.csv"
 sc_file_dst = child_params_dir
 shutil.copy2(sc_file_src, sc_file_dst)
 
@@ -2017,9 +2059,7 @@ child_pdb.write_parameter_file(
 
 # %%
 # For now, move a copy of the contro file into the model folder folder
-control_file_src = (
-    root_dir / "nhf_assist" / "data_dependencies" / "control.default.bandit"
-)
+control_file_src = root_dir / "data_dependencies" / "control.default.bandit"
 control_file_dst = child_pws_dir
 shutil.copy2(control_file_src, control_file_dst)
 

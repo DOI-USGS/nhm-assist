@@ -33,7 +33,7 @@ crs = 4326
 
 import pathlib as pl
 import os
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 
 from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
@@ -498,7 +498,7 @@ def create_poi_marker_cluster(
             ),
             radius=3,
             weight=2,
-            color="black",
+            color=None,
             fill=True,
             fill_color="Black",
             fill_opacity=1.0,
@@ -584,7 +584,7 @@ def create_non_poi_marker_cluster(
                 ),
                 radius=3,
                 weight=2,
-                color="gray",
+                color=None,
                 fill=True,
                 fill_color="Gray",
                 fill_opacity=1.0,
@@ -1650,6 +1650,18 @@ def make_hf_map(
         create_non_poi_obs_marker_cluster(poi_df, nwis_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
     )
 
+    fmi_poi_marker_cluster, fmi_poi_marker_cluster_label = create_FMI_poi_markers(
+        poi_df,
+    )
+
+    ref_poi_marker_cluster, ref_poi_marker_cluster_label = create_ref_gages_markers(
+    root_dir / "domain_data" / subdomain,
+    )
+
+    non_ref_poi_marker_cluster, non_ref_poi_marker_cluster_label = create_non_ref_gages_markers(
+    root_dir / "domain_data" / subdomain,
+    )
+
     m2 = folium.Map()
     m2 = folium.Map(
         location=[pfile_lat, pfile_lon],
@@ -1685,12 +1697,21 @@ def make_hf_map(
     hru_map.add_to(m2)
     seg_map_show.add_to(m2)
 
+    ref_poi_marker_cluster.add_to(m2)
+    ref_poi_marker_cluster_label.add_to(m2)
+
+    non_ref_poi_marker_cluster.add_to(m2)
+    non_ref_poi_marker_cluster_label.add_to(m2)
+
     poi_marker_cluster.add_to(m2)
     poi_marker_cluster_label.add_to(m2)
 
     non_poi_marker_cluster.add_to(m2)
     non_poi_marker_cluster_label.add_to(m2)
 
+    fmi_poi_marker_cluster.add_to(m2)
+    fmi_poi_marker_cluster_label.add_to(m2)
+    
     plugins.Fullscreen(position="topleft").add_to(m2)
     folium.LayerControl(collapsed=True, position="bottomright").add_to(m2)
 
@@ -2345,8 +2366,8 @@ def create_poi_obs_marker_cluster(
             #     max_width=280,
             #     max_height=2000,
             # ),
-            radius=3,
-            weight=2,
+            radius=4,
+            weight=1,
             color="black",
             fill=True,
             fill_color="Black",
@@ -2469,8 +2490,8 @@ def create_non_poi_obs_marker_cluster(
                 #     max_height=2000,
                 # ),
                 tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
-                radius=3,
-                weight=2,
+                radius=4,
+                weight=1,
                 color="gray",
                 fill=True,
                 fill_color="Gray",
@@ -2634,3 +2655,479 @@ def make_gf_map(
     make_webbrowser_map(map_file)
 
     return map_file
+
+def create_FMI_poi_markers(
+    poi_df,
+):
+
+    """
+    Creates a folium.map marker cluster object for pois(gages) and for gage id lables. Two groups can be displayed and hidden in the map from the interactive legend. These gages are in the parameter file.
+    
+    Parameters
+    ----------
+    poi_df : pandas DataFrame()
+        Pandas DataFrame() containing gages from the parameter file.
+            
+    Returns
+    -------
+    marker_cluster : a folium MarkerCluster() object
+        Gages in the parameter file.
+    marker_cluster_label_poi : a folium MarkerCluster() object
+        Gage id as labels.
+    """
+    
+    marker_cluster = folium.FeatureGroup(
+        name="FMI gages",
+        overlay=True,
+        control=True,
+        icon_create_function=None,
+        z_index_offset=5000,
+    )
+
+    marker_cluster_label_poi = folium.FeatureGroup(
+        name="FMI labels",
+        overlay=True,
+        control=True,
+        show=False,  # False will not draw the child upon opening the map, but have it to draw in the Layer control.
+        icon_create_function=None,
+        z_index_offset=4004,
+    )
+
+    #### READ FMI table (.csv) for selected gages
+    fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+    
+    col_names = [
+        "gageid",
+        "name",
+        "comid",
+        "dams_n",
+        "ag_pct",
+        "nid_storage_annual_pct",
+        "sw_withdrawal_summer_pct",
+        "sw_withdrawal_annual_pct",
+        "storage_index",
+        "use_index",
+        "flow_management_index",
+        "storage_index",
+    ]
+    col_types = [
+        np.str_,
+        np.str_,
+        np.str_,
+        np.int_,
+        float,
+        float,
+        float,
+        float,
+        np.int_,
+        np.int_,
+        np.int_,
+        np.int_,
+    ]
+    cols = dict(
+        zip(col_names, col_types)
+    )  # Creates a dictionary of column header and datatype called below.
+    
+    fmi_df = pd.read_csv(
+        fmi_df_file,
+        dtype=cols,
+        usecols=[
+            "gageid",
+            "flow_management_index",
+        ],
+    )
+    fmi_gages_child = fmi_df.merge(
+        poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
+    )
+    fmi_gages_child.drop(columns={"gageid"}, inplace=True)
+    
+    print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
+    
+    
+    for idx, row in fmi_gages_child.iterrows():
+        poi_gage_id = row["poi_gage_id"]
+
+        if row["flow_management_index"] == 0:
+
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
+                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                    max_width=150,
+                    max_height=70,
+                ),
+                radius=4,
+                weight=2,
+                color=None,
+                fill=True,
+                fill_color="Green",
+                fill_opacity=1.0,
+                draggable=True,
+                lazy=True,
+                z_index_offset=4006,
+            ).add_to(marker_cluster)
+
+            # marker_cluster.add_child(marker)
+            text = f'{row["poi_gage_id"]}'
+            label_lat = row["latitude"]  # -0.005
+            label_lon = row["longitude"]
+
+            marker_label = folium.map.Marker(
+                [label_lat, label_lon],
+                z_index_offset=4007,
+                icon=DivIcon(
+                    icon_size=(150, 36),
+                    icon_anchor=(0, 0),
+                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                    % text,
+                ),
+            ).add_to(marker_cluster_label_poi)
+        if (row["flow_management_index"] == 1):
+
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
+                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                    max_width=150,
+                    max_height=70,
+                ),
+                radius=4,
+                weight=2,
+                color=None,
+                fill=True,
+                fill_color="Blue",
+                fill_opacity=1.0,
+                draggable=True,
+                lazy=True,
+                z_index_offset=4006,
+            ).add_to(marker_cluster)
+
+            # marker_cluster.add_child(marker)
+            text = f'{row["poi_gage_id"]}'
+            label_lat = row["latitude"]  # -0.005
+            label_lon = row["longitude"]
+
+            marker_label = folium.map.Marker(
+                [label_lat, label_lon],
+                z_index_offset=4007,
+                icon=DivIcon(
+                    icon_size=(150, 36),
+                    icon_anchor=(0, 0),
+                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                    % text,
+                ),
+            ).add_to(marker_cluster_label_poi)
+            
+        if row["flow_management_index"] == 3:
+
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
+                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                    max_width=150,
+                    max_height=70,
+                ),
+                radius=4,
+                weight=2,
+                color=None,
+                fill=True,
+                fill_color="Red",
+                fill_opacity=1.0,
+                draggable=True,
+                lazy=True,
+                z_index_offset=4006,
+            ).add_to(marker_cluster)
+
+            # marker_cluster.add_child(marker)
+            text = f'{row["poi_gage_id"]}'
+            label_lat = row["latitude"]  # -0.005
+            label_lon = row["longitude"]
+
+            marker_label = folium.map.Marker(
+                [label_lat, label_lon],
+                z_index_offset=4007,
+                icon=DivIcon(
+                    icon_size=(150, 36),
+                    icon_anchor=(0, 0),
+                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                    % text,
+                ),
+            ).add_to(marker_cluster_label_poi)
+        if row["flow_management_index"] == 2:
+
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
+                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                    max_width=150,
+                    max_height=70,
+                ),
+                radius=4,
+                weight=2,
+                color=None,
+                fill=True,
+                fill_color="Orange",
+                fill_opacity=1.0,
+                draggable=True,
+                lazy=True,
+                z_index_offset=4006,
+            ).add_to(marker_cluster)
+    
+            # marker_cluster.add_child(marker)
+            text = f'{row["poi_gage_id"]}'
+            label_lat = row["latitude"]  # -0.005
+            label_lon = row["longitude"]
+    
+            marker_label = folium.map.Marker(
+                [label_lat, label_lon],
+                z_index_offset=4007,
+                icon=DivIcon(
+                    icon_size=(150, 36),
+                    icon_anchor=(0, 0),
+                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                    % text,
+                ),
+            ).add_to(marker_cluster_label_poi)
+        
+        if np.isnan(row["flow_management_index"]):
+
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
+                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br> Gage has no FMI value.',
+                    max_width=150,
+                    max_height=70,
+                ),
+                radius=2,
+                weight=2,
+                color="Black",
+                fill=True,
+                fill_color="Black",
+                fill_opacity=1.0,
+                draggable=True,
+                lazy=True,
+                z_index_offset=4006,
+            ).add_to(marker_cluster)
+
+            # marker_cluster.add_child(marker)
+            text = f'{row["poi_gage_id"]}'
+            label_lat = row["latitude"]  # -0.005
+            label_lon = row["longitude"]
+
+            marker_label = folium.map.Marker(
+                [label_lat, label_lon],
+                z_index_offset=4007,
+                icon=DivIcon(
+                    icon_size=(150, 36),
+                    icon_anchor=(0, 0),
+                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                    % text,
+                ),
+            ).add_to(marker_cluster_label_poi)
+
+    return marker_cluster, marker_cluster_label_poi
+
+def create_ref_gages_markers(
+    model_dir,
+    ):
+
+    """
+    
+    """
+    
+    marker_cluster = folium.FeatureGroup(
+        name="reference gages",
+        overlay=True,
+        control=True,
+        icon_create_function=None,
+        z_index_offset=5000,
+    )
+
+    marker_cluster_label_poi = folium.FeatureGroup(
+        name="reference labels",
+        overlay=True,
+        control=True,
+        show=False,  # False will not draw the child upon opening the map, but have it to draw in the Layer control.
+        icon_create_function=None,
+        z_index_offset=4004,
+    )
+
+    #### READ FMI table (.csv) for selected gages
+    ref_df_file = model_dir / "ref_npoigages_info.csv"
+    
+    col_names = [
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+        "drainage_area",
+        "drainage_area_contrib",
+    ]
+    col_types = [
+        np.str_,
+        np.str_,
+        np.str_,
+        float,
+        float,
+        float,
+        float,
+    ]
+    cols = dict(
+        zip(col_names, col_types)
+    )  # Creates a dictionary of column header and datatype called below.
+    
+    ref_df = pd.read_csv(
+        ref_df_file,
+        dtype=cols,
+        # usecols=[
+        #     "gageid",
+        #     "flow_management_index",
+        # ],
+    )
+    
+    
+    for idx, row in ref_df.iterrows():
+        poi_gage_id = row["poi_gage_id"]
+
+        marker = folium.CircleMarker(
+            location=[row["latitude"], row["longitude"]],
+            name=row["poi_gage_id"],
+            popup=folium.Popup(
+                f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                max_width=150,
+                max_height=70,
+            ),
+            radius=7,
+            weight=.5,
+            color="Black",
+            fill=True,
+            fill_color="Yellow",
+            fill_opacity=1.0,
+            draggable=True,
+            lazy=True,
+            z_index_offset=4006,
+        ).add_to(marker_cluster)
+
+        # marker_cluster.add_child(marker)
+        text = f'{row["poi_gage_id"]}'
+        label_lat = row["latitude"]  # -0.005
+        label_lon = row["longitude"]
+
+        marker_label = folium.map.Marker(
+            [label_lat, label_lon],
+            z_index_offset=4007,
+            icon=DivIcon(
+                icon_size=(150, 36),
+                icon_anchor=(0, 0),
+                html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                % text,
+            ),
+        ).add_to(marker_cluster_label_poi)
+
+    return marker_cluster, marker_cluster_label_poi
+
+def create_non_ref_gages_markers(
+    model_dir,
+    ):
+
+    """
+    
+    """
+    
+    marker_cluster = folium.FeatureGroup(
+        name="non-reference gages",
+        overlay=True,
+        control=True,
+        icon_create_function=None,
+        z_index_offset=5000,
+    )
+
+    marker_cluster_label_poi = folium.FeatureGroup(
+        name="non-reference labels",
+        overlay=True,
+        control=True,
+        show=False,  # False will not draw the child upon opening the map, but have it to draw in the Layer control.
+        icon_create_function=None,
+        z_index_offset=4004,
+    )
+
+    #### READ FMI table (.csv) for selected gages
+    non_ref_df_file = model_dir / "non_ref_npoigages_info.csv"
+    
+    col_names = [
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+        "drainage_area",
+        "drainage_area_contrib",
+    ]
+    col_types = [
+        np.str_,
+        np.str_,
+        np.str_,
+        float,
+        float,
+        float,
+        float,
+    ]
+    cols = dict(
+        zip(col_names, col_types)
+    )  # Creates a dictionary of column header and datatype called below.
+    
+    non_ref_df = pd.read_csv(
+        non_ref_df_file,
+        dtype=cols,
+        # usecols=[
+        #     "gageid",
+        #     "flow_management_index",
+        # ],
+    )
+    
+    
+    for idx, row in non_ref_df.iterrows():
+        poi_gage_id = row["poi_gage_id"]
+
+        marker = folium.CircleMarker(
+            location=[row["latitude"], row["longitude"]],
+            name=row["poi_gage_id"],
+            popup=folium.Popup(
+                f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
+                max_width=150,
+                max_height=70,
+            ),
+            radius=7,
+            weight=.5,
+            color="black",
+            fill=True,
+            fill_color="White",
+            fill_opacity=1.0,
+            draggable=True,
+            lazy=True,
+            z_index_offset=4006,
+        ).add_to(marker_cluster)
+
+        # marker_cluster.add_child(marker)
+        text = f'{row["poi_gage_id"]}'
+        label_lat = row["latitude"]  # -0.005
+        label_lon = row["longitude"]
+
+        marker_label = folium.map.Marker(
+            [label_lat, label_lon],
+            z_index_offset=4007,
+            icon=DivIcon(
+                icon_size=(150, 36),
+                icon_anchor=(0, 0),
+                html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                % text,
+            ),
+        ).add_to(marker_cluster_label_poi)
+
+    return marker_cluster, marker_cluster_label_poi
