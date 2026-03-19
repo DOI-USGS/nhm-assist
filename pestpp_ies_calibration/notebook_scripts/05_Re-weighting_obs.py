@@ -63,6 +63,7 @@ num_reals=pst.pestpp_options['ies_num_reals']
 
 # %%
 # Assign relative contributions to the objective function
+# Check with Mike: Is PEST remapping and combining obs based on the key in this dict?
 phi_new_comps = {'actet_mean_mon':0.08,
                  'actet_mon':  .04,
                  'recharge_ann': 0.08,
@@ -119,6 +120,8 @@ assert (1- np.sum(phi_fac[1]))<0.001 #make sure they sum to 1
 phi_fac.to_csv(os.path.join(pestpp_model_dir,'phi_factors.csv'),index=None,header=None)
 
 # %%
+
+# %%
 phi_fac
 
 # %%
@@ -173,5 +176,46 @@ pst.write(os.path.join(pestpp_model_dir, 'prior_mc_reweight_gsa.pst'), version=2
 # with open(os.path.join(pestpp_model_dir, 'prior_mc_reweight_gsa.pst'), "w") as ofp:
 #     [ofp.write(line.strip().replace("prior_mc_reweight_gsa", "prior_mc_reweight")+"\n") for line in ingsa]
 #     print(f'rewrote({os.path.join(pestpp_model_dir, "prior_mc_reweight_gsa.pst")})')
+
+# %%
+obs = pst.observation_data
+
+# %%
+for cn, _ in obs.groupby("obgnme"):
+
+    if cn.startswith("streamflow_"):
+        """
+        Assign weight value for observatons in the obsevation group name "streamflow_no_data".
+        """
+        if cn == "streamflow_nodata":
+            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
+            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
+            print(
+                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
+            )
+
+        else:
+            
+            mask_cn_and_notzero = (obs.obgnme == cn) & (obs["obsval"] != 0)
+            
+            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
+            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
+            print(
+                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
+            )
+
+    else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
+        
+        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
+        
+        min_val = obs.loc[mask_cn, "weight"].min()
+        max_val = obs.loc[mask_cn, "weight"].max()
+        print(
+            f"Observation weights {cn} range {min_val} to {max_val}for n={len(obs.loc[mask_cn])}"
+        )
+
+print(
+    "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
+)
 
 # %%

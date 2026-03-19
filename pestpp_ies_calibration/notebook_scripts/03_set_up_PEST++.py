@@ -45,7 +45,9 @@ from nhm_helpers.nhm_assist_utilities import load_subdomain_config
 from nhm_helpers import efc
 from pestpp_ies_calibration.helpers.pest_utils import (
     pars_to_tpl_entries,
+    pars_to_tpl_entries_2,
     write_to_json_tpl,
+    check_par_bounds,
 )
 
 config = load_subdomain_config(root_dir)
@@ -63,7 +65,7 @@ else:
 # ## Create `pestpp_ies` folder in the model directory
 # All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
 
-# %%
+# %% jupyter={"source_hidden": true}
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
@@ -108,504 +110,11 @@ for file in model_file_list:
     shutil.copy2(source, destination)
 
 # %% [markdown]
-# ## Read NHM subbasin model parameter file `.param`
-# The following cell reads the parameter file, `.param`, and convert to a Json-style file, `parameters.json` and reads `parameters.json`. Values in this parameter file are used to set "starting values" for the pestpp-ies calibration.
-
-# %%
-param_file = config["model_dir"] / "myparam.param"
-parameters_json_file = pestpp_dir / "parameters.json"
-
-pardat = pws.parameters.PrmsParameters.load(param_file)
-pardat.parameters_to_json(parameters_json_file)
-pardat = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
-
+# <!-- ## Create PEST instruction file `.ins`
+# Map observation name from allobs.dat (created in notebook 01_Create_allobs_dat) to the instruction file `modelobs.dat.ins` -->
 
 # %% [markdown]
-# ### List parameters in the parameter file `.param`
-
-# %%
-pars = pardat.parameters
-dims = pardat.dimensions
-con.print(pars.keys())
-con.print(dims)
-
-# # Other
-# pars["nhm_id"] #View values of one parameter
-# [i for i in pars.keys() if "tmax" in i]# View list of parameters with "tmax" in parameter key.
-# hrus = list(pars["nhm_id"])  # Make a list of hru id's from "pars"
-# segs = list(pars["nhm_seg"])  # Make a list of segment id's from "pars"
-
-# %% [markdown]
-# ### List parameters needed to run NHM subbasin model using pyWatershed
-
-# %%
-nhm_processes = [
-    pws.PRMSSolarGeometry,
-    pws.PRMSAtmosphere,
-    pws.PRMSCanopy,
-    pws.PRMSSnow,
-    pws.PRMSRunoff,
-    pws.PRMSSoilzone,
-    pws.PRMSGroundwater,
-    pws.PRMSChannel,
-]
-
-pw_params = []
-for proc in nhm_processes:
-    pw_params += proc.get_parameters()
-
-# %% [markdown]
-# ### Parameter file check
-
-# %%
-missing_params = set(list(pw_params)) - set(list(pw_params))
-extra_params = set(list(pw_params)) - set(list(pw_params))
-
-if missing_params:
-    con.print(
-        f"The following parameters are missing and needed in the parameter file to run pywatershed: {missing_params}"
-    )
-else:
-    con.print("Parameter file contains all the needed parameters to run pywatershed.")
-
-if extra_params:
-    con.print(
-        f"The following parameters are NOT needed in the parameter file to run pywatershed: {extra_params}"
-    )
-
-# %% [markdown]
-# ## Create a PEST template file version of json-style of myparam_starting_vals.param, "pars"
-
-# %% [markdown]
-# ### Create `par_starting_vals` empty dataframe with pestpp column names: parname (pestpp param name) and parval1 (pestpp starting value)
-
-# %%
-par_starting_vals = pd.DataFrame(columns=["parname", "parval1", "parubnd", "parlbnd"])
-# par_starting_vals
-
-# %% [markdown]
-# ### Using `pars_to_tpl_entries()`, write `.param` values to a new dataframe `par_starting_vals`
-
-# %% jupyter={"source_hidden": true}
-# notes
-# These "were" calibrated back in the day:
-#'dprst_depth_avg',  (use prms default range)
-#'dprst_flow_coef',
-#'dprst_seep_rate_open',
-#'op_flow_thres',
-#'sro_to_dprst_imperv',
-#'sro_to_dprst_perv',
-#'va_open_exp'
-#
-
-# Ones we are adding:
-#'dprst_frac', For WI we decided to set at 0.1 and let vary from 0.8 to 1.2
-
-#'dprst_et_coef', range 0.5 to 1.5, default of 1.0
-
-#'dprst_frac_open', 'dprst_seep_rate_clos',
-
-# %%
-pars = pardat.parameters
-hrus = pars["nhm_id"]
-segs = pars["nhm_seg"]
-
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "adjmix_rain",
-    hrus,  # could be defined in function and not passed
-    segs,  # could be defined in function and not passed
-    par_starting_vals,
-    hru_based=True,  # These three argument could be checked and not passed using pw dict from the function
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "carea_max",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "cecn_coef",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "emis_noppt",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "fastcoef_lin",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "freeh2o_cap",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "gwflow_coef",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "jh_coef",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "mann_n",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=False,
-    seg_based=True,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "potet_sublim",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "rad_trncf",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "radmax",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "rain_cbh_adj",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "slowcoef_sq",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "smidx_coef",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "smidx_exp",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "snarea_thresh",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "snowinfil_max",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "snow_cbh_adj",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "soil2gw_max",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "soil_moist_max",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "soil_rechr_max_frac",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "ssr2gw_exp",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "ssr2gw_rate",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=False,
-)
-# par_starting_vals = pars_to_tpl_entries(
-#     pars,
-#     "tmax_allrain_offset",
-#     hrus,
-#     segs,
-#     par_starting_vals,
-#     hru_based=True,
-#     seg_based=False,
-#     month_based=True,
-# )
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "tmax_allsnow",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "tmax_cbh_adj",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-par_starting_vals = pars_to_tpl_entries(
-    pars,
-    "tmin_cbh_adj",
-    hrus,
-    segs,
-    par_starting_vals,
-    hru_based=True,
-    seg_based=False,
-    month_based=True,
-)
-
-par_starting_vals.set_index("parname", inplace=True, drop=False)
-par_starting_vals
-
-# xx = par_starting_vals.loc[par_starting_vals.parname.str.startswith("carea_max"), :]
-# xx
-
-
-# %% [markdown]
-# ### Setting parameter bounds in `par_starting_vals`
-# There were three ways to set parameter bounds in NHM calibration:
-# 1) "not used" in the by_HRU calibration, all HRU values for this type were grouped and moved as a group in the full calibration range for the parameter.
-# 2) "range" were calibrated by HRU so will move independently within the calibrations range in table 3.
-# 3) "percent" were calibrated by HRU but only allowed a range of +/- 20% of the starting value.
-
-# %%
-bnds_path = pestpp_model_dir / "ancillary/par_cal_bounds_use.csv"
-bnds = pd.read_csv(bnds_path)  # Creates a data frame of the bounds for par catagories
-bnds.set_index("parameter_name", inplace=True, drop=False)
-
-# %% [markdown]
-# #### Check bounds
-
-# %%
-bnds
-# bnds.parameter_name.unique()
-
-# bnds check
-bnds_params = bnds.parameter_name.unique()
-par_starting_vals_params_groups = (
-    par_starting_vals["parname"].str.split(":").str[0].unique()
-)
-
-missing_bounds = set(list(par_starting_vals_params_groups)) - set(list(bnds_params))
-extra_bounds = set(list(bnds_params)) - set(list(par_starting_vals_params_groups))
-
-if missing_params:
-    con.print(
-        f"The following parameters need bounds added to {bnds_path}: {missing_params}"
-    )
-else:
-    con.print("All parmaeters in `par_starting_vals` have bounds.")
-
-if extra_params:
-    con.print(
-        f"The following parameters have bounds listed in{bnds_path}, but are not present in `par_starting_vals`:{extra_params}"
-    )
-
-# %% [markdown]
-# #### Create the lists of parameters for the calibration methods used
-
-# %%
-percent_list = bnds.loc[bnds.HRU_cal_method == "Percent", "parameter_name"].reset_index(
-    drop=True
-)
-range_list = bnds.loc[
-    bnds.HRU_cal_method == "Range", "parameter_name"
-]  # .to_list() Note, all values are uniform starting values populated from the table 'par_vale_use.csv'
-not_used_list = bnds.loc[
-    bnds.HRU_cal_method == "Not used", "parameter_name"
-]  # .to_list()
-print(not_used_list)
-
-# %% [markdown]
-# #### set bounds based on percentages or ranges
-
-# %%
-for cp in percent_list:
-    cpars = par_starting_vals.loc[par_starting_vals.parname.str.startswith(cp)][
-        "parname"
-    ]
-    par_starting_vals.loc[cpars, "parubnd"] = (
-        par_starting_vals.loc[cpars]["parval1"] * 1.2
-    )
-    par_starting_vals.loc[cpars, "parlbnd"] = (
-        par_starting_vals.loc[cpars]["parval1"] * 0.8
-    )
-
-# %%
-for cp in range_list:
-    cpars = par_starting_vals.loc[par_starting_vals.parname.str.startswith(cp)][
-        "parname"
-    ]
-    par_starting_vals.loc[cpars, "parubnd"] = bnds.loc[cp]["par_upper_bound"]
-    par_starting_vals.loc[cpars, "parlbnd"] = bnds.loc[cp]["par_lower_bound"]
-
-
-# %% [markdown]
-# ### Write pestpp-ies template file `parameters.json.tpl`
-
-# %%
-write_to_json_tpl(dims, pars, pestpp_model_dir / "parameters.json.tpl")
-par_starting_vals.to_csv(
-    pestpp_model_dir / "starting_par_vals.dat", index=None, sep=" "
-)
-par_starting_vals
-
-# %% [markdown]
-# ## Create PEST instruction file `.ins`
-# Map observation name from allobs.dat (created in notebook 01_Create_allobs_dat) to the instruction file `modelobs.dat.ins`
-
-# %%
-obsvals = pd.read_csv(pestpp_model_dir / "allobs.dat", delim_whitespace=True)
-obsvals.set_index("obsname", inplace=True, drop=False)
-# obsvals.sample(5)
-# print(obsvals)
-print(f'The {len(obsvals)} values for "obsval" are the true observation values.')
-
-# %%
-with open(os.path.join(pestpp_model_dir, "modelobs.dat.ins"), "w") as ofp:
-    ofp.write("pif ~\n")
-    ofp.write("~obsval~\n")
-    [ofp.write(f"l1 w !{i}!\n") for i in obsvals.obsname]
-
-# %% [markdown]
-# ## Create PEST control file object with `pyemu`
+# # Create PEST control file object with `pyemu`
 
 # %%
 pst = pyemu.Pst.from_io_files(
@@ -620,144 +129,90 @@ pst = pyemu.Pst.from_io_files(
     pst_path=".",
 )
 
-# %% [markdown]
-# ## Direct editing of the PEST parameter file
-
-# %% [markdown]
-# ## Starting parameter values
-# ### Starting values were set from the initial parameter file used, in our case it was the "pre-calibration" values given to us by Parker. SO! No changes to those values, but we will need to customize the upper and lower bounds!
-
 # %%
-pars = pst.parameter_data
-pars
-
-# %%
-par_starting_vals
-
-# %%
-# pars.loc['adjmix_rain:hru_5621:mon_1','parval1'] = 987236
-# pst.parameter_data
-
 
 # %% [markdown]
-# ### Copy parval1, upper bound and lower bound from "par_starting_vals" to pars.parval1 
-
-# %%
-# Alternative to below: Test; both pars and par_starting_vals must have the same index "parnme".
-
-pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals[
-    ["parval1", "parubnd", "parlbnd"]
-].values
-
-# # The old way
-# for idx, row in pars.iterrows():
-#     pars.loc[pars.parnme, "parval1"] = par_starting_vals.loc[pars.parnme, "parval1"]
-#     pars.loc[pars.parnme, "parubnd"] = par_starting_vals.loc[pars.parnme, "parubnd"]
-#     pars.loc[pars.parnme, "parlbnd"] = par_starting_vals.loc[pars.parnme, "parlbnd"]
-
-# %%
-pars.sample(50)
-
-# %%
-len(pars)
+# # Direct editing PEST++ files using pyemu
 
 # %% [markdown]
-# ### Copy upper and lower bounds from par_cal_bounds_use.csv to par.parubnd and par.parlbnd
-# ### AND...overwite parval1 with new strating values determined from default values listed in PRMS table 5.2.1 (published), https://water.usgs.gov/water-resources/software/PRMS/--Chack with jacob and make sure these jive with what they used in the cal script. NO we are not doing this anymore!
+# ### Set obsval value and ranges
+# In PEST++ `pst.observation_data`, the values for obsval are inherited from `modelobs.dat` and are not the "observation" values from allobs.dat, so the values in `pst.observation_data` need to be overwritten with the observation values.
+
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# #### Read in the observation file, `allobs.dat`
 
 # %%
-bnds
-
-# %%
-prms_parnme_list = bnds[
-    "parameter_name"
-]  # Make a list of the nhm par names for loops below
-# print(prms_parnme_list)
-
-# %%
-# We recan delete this because we replaced this assignment above
-# for idx, row in pars.iterrows():
-#    for i in prms_parnme_list:
-#        pst_parnme = str(row.parnme)
-#        prms_parnme = prms_parnme_list[i]
-#        x = pst_parnme.startswith(prms_parnme)# Just a yes not response to if the pst parname starts with the root in "".
-#        if x :
-#            pars.loc[pst_parnme,'parubnd'] = bnds.loc[prms_parnme,'par_upper_bound']
-#            pars.loc[pst_parnme,'parlbnd'] = bnds.loc[prms_parnme,'par_lower_bound']
-#            #pars.loc[pst_parnme,'parval1'] = bnds.loc[prms_parnme,'par_start_val'] remove
+obsvals = pd.read_csv(pestpp_model_dir / "allobs.dat", delim_whitespace=True)
+obsvals.set_index("obsname", inplace=True, drop=False)
+# obsvals.sample(5)
+# print(obsvals)
+print(f'The {len(obsvals)} values for "obsval" are the true observation values.')
 
 # %% [markdown]
-# ### we can't log transform negative parameter values
-
-# %%
-pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
-
-# %%
-### obs.loc[obsvals.obsname, 'obsval'] = obsvals.obsval.values
-
-# %% [markdown]
-# #### Set obsval in the "pst.observation_data" frame back to the true observation value
+# Create an observation_data dataframe from the PEST++ control object
 
 # %%
 obs = (
     pst.observation_data
 )  # This pulls the "observation data" from the pst dataframe and sets it to the "obs" object (dataframe)
 
-# %%
-obs.loc[obs.obgnme.str.contains("obgnme"), :]
-
-# %%
-obs.loc[
-    obs.obsnme == "actet_mon:2000_1:5621", :
-]  # This is the value in the modelobs.dat file?
-
-# %%
-obsvals.loc[obsvals.obsname == "actet_mon:2000_1:5621", :]
-
-# %%
-# obs = obs.loc[obsvals.obsname,:] #resorts datframe for easy in reading
+# %% [markdown]
+# Overwrite 'obsval' with values from observation values from allobs.dat
 
 # %%
 obs.loc[obsvals.obsname, "obsval"] = (
     obsvals.obsval.values
-)  # True observation value is copied over to obs
-obs
+)  # Observation value is copied over to obs
 
-# %%
-obs.loc[obs.obsnme == "actet_mon:2000_1:5621", :]  # Check for change
+# pst_obj.parameter_data = self._update_parameter_data(pst_obj.parameter_data, par_df)
+# pst_obj.observation_data = self._update_observation_data(pst_obj.observation_data, obs_df)
 
 # %% [markdown]
-# #### PEST++ now allows for ranges to be set for obs, so we set those here (and comment out the old approach below)
+# #### Set obsval ranges (not single value) for observations
+# PEST++ now allows for ranges to be set for observations. This best replicates the approach in Hay and others (2023).
+
+# %% [markdown]
+# Read `allobs_bounds.dat`
 
 # %%
-# obs.loc[obs.obgnme.str.startswith("streamflow_daily_low")]
-obs.sample(50)
+obs_bounds = pd.read_csv(os.path.join(pestpp_model_dir, "allobs_bounds.dat"))
+# obs_bounds.rename(columns={"obsname": "obsnme"}, inplace=True)
+
+# %% [markdown]
+# Write observation bounds to the observation_data dataframe
 
 # %%
+greater_than_dict = dict(
+    zip(
+        obs_bounds["obsname"],
+        obs_bounds["greater_than"],
+    )
+)
+less_than_dict = dict(
+    zip(
+        obs_bounds["obsname"],
+        obs_bounds["less_than"],
+    )
+)
+
 obs.loc[:, "less_than"] = np.nan
 obs.loc[:, "greater_than"] = np.nan
 
-obs_bounds = pd.read_csv(
-    os.path.join(pestpp_model_dir, "allobs_bounds.dat"), delim_whitespace=True
-)
-l_bnd_dict = dict(
-    zip(
-        obs_bounds.loc[obs_bounds.obsname.str.contains("l_max_"), "obsname"],
-        obs_bounds.loc[obs_bounds.obsname.str.contains("l_max_"), "obsval"],
-    )
-)
-g_bnd_dict = dict(
-    zip(
-        obs_bounds.loc[obs_bounds.obsname.str.contains("g_min_"), "obsname"],
-        obs_bounds.loc[obs_bounds.obsname.str.contains("g_min_"), "obsval"],
-    )
-)
-l_bnd_dict = {k.replace("l_max_", ""): v for k, v in l_bnd_dict.items()}
-g_bnd_dict = {k.replace("g_min_", ""): v for k, v in g_bnd_dict.items()}
+obs.loc[:, "less_than"] = obs.loc[:, "obsnme"].map(less_than_dict)
+obs.loc[:, "greater_than"] = obs.loc[:, "obsnme"].map(greater_than_dict)
 
-obs.loc[:, "less_than"] = obs.loc[:, "obsnme"].map(l_bnd_dict)
-obs.loc[:, "greater_than"] = obs.loc[:, "obsnme"].map(g_bnd_dict)
+# %% [markdown]
+# ## Create PEST++ **obs**ervation** g**roup **n**a**me**s (**obsgnme**)
+# Obervation criteria noted in the obsnme were used to create observation group names.
 
+# %%
+obs.obgnme = "obgnme"
+print(f"The default value of obgnme is set to {list(set(obs['obgnme']))}.")
+
+# %% [markdown]
+# #### Create observation groups for hru observations. No validation groups were made for these targets.
+
+# %%
 obs.loc[obs.obsnme.str.startswith("actet_mon"), "obgnme"] = "actet_mon"
 
 obs.loc[obs.obsnme.str.startswith("actet_mean_mon"), "obgnme"] = "actet_mean_mon"
@@ -773,42 +228,9 @@ obs.loc[obs.obsnme.str.startswith("runoff_mon"), "obgnme"] = "runoff_mon"
 obs.loc[obs.obsnme.str.startswith("sca_daily"), "obgnme"] = "sca_daily"
 
 # %% [markdown]
-# #### Creating Groups observations
+# #### Create observation groups for streamflow observations.
 
 # %%
-# obs.loc[obs.obsnme.str.startswith('l_max_actet_mon'),'obgnme'] = 'l_max_actet_mon'
-# obs.loc[obs.obsnme.str.startswith('g_min_actet_mon'),'obgnme'] = 'g_min_actet_mon'
-
-# obs.loc[obs.obsnme.str.startswith('l_max_actet_mean_mon'),'obgnme'] = 'l_max_actet_mean_mon'
-# obs.loc[obs.obsnme.str.startswith('g_min_actet_mean_mon'),'obgnme'] = 'g_min_actet_mean_mon'
-
-# obs.loc[obs.obsnme.str.startswith('l_max_recharge_ann'),'obgnme'] = 'l_max_recharge_ann'
-# obs.loc[obs.obsnme.str.startswith('g_min_recharge_ann'),'obgnme'] = 'g_min_recharge_ann'
-
-# obs.loc[obs.obsnme.str.startswith('l_max_soil_moist_mon'),'obgnme'] = 'l_max_soil_moist_mon'
-# obs.loc[obs.obsnme.str.startswith('g_min_soil_moist_mon'),'obgnme'] = 'g_min_soil_moist_mon'
-
-# obs.loc[obs.obsnme.str.startswith('l_max_soil_moist_ann'),'obgnme'] = 'l_max_soil_moist_ann'
-# obs.loc[obs.obsnme.str.startswith('g_min_soil_moist_ann'),'obgnme'] = 'g_min_soil_moist_ann'
-
-
-# #obs.loc[obs.obsnme.str.startswith('runoff_mon'),'obgnme'] = 'runoff_mon'
-# obs.loc[obs.obsnme.str.startswith('l_max_runoff_mon'),'obgnme'] = 'l_max_runoff_mon'
-# obs.loc[obs.obsnme.str.startswith('g_min_runoff_mon'),'obgnme'] = 'g_min_runoff_mon'
-
-# #obs.loc[obs.obsnme.str.startswith('sca_daily'),'obgnme'] = 'sca_daily'
-# obs.loc[obs.obsnme.str.startswith('l_max_sca_daily'),'obgnme'] = 'l_max_sca_daily'
-# obs.loc[obs.obsnme.str.startswith('g_min_sca_daily'),'obgnme'] = 'g_min_sca_daily'
-
-
-# obs.loc[obs.obsnme.str.startswith('streamflow_daily'),'obgnme'] = 'streamflow_daily'
-
-# Create EFC Groups for daily streamflows
-# streamflow_daily is followed by a suffix: "efc"_"high_low" integers
-# efc [1, 2, 3, 4, 5] are ['Large flood', 'Small flood', 'High flow pulse', 'Low flow', 'Extreme low flow']
-# high_low [1, 2, 3] are ['Low flow', 'Ascending limb', 'Descending limb']
-# Pest++ group names were written with flows in mind.
-
 obs.loc[obs.obsnme.str.startswith("streamflow_daily_1_2"), "obgnme"] = (
     "streamflow_daily_large_ascnd"
 )
@@ -833,33 +255,208 @@ obs.loc[obs.obsnme.str.startswith("streamflow_daily_4_1"), "obgnme"] = (
 obs.loc[obs.obsnme.str.startswith("streamflow_daily_5_1"), "obgnme"] = (
     "streamflow_daily_ex_low"
 )
-
-# Special group for daily streamflow and no EFC code
-obs.loc[
-    (obs.obsnme.str.startswith("streamflow_daily")) & (obs.obsnme.str.contains("-1")),
-    "obgnme",
-] = "streamflow_no_efc"
-
-# Special group for no flow
-obs.loc[obs.obsnme.str.startswith("streamflow_daily_-9999_-9999"), "obgnme"] = (
-    "streamflow_nodata"
-)
-obs.loc[
-    (obs.obsnme.str.startswith("streamflow_daily")) & (obs.obsval == -9999), "obgnme"
-] = "streamflow_nodata"
-# for ex in exclude_gages[c_model]:
-#     obs.loc[(obs.obsnme.str.startswith('streamflow_daily')) & (obs.obsnme.str.endswith(ex)), 'obgnme'] = 'streamflow_nodata'
-#     obs.loc[(obs.obsnme.str.startswith('streamflow_mon')) & (obs.obsnme.str.endswith(ex)), 'obgnme'] = 'streamflow_nodata'
-#     obs.loc[(obs.obsnme.str.startswith('streamflow_mean_mon')) & (obs.obsnme.str.endswith(ex)), 'obgnme'] = 'streamflow_nodata'
-
 obs.loc[obs.obsnme.str.startswith("streamflow_mon"), "obgnme"] = "streamflow_mon"
+
 obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_cal"), "obgnme"] = (
     "streamflow_mean_mon_cal"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_val"), "obgnme"] = (
     "streamflow_mean_mon_val"
 )
-obs.sample(30)
+
+# %% [markdown]
+# No streamflow observation group "streamflow_nodata"
+#
+
+# %%
+obs_group = "streamflow_nodata"
+mask_no_flow = (obs["obsnme"].str.startswith("streamflow_")) & (obs["obsval"] == -9999)
+
+print(
+    f"{len(obs.loc[mask_no_flow])} observations in {list(set(obs.loc[mask_no_flow, 'obgnme']))} have streamflow values of -9999."
+)
+obs.loc[mask_no_flow, "obgnme"] = obs_group
+print(
+    f"{len(obs.loc[obs['obgnme'] == obs_group])} observations were assigned to {obs_group}."
+)
+
+# %% [markdown]
+# Special group for daily streamflow with missing EFC code/code component
+
+# %%
+obs_group = "streamflow_nodata"
+mask_efc_error = (
+    (obs.obsnme.str.startswith("streamflow_daily"))
+    & (obs.obsnme.str.contains("-1"))
+    & (obs["obsval"] != -9999)
+)
+
+if not obs.loc[mask_efc_error].empty:
+    print(
+        f"[WARNING]: {len(obs.loc[mask_efc_error])} observations have streamflow values and no EFC classification.",
+        f"These observations will be moved to {obs_group} group.",
+    )
+    obs.loc[mask_efc_error, "obgnme"] = obs_group
+else:
+    print(
+        f"[PASS]: All observations with streamflow values have EFC classification.",
+    )
+
+# %% [markdown]
+# Correct default EFC for first day of flow
+# A small bug is present in the EFC code, where if the first few days of observations are "0" flow, the EFC vale for the first day is "3_2".
+# This code block checks for "0" flow values that are not assiged to group "streamflow_daily_ex_low" and reassigns them to that group.
+
+# %%
+obs_group = "streamflow_daily_ex_low"
+mask = (obs.obsnme.str.startswith("streamflow_daily")) & (obs.obsval == 0)
+
+obgnme_list = list(set(obs.loc[mask, "obgnme"]))
+
+if (len(obgnme_list) == 1) & (obgnme_list[0] == "streamflow_daily_ex_low"):
+    print(f"[PASS]: All '0' streamflow observations are in {obs_group}.")
+else:
+    change_list = obgnme_list.remove(obs_group)
+    chang_mask = (mask) & (obs["obgnme"].isin(change_list))
+
+    print(
+        f"[WARNING]: '0' value streamflows were found in {len(chang_mask)} observations in groups {change_list}.",
+        f"The obgnme for these observations will be changes to {obs_group}.",
+    )
+
+# %% [markdown]
+# #### Create validation observation groups for streamflow observations.
+# Hay and others (2023) used streamflow observation data during odd water years from 1980 to 2010 to calibrate the model and observations during even water years to validate the model. This section calculates the water year for streamflow_daily and streamflow_monthly observations using the observation name. The streamflow_ann (annual) observations are already in water years if water years were selected in notebook 0_workspace_setup.ipynb.
+#
+# Note: **streamflow_mean_mon_val** and **streamflow_mean_mon_cal** validation/calibration observations were created in notebook 02_.ipynb.*
+
+# %% [markdown]
+# Determine "wateryear" for validation groups
+
+# %%
+# "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
+# It cannot be changed here. If you want something other than was was set, it must be reset in 0 and rerun all ns.
+if config["water_years"] == True:
+    print("[PASS]: Streamflow annual observations are water years.")
+else:
+    print(
+        "[FAIL]: Streamflow annual observations are calendar years.",
+        "Return to notebook 0_workspace_setup.ipynb, correct the configuration, and rerun notebook 1_create_streamflow_observations.ipynb.",
+    )
+
+# Create water year default value for all groups
+obs["wateryear"] = -9999
+
+# --- Streamflow Monthly ---
+mask_mon = obs.obgnme.str.contains("streamflow_mon") & ~obs.obgnme.str.contains(
+    "streamflow_mean"
+)
+
+# Convert index strings to datetime
+dates_mon = pd.to_datetime(
+    obs.loc[mask_mon].index.str.split(":").str[1].str.replace("_", "-", regex=False)
+    + "-01",
+    errors="coerce",
+)
+# Apply Water Year logic: Year + 1 if Month >= 10
+obs.loc[mask_mon, "wateryear"] = dates_mon.year + (dates_mon.month >= 10).astype(int)
+
+# --- Streamflow Annual ---
+mask_ann = obs.obgnme.str.contains("ann")
+obs_index_series = pd.Series(obs.loc[mask_ann].index)
+obs_index_split = obs_index_series.str.split(":").str[1]
+obs.loc[mask_ann, "wateryear"] = obs_index_split.astype(int).values
+
+# --- Streamflow Daily ---
+mask_daily = obs.obgnme.str.contains("streamflow_daily")
+
+# Convert index strings to datetime
+dates_daily = pd.to_datetime(
+    obs.loc[mask_daily].index.str.split(":").str[1].str.replace("_", "-", regex=False),
+    errors="coerce",
+)
+# Apply Water Year logic: Year + 1 if Month >= 10
+obs.loc[mask_daily, "wateryear"] = dates_daily.year + (dates_daily.month >= 10).astype(
+    int
+)
+
+# %%
+# # "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
+# # It cannot be changed here. If you want something other than was was set, it must be reset in 0 and rerun all ns.
+# if config["water_years"] == True:
+#     print("[PASS]: Streamflow annual observations are water years.")
+# else:
+#     print(
+#         "[FAIL]: Streamflow annual observations are calendar years.",
+#         "Return to notebook 0_workspace_setup.ipynb, correct the configuration, and rerun notebook 1_create_streamflow_observations.ipynb.",
+#     )
+
+# # Create water year defualt value for all groups
+# obs["wateryear"] = -9999
+
+# # Determine water year value for streamflow_mon observations
+# mask_mon = obs.obgnme.str.contains("streamflow_mon") & ~obs.obgnme.str.contains(
+#     "streamflow_mean"
+# )
+
+# # df['water_year'] = df['date'].dt.year.where(df['date'].dt.month < 10, df['date'].dt.year + 1) (Make this change soon for better accuracy)
+
+# obs.loc[mask_mon, "wateryear"] = (
+#     pd.to_datetime(
+#         obs.loc[mask_mon].index.str.split(":").str[1].str.replace("_", "-", regex=False)
+#         + "-01",
+#         errors="coerce",
+#     )
+#     + pd.DateOffset(30 + 31 + 31)
+# ).year
+
+# # Determine water year value for streamflow_ann observations
+# mask_ann = obs.obgnme.str.contains("ann")
+# obs_index_series = pd.Series(obs.loc[mask_ann].index)  # Convert Index to Series
+# obs_index_split = obs_index_series.str.split(":").str[1]  # Extract substring part
+# obs.loc[mask_ann, "wateryear"] = obs_index_split.astype(
+#     int
+# ).values  # Assign as numpy array to avoid index alignment issues
+
+# # Determine water year value for streamflow_daily observations
+# mask_daily = obs.obgnme.str.contains("streamflow_daily")
+# obs.loc[mask_daily, "wateryear"] = (
+#     pd.to_datetime(
+#         obs.loc[mask_daily]
+#         .index.str.split(":")
+#         .str[1]
+#         .str.replace("_", "-", regex=False),
+#         errors="coerce",
+#     )
+#     + pd.DateOffset(30 + 31 + 31)
+# ).year
+
+# %% [markdown]
+# Set time period for model calibration
+# The model calibration period for Fienen and others (2025) was truncated to 1999 through 2010. 
+# The calibration period can be edited below.
+
+# %%
+cal_ts_start = "1999-10-01"  # (Eddie) We should check these dates against the control file dates with at least one year for spin up,
+cal_ts_end = "2010-09-30"
+
+# %%
+start_water_year = (
+    pd.to_datetime(cal_ts_start).year + 1
+)  # These are really messy, we need to script this better
+end_water_year = pd.to_datetime(cal_ts_end).year
+streamflow_water_years = np.array(range(start_water_year, end_water_year + 1))
+
+## We will choose even years as validation
+val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
+val_water_years
+
+# %% [markdown]
+# Append "_val" to observations in validation years data and assign groups to indicate "validation" for these
+
+# %%
+val_mask = obs.wateryear.isin(val_water_years) & obs.obsnme.str.startswith("streamflow")
+obs.loc[val_mask, "obgnme"] = [f"{i}_val" for i in obs.loc[val_mask].obgnme]
 
 # %%
 set(obs.obgnme)
@@ -873,45 +470,6 @@ set(obs.obgnme)
 
 # %%
 obs.loc[obs["obgnme"] == "obgnme"]
-
-# %%
-# exclude_gages[c_model][0]
-
-# %%
-# Set weights for groups"
-## TODO: Assign weights for all but streamflow that make sense as 1/std
-
-###Need to tailor these wts individually to the STDV values that we assume are "good."
-
-# obs.loc[obs.obgnme=='l_max_actet_mean_mon','weight'] = 3.0E+04
-# obs.loc[obs.obgnme=='g_min_actet_mean_mon','weight'] = 3.0E+04
-
-# obs.loc[obs.obgnme=='l_max_actet_mon','weight'] = 0.75E+04
-# obs.loc[obs.obgnme=='g_min_actet_mon','weight'] = 0.75E+04
-
-# obs.loc[obs.obgnme=='l_max_recharge_ann','weight'] = 0.4E+04
-# obs.loc[obs.obgnme=='g_min_recharge_ann','weight'] = 0.4E+04
-
-# obs.loc[obs.obgnme=='l_max_soil_moist_ann','weight'] = 2.5E+03
-# obs.loc[obs.obgnme=='g_min_soil_moist_ann','weight'] = 2.5E+03
-
-# obs.loc[obs.obgnme=='l_max_soil_moist_mon','weight'] = 8E+02
-# obs.loc[obs.obgnme=='g_min_soil_moist_mon','weight'] = 8E+02
-
-
-# obs.loc[obs.obgnme=='l_max_sca_daily','weight'] = 0 #3E-03
-# obs.loc[obs.obgnme=='g_min_sca_daily','weight'] = 0 #3E-03
-
-# obs.loc[obs.obgnme=='l_max_runoff_mon','weight'] = 3.5
-# obs.loc[obs.obgnme=='g_min_runoff_mon','weight'] = 3.5
-
-
-# obs.loc[obs.obgnme.str.startswith('streamflow'), 'weight'] = \
-#     10 / obs.loc[obs.obgnme.str.startswith('streamflow'),'obsval']
-# obs.loc[obs.obgnme=='streamflow_nodata','weight'] = 0
-
-# # special case for streamflow with 0 observed value
-# obs.loc[(obs.obsval<=1) & (obs.obgnme.str.startswith('stream')), 'weight'] = 1.0
 
 # %%
 obs.loc[(obs.obsval <= 1) & (obs.obgnme.str.startswith("stream"))]
@@ -935,32 +493,24 @@ obs_sdbnds = pd.read_csv(
 )  # Creates a data frame of the bounds for par catagories
 
 # %%
-# khm edited this for the new obs groups (no l_ or g_)
-obs_sdbnds = obs_sdbnds.loc[~obs_sdbnds.obsgroup.str.contains("g_min_"), :]
-obs_sdbnds.replace({"l_max_": ""}, regex=True, inplace=True)
-# also in order to do phi factor, had to change this group name
-obs_sdbnds.replace({"exlow": "ex_low"}, regex=True, inplace=True)
-obs_sdbnds.replace({"asc": "ascnd"}, regex=True, inplace=True)
-obs_sdbnds.replace({"dsc": "dscnd"}, regex=True, inplace=True)
-
-# %%
 obs_sdbnds.set_index("obsgroup", inplace=True, drop=False)
+obs_sdbnds.rename(columns={"obsgroup": "obgnme"}, inplace=True)
 obs_sdbnds
 
 # %%
-obs_sdbnds.index = [
-    i.strip() for i in obs_sdbnds.index
-]  # strip removes the extra spaces and /n etc
+# cleaning up: strip removes the extra spaces and /n etc
+obs_sdbnds.index = [i.strip() for i in obs_sdbnds.index]
 
 # %%
 obs_sdbnds
 
 # %%
-obs_sdbnds.index.unique()
+print(obs_sdbnds.index.unique())
+print(len(obs_sdbnds.index.unique()))
 
 # %%
-obsgroup_list = obs_sdbnds["obsgroup"]
-obsgroup_list
+obgnme_list = obs_sdbnds["obgnme"]
+obgnme_list
 
 # %%
 # obs['lower_bound'] = 0
@@ -974,11 +524,7 @@ obs["standard_deviation"] = np.nan
 obs_sdbnds.columns
 
 # %%
-obs.loc[obs.obgnme == "streamflow_nodata"]
-
-# %%
-set(obs.obgnme)
-# set(obs_sdbnds.index)
+obs.loc[obs.obgnme == "obgnme"]
 
 # %%
 for cn, _ in obs.groupby("obgnme"):
@@ -990,45 +536,28 @@ for cn, _ in obs.groupby("obgnme"):
 # %%
 obs.loc[obs.obgnme.str.startswith("streamflow_daily_low")]
 
-# %%
-# # print(list(obs_sdbnds.index))
-# # print(obgnme_list)
-# list(set(obgnme_list) - set(list(obs_sdbnds.index)))
-
-# # list(set(obgnme_list) - set(list(obs_sdbnds.index)))
+# %% [markdown]
+# #### Set SD for observations using group noise percent and observation value
 
 # %%
-# obs_sdbnds.index
-obs.obgnme.unique()
-
-# %%
-obgnme_list = list(set(obs.obgnme))
-print(len(obgnme_list))
-
-for cn in obgnme_list:
-    if cn in obs.obgnme.values:
-        obs_group_percent = obs_sdbnds.loc[cn, "noise_percent"]
-        print(cn)
-    else:
-        print(f"{cn} is not in there")
-# obs_group_percent
-
-# %%
-obgnme_list = list(set(obs.obgnme))
-
+# tt = obs.groupby("obgnme")
 for cn, _ in obs.groupby("obgnme"):
-    if cn in obs.obgnme.values:
-        obs_group_percent = obs_sdbnds.loc[cn, "noise_percent"]
-        obs.loc[obs.obgnme == cn, "standard_deviation"] = obs_group_percent * (
-            obs.loc[obs.obgnme == cn, "obsval"]
-        )
-    # print(cn)
+    print(cn)
+
+# %%
+for cn, _ in obs.groupby("obgnme"):
+    print(cn)
+    obs_group_percent = obs_sdbnds.loc[cn, "noise_percent"]
+    obs.loc[obs.obgnme == cn, "standard_deviation"] = obs_group_percent * (
+        obs.loc[obs.obgnme == cn, "obsval"]
+    )
+# print(cn)
 
 # Replace std value with 9999 where obsval values with "9999"
 obs.loc[obs.obsval == -9999, "standard_deviation"] = 9999
 
 # %%
-# obs.loc[obs.standard_deviation.isnull()]
+# check for nans: obs.loc[obs.standard_deviation.isnull()]
 obs.loc[obs.standard_deviation == np.nan]
 
 
@@ -1040,223 +569,154 @@ obs.loc[obs.standard_deviation == np.nan]
 # %%
 # But, to read in the "other" SD, the SD for the value, not the noise.
 
+# %% [markdown]
+# ## Set weight for observations for streamflow using group wt_percent and observation value; for all others using group wt percent
+
 # %%
-# Do this for streamflow but not the rest
+obs["poi_group"] = obs["obsnme"].str.rsplit(":", n=1).str[-1]
+
 for cn, _ in obs.groupby("obgnme"):
+
     if cn.startswith("streamflow_"):
-        obs_group_percent = obs_sdbnds.loc[
-            cn, "wt_percent"
-        ]  # "wt_percent" in the table is a fractional value from "Observation_standard_deviation.csv"
-        obs.loc[obs.obgnme == cn, "weight"] = 1 / (
-            obs_group_percent * (obs.loc[obs.obgnme == cn, "obsval"])
-        )
-    else:
+
+        """
+        Assign weight value for observatons in the obsevation group name "streamflow_no_data".
+        """
+        if cn == "streamflow_nodata" or "_val" in cn:
+            mask_cn = obs.obgnme == cn
+            obs.loc[mask_cn, "weight"] = 0
+            obs_remaining = obs.loc[~mask_cn]
+
+            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
+            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
+            print(
+                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[mask_cn])}"
+            )
+
+        else:
+
+            """
+            Observations in groups (daily, monthly, mean monthly) will have flow values of zero, or non-zero.
+            Generally, the weighting is distributed to the observation as:
+            1 / ([obs_group_percent--from the .csv lookup] * [observation value])
+
+            However, as seen in the TSJ model, many observations groups have flow values that are very, very small
+            given the local hydrology. In this situation, it may be nessessary to strongly govern the weight assignment.
+            The "low_bound" variable represents a flow threshold. If flows in any observation group fall below this
+            threashold, they will be assigned a weight of the threashold flow value.
+
+            The default value will be the maximum value in the extreemly low flow catagory.
+
+            Give relative wt of each flow obs based on normalized flow magnitude for each gage separately, so that the wts are
+            balanced and relative to the frame of each gages flow. Just like how EFC works
+
+            """
+            mask_cn = obs.obgnme == cn
+            poi_groups = list(set(obs.loc[mask_cn, "poi_group"]))
+
+            for poi_group in poi_groups:
+                mask_poi_group = obs.poi_group == poi_group
+                mask_cn_and_poi_group = (mask_cn) & (mask_poi_group)
+                # (Eddie need to update below to run with new mask for poi_group)
+
+                #### For non-zero flows:
+                mask_cn_and_notzero = mask_cn_and_poi_group & (obs["obsval"] != 0)
+                obs_group_percent = obs_sdbnds.loc[
+                    cn, "wt_percent"
+                ]  # "wt_percent" in the table is a fractional value from "Observation_standard_deviation.csv"
+
+                obs.loc[mask_cn_and_notzero, "weight"] = 1 / (
+                    obs_group_percent * obs.loc[mask_cn_and_notzero, "obsval"]
+                )
+
+                # For zero flows (optional, of user wants to set "0" flows to a diff wt, like "0"
+                #               here we set the wt value using the "low_bound" value.
+                low_bound = 5
+                mask_cn_and_zero = (mask_cn_and_poi_group) & (obs["obsval"] == 0)
+                obs.loc[mask_cn_and_zero, "weight"] = 1 / (
+                    obs_group_percent * low_bound
+                )
+
+                # For flows greater than "0" but less than "low_bound" value)
+                mask_cn_zero_and_less_than_low_bound = (
+                    (mask_cn_and_poi_group)
+                    & (obs["obsval"] >= 0)
+                    & (obs["obsval"] < low_bound)
+                )
+                obs.loc[mask_cn_zero_and_less_than_low_bound, "weight"] = 1 / (
+                    obs_group_percent * low_bound
+                )
+
+                min_val = obs.loc[mask_cn_and_poi_group, "weight"].min()
+                max_val = obs.loc[mask_cn_and_poi_group, "weight"].max()
+                print(
+                    f"Observation weights {cn, poi_group} range {min_val} to {max_val} for n={len(obs.loc[mask_cn_and_poi_group])}"
+                )
+
+    else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
         obs_group_percent = obs_sdbnds.loc[cn, "wt_percent"]
-        obs.loc[obs.obgnme == cn, "weight"] = 1 / obs_group_percent
+        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
+        obs.loc[mask_cn, "weight"] = 1 / obs_group_percent
 
+        min_val = obs.loc[mask_cn, "weight"].min()
+        max_val = obs.loc[mask_cn, "weight"].max()
+        print(
+            f"Observation weights {cn} range {min_val} to {max_val}for n={len(obs.loc[mask_cn])}"
+        )
 
-# # For the inequality calibration obs, do NOT take weight calc using the obs val
-# obs.loc[obs.obgnme.str.startswith("streamflow_"), "weight"] = (
-#     "streamflow_daily_large_ascnd"
-# )
-
-
-# %%
-obs.weight.sample(50)
-
-# %%
-# obs.loc[obs.obgnme=='l_max_sca_daily','weight'] = 10#3E-03
-# obs.loc[obs.obgnme=='sca_daily','weight'] = 10#3E-00
-
-# Eddie commented out, seemed to just undo the code in the above cell
-obs.loc[obs.obgnme.str.startswith("streamflow"), "weight"] = (
-    10 / obs.loc[obs.obgnme.str.startswith("streamflow"), "obsval"]
+print(
+    "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
 )
 
-obs.loc[obs.obgnme == "streamflow_nodata", "weight"] = 0
-
-"""Replace -9999 obs_val values with 0 weight"""
-obs.loc[obs.obsval == -9999, "weight"] = 0
+# %% [markdown]
+# Assign "0" weights to streamflow observations for validation years
 
 # %%
-obs.weight.sample(50)
-
-# %%
-"""special case for ex_lowflow group values (less than 1 cfs). This avoids a division by zero.
-This code will calculate the weight for flows less than 1 cfs (ex_low) not using the obsval
-for the ex_low val, but use 1/2 the flow of the lowest value from the low group."""
-
-"""Set variables for calculation"""
-ex_low_min = 1.0  # units in cfs
-
-"""Calculation"""
-low_bound = obs.loc[obs.obgnme.str.contains("streamflow_daily_lo"), "obsval"].min()
-ex_low_val = 0.5 * (low_bound)
-
-
-obs_group_percent = obs_sdbnds.loc[
-    obs_sdbnds.obsgroup.str.contains("streamflow_daily_ex_low"), "wt_percent"
-]
-obs.loc[
-    (obs.obsval <= ex_low_min) & (obs.obgnme.str.contains("streamflow_daily_ex_lo")),
-    "weight",
-] = 1 / (obs_group_percent[0].astype(float) * (ex_low_val))
-
-# %%
-# print(f"obs_group_percent is {obs_group_percent}")
-# print(f"low_bound is {low_bound}")
-# print(f"ex_low_val is {ex_low_val}")
-
-# %%
-obs.loc[obs.obgnme.str.contains("streamflow_daily_-9999")]
-
-# %%
-# obs.loc[obs.weight.isna()]
-
-# %%
-# obs.loc[(obs.obsval <= ex_low_min) & (obs.obgnme.str.contains("streamflow_daily"))]
-
-# %%
-type(obs_group_percent[0].astype(float))
-
-# %%
-# obs.weight.sample(50)
-obs.loc[obs.obgnme.str.startswith("streamflow_daily_ex_low")]
-
-# %%
+# # unweight the validation data and assign groups to indicate "validation" for these
 # obs.loc[
-#     (obs.obsval <= ex_low_min) & (obs.obgnme.str.startswith("streamflow_")),
+#     (obs.wateryear.isin(val_water_years) & (obs.obgnme.str.startswith("streamflow"))),
 #     "weight",
+# ] = 0
+
+# obs.loc[
+#     (obs.wateryear.isin(val_water_years) & (obs.obgnme.str.startswith("streamflow"))),
+#     "obgnme",
+# ] = [
+#     f"{i}_val"
+#     for i in obs.loc[
+#         (
+#             obs.wateryear.isin(val_water_years)
+#             & (obs.obgnme.str.startswith("streamflow"))
+#         )
+#     ].obgnme
 # ]
 
-# %%
-# obs.loc[obs.weight.isnull()]
-# obs.loc[obs.weight == np.nan]
-obs.loc[obs.obgnme.str.startswith("streamflow"), "weight"].max()
-
-# %%
-obs.loc[(obs.obgnme.str.startswith("streamflow_")) & (obs.weight == np.inf)]
-
-# %%
-# # Matt and Eddie trying to fix the Nan's issue when writng the pst
-# obs["less_than"].replace(np.nan, -9999, inplace=True)
-# obs["greater_than"].replace(np.nan, -9999, inplace=True)
-# obs["upper_bound"].replace(np.nan, -9999, inplace=True)
-# obs["lower_bound"].replace(np.nan, -9999, inplace=True)
-
-# %%
-obs["wateryear"] = -999
-
-# %%
-# Bot suggested alternative to faster form of celle below
-
-# Mean monthly — untouched in original code
-mask_mean_mon = obs.obgnme.str.contains("mean_mon")
-
-# Monthly (no "mean")
-mask_mon = obs.obgnme.str.contains("mon") & ~obs.obgnme.str.contains("mean")
-obs.loc[mask_mon, "wateryear"] = (
-    pd.to_datetime(
-        obs.loc[mask_mon].index.str.split(":").str[1].str.replace("_", "-", regex=False)
-        + "-01",
-        errors="coerce",
-    )
-    + pd.DateOffset(30 + 31 + 31)
-).year
-
-# Annual
-mask_ann = obs.obgnme.str.contains("ann")
-
-obs_index_series = pd.Series(obs.loc[mask_ann].index)  # Convert Index to Series
-obs_index_split = obs_index_series.str.split(":").str[1]  # Extract substring part
-obs.loc[mask_ann, "wateryear"] = obs_index_split.astype(
-    int
-).values  # Assign as numpy array to avoid index alignment issues
-
-# Daily
-mask_daily = obs.obgnme.str.contains("daily")
-obs.loc[mask_daily, "wateryear"] = (
-    pd.to_datetime(
-        obs.loc[mask_daily]
-        .index.str.split(":")
-        .str[1]
-        .str.replace("_", "-", regex=False),
-        errors="coerce",
-    )
-    + pd.DateOffset(30 + 31 + 31)
-).year
-
-print(f"Are there NaN's in the water years? {obs['wateryear'].isna().any()}")
-
-# %%
-obs.loc[obs.weight.isna()]
-# obs.loc[(obs.obsval <= 0.99) & (obs.obsnme.str.startswith("streamflow"))]
-
-# %%
-# # Do not delete this; save for ref and testing above block
-# for cgroup in obs.obgnme.unique():
-#     if "mean_mon" in cgroup:
-#         pass
-#     elif ("mon" in cgroup) & ("mean" not in cgroup):
-#         obs.loc[obs.obgnme == cgroup, "wateryear"] = [
-#             (
-#                 pd.to_datetime(f"{'-'.join(i.split(':')[1].split('_'))}-1")
-#                 + pd.DateOffset(30 + 31 + 31)
-#             ).year
-#             for i in obs.loc[obs.obgnme == cgroup].index
-#         ]
-
-#     elif "ann" in cgroup:
-#         obs.loc[obs.obgnme == cgroup, "wateryear"] = [
-#             int(i.split(":")[1]) for i in obs.loc[obs.obgnme == cgroup].index
-#         ]
-
-#     elif "daily" in cgroup:
-#         obs.loc[obs.obgnme == cgroup, "wateryear"] = [
-#             (
-#                 pd.to_datetime((i.split(":")[1]).replace("_", "-"))
-#                 + pd.DateOffset(30 + 31 + 31)
-#             ).year
-#             for i in obs.loc[obs.obgnme == cgroup].index
-#         ]
-
-
 # %% [markdown]
-#
+# #### Check weights for errors
 
 # %%
-obs.wateryear
+if not obs.loc[obs.weight < 0].empty:
+    print("[Warning]: Observations have negative weight values.")
+    print(obs.loc[obs.weight < 0])
+else:
+    print("[PASS]: Observations have no negative weight values.")
 
-# %%
-## Set up validation years
-seg_outflow_start = "1999-10-01"
-seg_outflow_end = "2010-09-30"
-start_water_year = pd.to_datetime(seg_outflow_start).year + 1
-end_water_year = pd.to_datetime(seg_outflow_end).year
-streamflow_water_years = np.array(range(start_water_year, end_water_year + 1))
 
-## We will choose even years as validation
-val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
-val_water_years
+if not obs.loc[obs.weight == np.nan].empty:
+    print("[Warning]: Observations have NaN weight values.")
+    print(obs.loc[obs.weight == np.nan])
+else:
+    print("[PASS]: Observations have no NaN weight values.")
 
-# %%
-# unweight the validation data and assign groups to indicate "validation" for these
-obs.loc[
-    (obs.wateryear.isin(val_water_years) & (obs.obgnme.str.startswith("streamflow"))),
-    "weight",
-] = 0
-obs.loc[
-    (obs.wateryear.isin(val_water_years) & (obs.obgnme.str.startswith("streamflow"))),
-    "obgnme",
-] = [
-    f"{i}_val"
-    for i in obs.loc[
-        (
-            obs.wateryear.isin(val_water_years)
-            & (obs.obgnme.str.startswith("streamflow"))
-        )
-    ].obgnme
-]
+if not obs.loc[obs.weight == np.inf].empty:
+    print("[Warning]: Observations have np.inf weight values.")
+    print(obs.loc[obs.weight == np.inf])
+else:
+    print("[PASS]: Observations have no np.inf weight values.")
+
+# obs.loc[obs.weight.isnull()]
+# obs.loc[obs.weight.isna()]
+# obs.loc[obs.obgnme.str.startswith("streamflow_mon"), "weight"].min()
 
 # %%
 obs.weight.sample(50)
@@ -1264,57 +724,43 @@ obs.weight.sample(50)
 # %%
 obs.loc[obs.obgnme.str.endswith("_val"), "weight"] = 0
 
-# %% [markdown]
-# # consolidate the run scripts into a single script
-# ### Eddie commented out after modification of the forward_run.py file with James during debugging. Eddie will eventually fix this and bring it back in.
-
 # %%
-imports = [
-    i.strip()
-    for i in open(pestpp_dir / "helpers/run-pynhm.py", "r").readlines()
-    if i.strip().startswith("import")
-]
-imports.extend(
-    [
-        i.strip()
-        for i in open(
-            pestpp_dir / "helpers/post-process_model_output.py", "r"
-        ).readlines()
-        if i.strip().startswith("import")
-    ]
+for cn, _ in obs.groupby("obgnme"):
+
+    if cn.startswith("streamflow_"):
+        """
+        Assign weight value for observatons in the obsevation group name "streamflow_no_data".
+        """
+        if cn == "streamflow_nodata":
+            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
+            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
+            print(
+                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
+            )
+
+        else:
+
+            mask_cn_and_notzero = (obs.obgnme == cn) & (obs["obsval"] != 0)
+
+            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
+            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
+            print(
+                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
+            )
+
+    else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
+
+        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
+
+        min_val = obs.loc[mask_cn, "weight"].min()
+        max_val = obs.loc[mask_cn, "weight"].max()
+        print(
+            f"Observation weights {cn} range {min_val} to {max_val}for n={len(obs.loc[mask_cn])}"
+        )
+
+print(
+    "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
 )
-
-runbiz = [
-    i.rstrip()
-    for i in open(pestpp_dir / "helpers/run-pynhm.py", "r").readlines()
-    if not i.strip().startswith("import")
-]
-runbiz.append('print("#### RUN DONE, TIME TO POSTPROCESS ####")')
-runbiz.extend(
-    [
-        i.rstrip()
-        for i in open(
-            pestpp_dir / "helpers/post-process_model_output.py", "r"
-        ).readlines()
-        if not i.strip().startswith("import")
-    ]
-)
-
-
-# %%
-# runbiz
-
-# %%
-# dedupe the imports
-imports = list(set(imports))
-
-
-# %% [markdown]
-# ### now write out all the forward run stuff
-
-# %%
-with open(os.path.join(pestpp_model_dir, "forward_run.py"), "w") as ofp:
-    [ofp.write(f"{line}\n") for line in imports + runbiz]
 
 # %% [markdown]
 # ### and set the consolidated forward_run.py file to the pst object
@@ -1372,23 +818,16 @@ pst.parameter_data = pst.parameter_data[
 len(obs)
 
 # %%
-if "smidx_exp:hru_84017" in pst.parameter_data.index:
-    pst.parameter_data.loc["smidx_exp:hru_84017", "parval1"] = 0.003
-    pst.parameter_data.loc["smidx_exp:hru_84017", "parubnd"] = 0.003 * 2
+# if "smidx_exp:hru_84017" in pst.parameter_data.index:
+#     pst.parameter_data.loc["smidx_exp:hru_84017", "parval1"] = 0.003
+#     pst.parameter_data.loc["smidx_exp:hru_84017", "parubnd"] = 0.003 * 2
 
 
 # %%
-pst.write(os.path.join(pestpp_model_dir, "prior_mc.pst"), version=2)
+# pst.write(os.path.join(pestpp_model_dir, "prior_mc.pst"), version=2)
 
 # %%
-# [pst.observation_data[i].isnull().unique() for i in pst.observation_data.columns]
-obs.loc[obs.weight.isnull()].obgnme.unique()
-
-# %%
-obs.sample(50)
-
-# %%
-obs.isnull().values.any()
+obs.weight.isnull().values.any()
 
 # %%
 len(pst.observation_data), len(pst.observation_data.dropna())
@@ -1405,10 +844,10 @@ pst.observation_data.loc[
 ]
 
 # %%
-pst.observation_data.loc[
-    (pst.observation_data.obsnme == "streamflow_daily_3_2:2000_7_11:05431022")
-]  # &
-# (pst.observation_data.weight>0)]
+# pst.observation_data.loc[
+#     (pst.observation_data.obsnme == "streamflow_daily_3_2:2000_7_11:05431022")
+# ]  # &
+# # (pst.observation_data.weight>0)]
 
 # %%
 # # set all obs with less_than == greater_than columns to have nan values for those columns
@@ -1449,13 +888,6 @@ if not pl.Path(pestpp_model_dir / exe_name).exists():
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
 else:
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
-
-
-# if os.path.exists(os.path.join(pestpp_model_dir,exe_name)):
-#     pyemu.os_utils.run('pestpp-ies prior_mc.pst',cwd=pestpp_model_dir)
-# else:
-#     pyemu.utils.get_pestpp(pestpp_model_dir)
-#     pyemu.os_utils.run('pestpp-ies prior_mc.pst',cwd=pestpp_model_dir)
 
 # %%
 

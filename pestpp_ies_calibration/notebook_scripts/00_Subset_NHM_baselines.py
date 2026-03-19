@@ -320,8 +320,8 @@ SCA_daily.close()
 # %%
 # SCA_daily.SCA_max.sel(nhru=99860, time=slice("2002-11-01", "2003-01-30")).plot()
 # SCA_daily.SCA_min.sel(nhru=99860, time=slice("2002-11-01", "2003-01-30")).plot()
-hru_sel = nhm_ids[3]
-c_da.SCA_max.sel(nhru=hru_sel, time=slice("2002-11-01", "2003-01-30")).plot()
-c_da.SCA_min.sel(nhru=hru_sel, time=slice("2002-11-01", "2003-01-30")).plot()
+hru_sel = nhm_ids[1]
+c_da.SCA_max.sel(nhru=hru_sel, time=slice("2002-11-01", "2008-01-30")).plot()
+c_da.SCA_min.sel(nhru=hru_sel, time=slice("2002-11-01", "2008-01-30")).plot()
 
 # %%
