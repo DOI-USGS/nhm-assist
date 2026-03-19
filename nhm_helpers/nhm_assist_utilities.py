@@ -174,7 +174,7 @@ def fetch_nwis_gage_info(
     If gages are present in the param file, recommend adding metadata in the gage_resource.csv
     """
 
-    st_date = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
+    st_date = "1900-01-01"# pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
     en_date = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
     if nwis_gages_file.exists():
@@ -262,7 +262,7 @@ def fetch_nwis_gage_info(
             try:
                 chunk_data, _ = waterdata.get_monitoring_locations(
                     monitoring_location_id=site_group,
-                    site_type_code="ST",
+                    site_type_code=["ST", "ST-TS"], # may need to specify more streamflow site types here??
                     properties=[
                         "monitoring_location_id",
                         "geometry",

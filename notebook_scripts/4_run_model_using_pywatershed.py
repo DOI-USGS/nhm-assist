@@ -107,6 +107,19 @@ if "pref_flow_infil_frac" not in params.parameters.keys():
     params_ds["pref_flow_infil_frac"] = params_ds.pref_flow_den[:] * 0.0
     params = pws.parameters.PrmsParameters.from_ds(params_ds)
 
+# Force pref_flow_infil_frac to be zero when outside valid range 0-1
+
+params_ds = params.to_xr_ds()
+
+# Replace values < 0 or > 1 with 0
+params_ds["pref_flow_infil_frac"] = params_ds["pref_flow_infil_frac"].where(
+    (params_ds["pref_flow_infil_frac"] >= 0) & (params_ds["pref_flow_infil_frac"] <= 1), 
+    0.0
+)
+
+# Convert back to PrmsParameters
+params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
 # %% [markdown]
 # ## Custom Run for NHM subdomain model
 # The custom run loop will output the `pywatershed` standard output variables only and outputs each variable as a .nc file. The standard output variables, `selected_output_variables`, were selected in [notebook 0](.\0_Workspace_setup.ipynb).

@@ -46,10 +46,14 @@ root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
 sys.path.append(str(root_dir))
 
 from dotenv import load_dotenv
- 
-load_dotenv(
-    dotenv_path=root_dir / ".env"
-)  # this will load the environment variables from the .env file
+
+# Use home directory for Nebari, otherwise use repo root_dir
+if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+    dotenv_path = Path.home() / ".env"
+else:
+    dotenv_path = root_dir / ".env"
+
+load_dotenv(dotenv_path=dotenv_path)
 
 from nhm_helpers.sf_data_retrieval import (
     create_nwis_sf_df,
