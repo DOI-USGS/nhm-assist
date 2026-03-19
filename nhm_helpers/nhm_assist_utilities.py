@@ -1,6 +1,5 @@
 import pathlib as pl
 import warnings
-import dataretrieval.nwis as nwis
 from dataretrieval import waterdata
 import geopandas as gpd
 import numpy as np
