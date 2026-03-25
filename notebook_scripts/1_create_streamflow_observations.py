@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.19.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -56,7 +56,7 @@ else:
 load_dotenv(dotenv_path=dotenv_path)
 
 from nhm_helpers.sf_data_retrieval import (
-    create_nwis_sf_df,
+    create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
@@ -74,10 +74,8 @@ from nhm_helpers.nhm_assist_utilities import (
     delete_notebook_output_files,
     load_subdomain_config,
 )
+
 config = load_subdomain_config(root_dir)
-
-
-
 
 # %%
 delete_notebook_output_files(
@@ -139,14 +137,14 @@ poi_df = create_poi_df(
 # This function pulls time series data for all NWIS gages in the domain, and then filters data to the simulation period (`nwis_gages_cache.nc`), and creates `NWISgages.csv`. Both the time series data file and the NWISgages.csv contain all site information for gages with a period of record greater than the user specified threshold (`nwis_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** ALL gages in the parameter file regardless of a period of record less than the specified threshold.
 
 # %%
-NWIS_df = create_nwis_sf_df(
+waterdata_df = create_waterdata_sf_df(
     root_dir=root_dir,
     control_file_name=config["control_file_name"],
     model_dir=config["model_dir"],
     output_netcdf_filename=config["output_netcdf_filename"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["nwis_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
@@ -217,7 +215,7 @@ xr_streamflow = create_sf_efc_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     owrd_df=owrd_df,
     ecy_df=ecy_df,
-    NWIS_df=NWIS_df,
+    NWIS_df=waterdata_df,
     gages_df=gages_df,
 )
 
@@ -258,3 +256,5 @@ make_obs_plot_files(
     xr_streamflow=xr_streamflow,
     Folium_maps_dir=config["Folium_maps_dir"],
 )
+
+# %%
