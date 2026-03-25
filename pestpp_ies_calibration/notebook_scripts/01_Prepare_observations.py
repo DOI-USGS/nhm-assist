@@ -205,9 +205,7 @@ inds = [
 ]
 
 # Write the observations to the observations.dat file for use in creating the instruction file
-actet_mon = (
-    cdat.aet_max
-) * 0 + 9999  # Set to non-value b/c plan to calibrate with range. (cdat.aet_max + cdat.aet_min) / 2
+actet_mon = (cdat.aet_max + cdat.aet_min) / 2
 varvals = np.ravel(actet_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     ofp.write("obsname    obsval\n")  # writing a header for the file
@@ -234,7 +232,7 @@ inds = [
     for j in cdat.indexes["nhru"]
 ]
 
-actet_mean_mon = (cdat.aet_max) * 0 + 9999  # (cdat.aet_max + cdat.aet_min) / 2
+actet_mean_mon = (cdat.aet_max + cdat.aet_min) / 2
 varvals = np.ravel(actet_mean_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
@@ -266,9 +264,7 @@ inds = [
     for j in cdat.indexes["nhru"]
 ]
 
-recharge_ann = (
-    cdat.recharge_max_norm
-) * 0 + 9999  # (cdat.recharge_max_norm + cdat.recharge_min_norm) / 2
+recharge_ann = (cdat.recharge_max_norm + cdat.recharge_min_norm) / 2
 varvals = np.ravel(recharge_ann, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
@@ -300,9 +296,7 @@ inds = [
     for j in cdat.indexes["nhru"]
 ]
 
-soil_moist_mon = (
-    cdat.soil_moist_max_norm
-) * 0 + 9999  # (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
+soil_moist_mon = (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
 varvals = np.ravel(soil_moist_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
@@ -335,9 +329,7 @@ inds = [
     for j in cdat.indexes["nhru"]
 ]
 
-soil_moist_ann = (
-    cdat.soil_moist_max_norm
-) * 0 + 9999  # (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
+soil_moist_ann = (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
 varvals = np.ravel(soil_moist_ann, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
@@ -367,7 +359,7 @@ inds = [
     for i in cdat.indexes["time"]
     for j in cdat.indexes["nhru"]
 ]
-runoff_mon = (cdat.runoff_max) * 0 + 9999  # (cdat.runoff_max + cdat.runoff_min) / 2
+runoff_mon = (cdat.runoff_max + cdat.runoff_min) / 2
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
@@ -401,7 +393,7 @@ inds = [
     for i in cdat.indexes["time"]
     for j in cdat.indexes["nhru"]
 ]
-sca_daily = (cdat.SCA_max) * 0 + 9999  # (cdat.SCA_max + cdat.SCA_min) / 2
+sca_daily = (cdat.SCA_max + cdat.SCA_min) / 2
 varvals = np.ravel(sca_daily, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]

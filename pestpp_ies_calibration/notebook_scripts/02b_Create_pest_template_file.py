@@ -333,9 +333,9 @@ par_starting_vals
 # ### Write pestpp-ies template file `parameters.json.tpl`
 
 # %%
-#pars = pardat.parameters
-#dims = pardat.dimensions
-#pars_2 = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in pars.items()}
+# pars = pardat.parameters
+# dims = pardat.dimensions
+# pars_2 = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in pars.items()}
 
 # %%
 

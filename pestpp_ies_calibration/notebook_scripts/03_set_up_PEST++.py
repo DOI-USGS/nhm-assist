@@ -65,7 +65,7 @@ else:
 # ## Create `pestpp_ies` folder in the model directory
 # All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
 
-# %% jupyter={"source_hidden": true}
+# %%
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
@@ -138,7 +138,7 @@ pst = pyemu.Pst.from_io_files(
 # ### Set obsval value and ranges
 # In PEST++ `pst.observation_data`, the values for obsval are inherited from `modelobs.dat` and are not the "observation" values from allobs.dat, so the values in `pst.observation_data` need to be overwritten with the observation values.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # #### Read in the observation file, `allobs.dat`
 
 # %%
@@ -763,6 +763,45 @@ print(
 )
 
 # %% [markdown]
+# ### Direct Editing of Params
+
+# %%
+par_starting_vals = pd.read_csv(
+    pestpp_model_dir / "starting_par_vals.dat", index_col="parname", sep=" "
+)
+
+# %%
+par_starting_vals
+
+# %% [markdown]
+# ### Copy parval1, upper bound and lower bound from "par_starting_vals" to pars.parval1 
+
+# %%
+pars = pst.parameter_data
+
+# %%
+# Alternative to below: Test; both pars and par_starting_vals must have the same index "parnme".
+
+pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals[
+    ["parval1", "parubnd", "parlbnd"]
+].values
+
+# # The old way
+# for idx, row in pars.iterrows():
+#     pars.loc[pars.parnme, "parval1"] = par_starting_vals.loc[pars.parnme, "parval1"]
+#     pars.loc[pars.parnme, "parubnd"] = par_starting_vals.loc[pars.parnme, "parubnd"]
+#     pars.loc[pars.parnme, "parlbnd"] = par_starting_vals.loc[pars.parnme, "parlbnd"]
+
+# %%
+pars.sample(50)
+
+# %% [markdown]
+# ### we can't log transform negative parameter values
+
+# %%
+pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
+
+# %% [markdown]
 # ### and set the consolidated forward_run.py file to the pst object
 
 # %%
@@ -884,7 +923,7 @@ exe_name
 # %%
 # check that pestpp executable exists and run. otherwise, get the exe
 if not pl.Path(pestpp_model_dir / exe_name).exists():
-    pyemu.utils.get_pestpp(str(pestpp_model_dir))
+    pyemu.utils.get_pestpp(str(pestpp_model_dir), branch="develop")
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
 else:
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))

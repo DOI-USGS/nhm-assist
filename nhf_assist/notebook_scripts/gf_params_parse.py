@@ -68,7 +68,7 @@ from rich import pretty
 pretty.install()
 
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -1009,7 +1009,6 @@ npoigages_info_df = find_missing_gage_info(
 # Add all gages in the domain to the info file to be used in all visualization notebooks.
 
 # %%
-
 # make the npoigages_info_df file in the child hf domain folser as well for backup
 npoigages_file = child_hf_dir / "npoigages_info.csv"
 npoigages_info_df.to_csv(npoigages_file, index=False)
@@ -1491,7 +1490,7 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 npoigages_info_df
 
 # %% [markdown]
@@ -1655,10 +1654,10 @@ if not all_valid:
     print(bad_rows["hru_id"].tolist())
 
     # Optional: show validity reason for each bad geometry
-    bad_rows = bad_rows.assign(
-        validity_reason=bad_rows["geometry"].apply(explain_validity)
-    )
-    print(bad_rows[["hru_id", "validity_reason"]])
+    # bad_rows = bad_rows.assign(
+    #     validity_reason=bad_rows["geometry"].apply(explain_validity)
+    # )
+    # print(bad_rows[["hru_id", "validity_reason"]])
 
 hru_child_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
@@ -1688,11 +1687,11 @@ if not all_valid:
     print("Rows with invalid geometry (by segment_id):")
     print(bad_rows["segment_id"].tolist())
 
-    # Optional: show validity reason for each bad geometry
-    bad_rows = bad_rows.assign(
-        validity_reason=bad_rows["geometry"].apply(explain_validity)
-    )
-    print(bad_rows[["segment_id", "validity_reason"]])
+    # # Optional: show validity reason for each bad geometry
+    # bad_rows = bad_rows.assign(
+    #     validity_reason=bad_rows["geometry"].apply(explain_validity)
+    # )
+    # print(bad_rows[["segment_id", "validity_reason"]])
 
 seg_child_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",
@@ -1732,10 +1731,10 @@ if not all_valid:
     print(bad_rows["poi_gage_id"].tolist())
 
     # Optional: show validity reason for each bad geometry
-    bad_rows = bad_rows.assign(
-        validity_reason=bad_rows["geometry"].apply(explain_validity)
-    )
-    print(bad_rows[["poi_gage_id", "validity_reason"]])
+    # bad_rows = bad_rows.assign(
+    #     validity_reason=bad_rows["geometry"].apply(explain_validity)
+    # )
+    # print(bad_rows[["poi_gage_id", "validity_reason"]])
 
 npoigages_layer_gdf.to_file(
     f"{child_model_gis_dir}/model_layers.gpkg",

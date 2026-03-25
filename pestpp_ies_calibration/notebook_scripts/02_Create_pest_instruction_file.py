@@ -69,7 +69,7 @@ config = load_subdomain_config(root_dir)
 # Create `pestpp_ies` folder in the model directory
 # All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
 
-# %% jupyter={"source_hidden": true}
+# %%
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
@@ -136,44 +136,6 @@ with open(os.path.join(pestpp_model_dir, "modelobs.dat.ins"), "w") as ofp:
 # %% [markdown]
 # #### Consolidate the run script (run-pynhm.py) and the model output post-processing script (post-process_model_output.py) into a single script.
 
-# %% jupyter={"source_hidden": true}
-# imports = [
-#     i.strip()
-#     for i in open(pestpp_dir / "helpers/run-pynhm.py", "r").readlines()
-#     if i.strip().startswith("import")
-# ]
-# imports.extend(
-#     [
-#         i.strip()
-#         for i in open(
-#             pestpp_dir / "helpers/post-process_model_output.py", "r"
-#         ).readlines()
-#         if i.strip().startswith("import")
-#     ]
-# )
-
-# runbiz = [
-#     i.rstrip()
-#     for i in open(pestpp_dir / "helpers/run-pynhm.py", "r").readlines()
-#     if not i.strip().startswith("import")
-# ]
-# runbiz.append('print("#### RUN DONE, TIME TO POSTPROCESS ####")')
-# runbiz.extend(
-#     [
-#         i.rstrip()
-#         for i in open(
-#             pestpp_dir / "helpers/post-process_model_output.py", "r"
-#         ).readlines()
-#         if not i.strip().startswith("import")
-#     ]
-# )
-
-# %% [markdown]
-# #### dedupe the imports
-
-# %%
-# imports = list(set(imports))
-
 # %% [markdown]
 # #### Write out combined script (forward_run.py)
 
@@ -193,9 +155,9 @@ shutil.copy2(source, destination)
 param_file = config["model_dir"] / "myparam.param"
 parameters_json_file = pestpp_model_dir / "parameters.json"
 
-pardat = pws.parameters.PrmsParameters.load(param_file)
-pardat.parameters_to_json(parameters_json_file)
-pardat = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
+params = pws.parameters.PrmsParameters.load(param_file)
+params.parameters_to_json(parameters_json_file)
+# params = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
 
 # %% [markdown]
 # #### Run the model
@@ -210,7 +172,7 @@ cwd = os.getcwd()
 # #### Read in the model output and check against the instruction file
 #
 
-# %%
+# %% jupyter={"source_hidden": true}
 # check_ins_and_outs function
 import pathlib
 import pandas as pd
@@ -345,5 +307,8 @@ except InsOutMismatchError as e:
 output_file = pestpp_model_dir / "modelobs.dat"
 output = pd.read_csv(output_file, delim_whitespace=True)
 output
+
+# %%
+output.loc[output["obsname"].str.contains("soil")]
 
 # %%
