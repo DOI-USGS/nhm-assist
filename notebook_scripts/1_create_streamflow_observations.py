@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 
 # Use home directory for Nebari, otherwise use repo root_dir
 if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = Path.home() / ".env"
+    dotenv_path = pl.Path.home() / ".env"
 else:
     dotenv_path = root_dir / ".env"
 
