@@ -523,7 +523,7 @@ def create_default_gages_file(
 
     for idx, row in default_gages_df.iterrows():
         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = resource_gages_file_df["poi_gage_id"].to_list()
+        check_list = resource_gages_file_df["poi_id"].to_list()
         #print(check_list)
         for item in columns:
             if pd.isnull(row[item]):
