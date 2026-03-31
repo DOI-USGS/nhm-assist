@@ -7,9 +7,9 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: hytest-hytest-NHM-Assist
+#     display_name: Python 3 (ipykernel)
 #     language: python
-#     name: conda-env-hytest-hytest-NHM-Assist-py
+#     name: python3
 # ---
 
 # %%
