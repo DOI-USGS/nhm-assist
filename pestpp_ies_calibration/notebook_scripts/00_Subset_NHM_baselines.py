@@ -5,11 +5,11 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: hytest-hytest-NHM-Assist
 #     language: python
-#     name: python3
+#     name: conda-env-hytest-hytest-NHM-Assist-py
 # ---
 
 # %%
@@ -217,7 +217,6 @@ SCA = xr.open_dataset(conus_baselines_dir / "baseline_SCA_v11.nc", chunks="auto"
 
 # %%
 # populating variables used in Parker Norton's function.
-baseline_file = conus_baselines_dir / "baseline_SCA_v11.nc"
 sca_var = "snow_cover_extent"
 ci_var = "sca_clear_index"
 # st_date = '2000-01-01' #per publication
@@ -226,9 +225,8 @@ remove_ja = True  # This is technically the first filter for removing July and A
 
 
 # %%
-def get_dataset(filename, f_vars, start_date, end_date):
+def get_dataset(df, f_vars, start_date, end_date):
     # This routine assumes dimension nhru exists and variable nhm_id exists
-    df = xr.open_dataset(filename)
     # NOTE: Next line needed if nhm_id variable exists in netcdf file
     df = df.assign_coords(nhru=df.nhm_id)
     if isinstance(f_vars, list):
@@ -238,7 +236,7 @@ def get_dataset(filename, f_vars, start_date, end_date):
     return df
 
 
-baseline_df = get_dataset(baseline_file, [sca_var, ci_var, "nhru"], sca_start, sca_end)
+baseline_df = get_dataset(SCA, [sca_var, ci_var, "nhru"], sca_start, sca_end)
 
 # Applying first filter to remove selected months, July and August, from the dataset, selects months to keep.
 if remove_ja:
@@ -264,26 +262,31 @@ ci_pct /= 100.0
 sca_obs = baseline_restr[sca_var].where(~np.isnan(ci_pct))
 
 # Maximum SCA value of those within the threshold...so really "sca_obs_max"
-msk_SCAmax = sca_obs.max(axis=0)
+msk_SCAmax = sca_obs.max(axis=0).compute()
 
 # Now count the data sca_obs:
 # Number of daily values > 0.0 by HRU
-msk_num_obs = (sca_obs > 0.0).sum(axis=0)
+msk_num_obs = (sca_obs > 0.0).sum(axis=0).compute()
 
 # Excluding HRUs that do not have enough values
 # Number of years of values by HRU: How many years of annula values that are greater than 0?
 msk_num_ann = sca_obs.resample(
     time="1AS"
 ).mean()  # resamples the df and finds the average value for each year
-msk_num_ann = (msk_num_ann > 0).sum(
-    axis=0
-)  # takes a count of all average annual values greater than 0.
+msk_num_ann = (
+    (msk_num_ann > 0).sum(axis=0)
+).compute()  # takes a count of all average annual values greater than 0.
 
 # Create SCA mask based on:
 # 1 - Keeps HRUs targets where at least 2 years of data that were the annual average values are greater than 0 (see above),
 # 2 - and, where sca_max is greater than 50%,
 # 3 - and, where there are least 9 days of values in the total selected period.
 SCAmask = (msk_num_ann > 1) & (msk_SCAmax > 0.5) & (msk_num_obs > 9)
+
+# %%
+del baseline_restr, baseline_df, msk_SCAmax, msk_num_obs, msk_num_ann
+SCA.close()
+del SCA
 
 # %%
 # Lower bound of SCA by HRU
@@ -311,8 +314,7 @@ c_da = SCA_daily.sel(nhru=nhm_ids)
 c_da.to_netcdf(obsdir / f"SCA_daily.nc")
 
 # %%
-SCA.close()
-SCA_daily.close()
+del ci_pct, sca_obs, SCAmask, baseline_SCAmin, baseline_SCAmax, SCA_daily
 
 # %% [markdown]
 # ### Lets peak at SCA
