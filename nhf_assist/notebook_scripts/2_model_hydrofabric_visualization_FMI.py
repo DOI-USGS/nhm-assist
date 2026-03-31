@@ -218,7 +218,7 @@ print(len(list(set(monitoring_station_number_list))))
 print(len(monitoring_station_number_list))
 
 
-# %% jupyter={"source_hidden": true}
+# %%
 def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
     """
     This is used to find metadata neede for gages in the list provided.

@@ -165,10 +165,6 @@ def fetch_nwis_gage_info(
     crs = 4326
 
     # Make a list of the state abbreviations the subdomain intersects for NWIS queries
-    states_gdf = gpd.read_file(
-        root_dir / "data_dependencies/US_states/tl_2017_us_state.shp"
-    ).to_crs(crs)
-
     aoi_bb = hru_gdf.total_bounds.tolist()
 
     """
@@ -228,6 +224,7 @@ def fetch_nwis_gage_info(
         """
 
         # DataFrames
+        #print(domain_discharge.crs)
         points_gdf = domain_discharge.set_crs("EPSG:4326").to_crs(crs=3857)
         lines_gdf = seg_gdf.to_crs(crs=3857)  # change proj to get practical linear unit
 
