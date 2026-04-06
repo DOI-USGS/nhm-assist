@@ -316,7 +316,7 @@ obgnme_list = list(set(obs.loc[mask, "obgnme"]))
 if (len(obgnme_list) == 1) & (obgnme_list[0] == "streamflow_daily_ex_low"):
     print(f"[PASS]: All '0' streamflow observations are in {obs_group}.")
 else:
-    change_list = obgnme_list.remove(obs_group)
+    change_list = [x for x in obgnme_list if x != obs_group]
     chang_mask = (mask) & (obs["obgnme"].isin(change_list))
 
     print(

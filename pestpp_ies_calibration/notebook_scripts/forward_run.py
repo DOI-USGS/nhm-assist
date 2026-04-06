@@ -504,6 +504,9 @@ hru_streamflow_out_monthly = hru_streamflow_out_daily.resample(time = 'm').mean(
 # %%
 #This converts the average daily rate to a rate in cubic feet per second to compare to observation
 hru_streamflow_out_rate = (hru_streamflow_out_monthly)/(24*60*60)
+# For pest++-ies bug fix
+threshold = 1.0e-5
+hru_streamflow_out_rate = hru_streamflow_out_rate.where(hru_streamflow_out_rate >= threshold, 0)
 
 # %%
 inds = [f'{i.year}_{i.month}:{j}' for i in hru_streamflow_out_rate.indexes['time'] for j in hru_streamflow_out_rate['nhm_id'].values]
