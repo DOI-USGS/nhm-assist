@@ -923,9 +923,11 @@ exe_name
 # %%
 # check that pestpp executable exists and run. otherwise, get the exe
 if not pl.Path(pestpp_model_dir / exe_name).exists():
-    pyemu.utils.get_pestpp(str(pestpp_model_dir), branch="develop")
+    print(".exe missing")
+    pyemu.utils.get_pestpp(str(pestpp_model_dir))
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
 else:
+    print(".exe found")
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
 
 # %%

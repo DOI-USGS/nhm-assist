@@ -602,7 +602,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Rogue_River"
+child_name = "Malheur_Lake"
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
