@@ -6,7 +6,7 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info
+from helpers.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_nwis_gage_info
 
 import sys
 import pathlib as pl
@@ -374,26 +374,25 @@ def create_poi_df(
         pdb["poi_gage_segment"].as_dataframe, left_index=True, right_index=True
     )
     poi = poi.merge(pdb["poi_type"].as_dataframe, left_index=True, right_index=True)
-    # poi = poi.merge(
-    #     pdb["nhm_seg"].as_dataframe, left_on="poi_gage_segment", right_index=True
-    # )
-
-    #poi.rename(columns={"poi_gage_id": "poi_gage_id"}, inplace=True)
-
+    
     """
     Create a dataframe for poi_gages from the parameter file with NWIS gage information data.
 
     """
-    nwis_gage_info_aoi = fetch_nwis_gage_info(
-        root_dir=root_dir,
-        model_dir=model_dir,
-        control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
-        hru_gdf=hru_gdf,
-        seg_gdf=seg_gdf,
-    )
+    # nwis_gage_info_aoi = fetch_nwis_gage_info(
+    #     root_dir=root_dir,
+    #     model_dir=model_dir,
+    #     control_file_name=control_file_name,
+    #     nwis_gage_nobs_min=nwis_gage_nobs_min,
+    #     hru_gdf=hru_gdf,
+    #     seg_gdf=seg_gdf,
+    # )
+    npoigages_info = find_missing_gage_info(root_dir=root_dir,
+                                                dest_dir= model_dir / "metadata",
+                                                gages_list=poi["poi_gage_id"].to_list(),
+                                                info_file_name= "npoigages_info")
 
-    poi = poi.merge(nwis_gage_info_aoi, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
+    poi = poi.merge(npoigages_info, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
 
     """

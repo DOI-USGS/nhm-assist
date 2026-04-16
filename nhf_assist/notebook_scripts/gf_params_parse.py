@@ -34,6 +34,7 @@ root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
 from helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
+from helpers.nhm_assist_utilities_v2 import find_missing_gage_info
 
 
 # %%
@@ -68,7 +69,7 @@ from rich import pretty
 pretty.install()
 
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -118,309 +119,309 @@ def read_data(filename):
     return data
 
 
-def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
-    """
-    This is used to find metadata neede for gages in the list provided.
+# def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
+#     """
+#     This is used to find metadata neede for gages in the list provided.
 
-    First, metadata is sought for in the resource (suuplemental) gages file (if one exists).
-    Second, location data specifically is sought for in the usgs_nldi_gages database,
-    Third, metadata is sought for in USGS WaterData database.
+#     First, metadata is sought for in the resource (suuplemental) gages file (if one exists).
+#     Second, location data specifically is sought for in the usgs_nldi_gages database,
+#     Third, metadata is sought for in USGS WaterData database.
 
-    """
-    npoigages_data_dir = root_dir / "data_dependencies/"
+#     """
+#     npoigages_data_dir = root_dir / "data_dependencies/"
 
-    # dest_dir.mkdir(parents=True, exist_ok=True)
+#     # dest_dir.mkdir(parents=True, exist_ok=True)
 
-    info_file_path = dest_dir / f"{info_file_name}.csv"
-    info_supplement_path = dest_dir / f"{info_file_name}_supplemental.csv"
+#     info_file_path = dest_dir / f"{info_file_name}.csv"
+#     info_supplement_path = dest_dir / f"{info_file_name}_supplemental.csv"
 
-    nan_list = [np.nan] * len(gages_list)  # Initialize empty list
-    gages_df = pd.DataFrame(
-        {
-            "poi_gage_id": gages_list,
-            "poi_agency": nan_list,
-            "poi_name": nan_list,
-            "latitude": nan_list,
-            "longitude": nan_list,
-            "drainage_area": nan_list,
-            "drainage_area_contrib": nan_list,
-        }
-    )  # Initialize empty datafame
+#     nan_list = [np.nan] * len(gages_list)  # Initialize empty list
+#     gages_df = pd.DataFrame(
+#         {
+#             "poi_gage_id": gages_list,
+#             "poi_agency": nan_list,
+#             "poi_name": nan_list,
+#             "latitude": nan_list,
+#             "longitude": nan_list,
+#             "drainage_area": nan_list,
+#             "drainage_area_contrib": nan_list,
+#         }
+#     )  # Initialize empty datafame
 
-    # Check for resource (supplemental) file, if present, append information to gages_df
-    if info_supplement_path.exists():
-        col_names_1 = [
-            "poi_gage_id",
-            "poi_agency",
-            "poi_name",
-            "latitude",
-            "longitude",
-            "drainage_area",
-            "drainage_area_contrib",
-        ]
-        col_types_1 = [np.str_, np.str_, np.str_, float, float, float, float]
-        cols = dict(zip(col_names_1, col_types_1))
-        info_supplement_df = pd.read_csv(info_supplement_path, dtype=cols)
+#     # Check for resource (supplemental) file, if present, append information to gages_df
+#     if info_supplement_path.exists():
+#         col_names_1 = [
+#             "poi_gage_id",
+#             "poi_agency",
+#             "poi_name",
+#             "latitude",
+#             "longitude",
+#             "drainage_area",
+#             "drainage_area_contrib",
+#         ]
+#         col_types_1 = [np.str_, np.str_, np.str_, float, float, float, float]
+#         cols = dict(zip(col_names_1, col_types_1))
+#         info_supplement_df = pd.read_csv(info_supplement_path, dtype=cols)
 
-        gages_lacking_info_list = []
-        gages_found_info_list = []
-        check_list = info_supplement_df["poi_gage_id"].to_list()
+#         gages_lacking_info_list = []
+#         gages_found_info_list = []
+#         check_list = info_supplement_df["poi_gage_id"].to_list()
 
-        if len(check_list) > 0:
-            print(
-                f"The {info_file_name}_supplemental.csv exists and has {len(check_list)} gages."
-            )
-            for idx, row in gages_df.iterrows():
-                columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-                item_lacking_list = []
-                item_found_list = []
-                for item in columns:
-                    if pd.isnull(row[item]):
-                        item_lacking_list.append(item)
-                        gages_lacking_info_list.append(row["poi_gage_id"])
-                        new_poi_id = row["poi_gage_id"]
-                        if new_poi_id in check_list:
-                            gages_found_info_list.append(row["poi_gage_id"])
-                            item_found_list.append(item)
-                            new_item = info_supplement_df.loc[
-                                info_supplement_df.poi_gage_id == new_poi_id, item
-                            ].values[0]
-                            gages_df.loc[idx, item] = new_item
-                        else:
-                            pass
+#         if len(check_list) > 0:
+#             print(
+#                 f"The {info_file_name}_supplemental.csv exists and has {len(check_list)} gages."
+#             )
+#             for idx, row in gages_df.iterrows():
+#                 columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+#                 item_lacking_list = []
+#                 item_found_list = []
+#                 for item in columns:
+#                     if pd.isnull(row[item]):
+#                         item_lacking_list.append(item)
+#                         gages_lacking_info_list.append(row["poi_gage_id"])
+#                         new_poi_id = row["poi_gage_id"]
+#                         if new_poi_id in check_list:
+#                             gages_found_info_list.append(row["poi_gage_id"])
+#                             item_found_list.append(item)
+#                             new_item = info_supplement_df.loc[
+#                                 info_supplement_df.poi_gage_id == new_poi_id, item
+#                             ].values[0]
+#                             gages_df.loc[idx, item] = new_item
+#                         else:
+#                             pass
 
-            lacking_info_list = list(set(gages_lacking_info_list))
-            gages_found_info_list = list(set(gages_found_info_list))
-            still_lacking_info_list = [
-                x for x in lacking_info_list if x not in gages_found_info_list
-            ]
+#             lacking_info_list = list(set(gages_lacking_info_list))
+#             gages_found_info_list = list(set(gages_found_info_list))
+#             still_lacking_info_list = [
+#                 x for x in lacking_info_list if x not in gages_found_info_list
+#             ]
 
-            print(
-                f"{len(gages_found_info_list)} gages found in {info_file_name}_supplemental.csv"
-            )
-        else:
-            print(f"The {info_file_name}_supplemental.csv exists but is empty.")
+#             print(
+#                 f"{len(gages_found_info_list)} gages found in {info_file_name}_supplemental.csv"
+#             )
+#         else:
+#             print(f"The {info_file_name}_supplemental.csv exists but is empty.")
 
-    else:
-        pass
+#     else:
+#         pass
 
-    ##### Check NLDI database for missing gage info
-    file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
-    nldi_gdf = gpd.read_file(file_path)  # or .geojson
+#     ##### Check NLDI database for missing gage info
+#     file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
+#     nldi_gdf = gpd.read_file(file_path)  # or .geojson
 
-    # Split on the first '-' and create new columns
-    nldi_gdf[["poi_agency", "poi_gage_id"]] = (
-        nldi_gdf["id"]
-        .astype("string")  # keeps NaN as <NA>
-        .str.strip()
-        .str.split("-", n=1, expand=True)  # split on the first dash only
-    )
-    nldi_gdf.to_file(
-        npoigages_data_dir / "usgs_nldi_gages.gpkg",
-        driver="GPKG",
-    )
+#     # Split on the first '-' and create new columns
+#     nldi_gdf[["poi_agency", "poi_gage_id"]] = (
+#         nldi_gdf["id"]
+#         .astype("string")  # keeps NaN as <NA>
+#         .str.strip()
+#         .str.split("-", n=1, expand=True)  # split on the first dash only
+#     )
+#     nldi_gdf.to_file(
+#         npoigages_data_dir / "usgs_nldi_gages.gpkg",
+#         driver="GPKG",
+#     )
 
-    nldi_gdf = nldi_gdf[["poi_agency", "name", "poi_gage_id", "geometry"]]
-    nldi_gdf.rename(
-        columns={
-            "name": "poi_name",
-        },
-        inplace=True,
-    )
-    nldi_gdf["latitude"] = nldi_gdf.geometry.y
-    nldi_gdf["longitude"] = nldi_gdf.geometry.x
-    nldi_gdf["drainage_area"] = np.nan
-    nldi_gdf["drainage_area_contrib"] = np.nan
+#     nldi_gdf = nldi_gdf[["poi_agency", "name", "poi_gage_id", "geometry"]]
+#     nldi_gdf.rename(
+#         columns={
+#             "name": "poi_name",
+#         },
+#         inplace=True,
+#     )
+#     nldi_gdf["latitude"] = nldi_gdf.geometry.y
+#     nldi_gdf["longitude"] = nldi_gdf.geometry.x
+#     nldi_gdf["drainage_area"] = np.nan
+#     nldi_gdf["drainage_area_contrib"] = np.nan
 
-    nldi_gdf = nldi_gdf[
-        [
-            "poi_gage_id",
-            "poi_agency",
-            "poi_name",
-            "latitude",
-            "longitude",
-            "drainage_area",
-            "drainage_area_contrib",
-            "geometry",
-        ]
-    ]
+#     nldi_gdf = nldi_gdf[
+#         [
+#             "poi_gage_id",
+#             "poi_agency",
+#             "poi_name",
+#             "latitude",
+#             "longitude",
+#             "drainage_area",
+#             "drainage_area_contrib",
+#             "geometry",
+#         ]
+#     ]
 
-    gages_lacking_info_list = []
-    gages_found_info_list = []
-    check_list = nldi_gdf["poi_gage_id"].to_list()
+#     gages_lacking_info_list = []
+#     gages_found_info_list = []
+#     check_list = nldi_gdf["poi_gage_id"].to_list()
 
-    for idx, row in gages_df.iterrows():
-        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        item_lacking_list = []
-        item_found_list = []
-        for item in columns:
-            if pd.isnull(row[item]):
-                item_lacking_list.append(item)
-                gages_lacking_info_list.append(row["poi_gage_id"])
-                new_poi_id = row["poi_gage_id"]
-                if new_poi_id in check_list:
-                    gages_found_info_list.append(row["poi_gage_id"])
-                    item_found_list.append(item)
-                    new_item = nldi_gdf.loc[
-                        nldi_gdf.poi_gage_id == new_poi_id, item
-                    ].values[0]
-                    gages_df.loc[idx, item] = new_item
-                else:
-                    pass
+#     for idx, row in gages_df.iterrows():
+#         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+#         item_lacking_list = []
+#         item_found_list = []
+#         for item in columns:
+#             if pd.isnull(row[item]):
+#                 item_lacking_list.append(item)
+#                 gages_lacking_info_list.append(row["poi_gage_id"])
+#                 new_poi_id = row["poi_gage_id"]
+#                 if new_poi_id in check_list:
+#                     gages_found_info_list.append(row["poi_gage_id"])
+#                     item_found_list.append(item)
+#                     new_item = nldi_gdf.loc[
+#                         nldi_gdf.poi_gage_id == new_poi_id, item
+#                     ].values[0]
+#                     gages_df.loc[idx, item] = new_item
+#                 else:
+#                     pass
 
-    lacking_info_list = list(set(gages_lacking_info_list))
-    gages_found_info_list = list(set(gages_found_info_list))
-    still_lacking_info_list = [
-        x for x in lacking_info_list if x not in gages_found_info_list
-    ]
+#     lacking_info_list = list(set(gages_lacking_info_list))
+#     gages_found_info_list = list(set(gages_found_info_list))
+#     still_lacking_info_list = [
+#         x for x in lacking_info_list if x not in gages_found_info_list
+#     ]
 
-    print(
-        f"{len(gages_found_info_list)} gages found in NLDI database.csv",
-        # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
-    )
+#     print(
+#         f"{len(gages_found_info_list)} gages found in NLDI database.csv",
+#         # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
+#     )
 
-    # Get monitoring location information from USGS WaterData
-    """Now, get the site infomation for the new list
-            used the chunk format from the example: 
-            https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
-    """
-    chunk_size = 100
-    site_list = gages_df["poi_gage_id"].unique().tolist()
+#     # Get monitoring location information from USGS WaterData
+#     """Now, get the site infomation for the new list
+#             used the chunk format from the example: 
+#             https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
+#     """
+#     chunk_size = 100
+#     site_list = gages_df["poi_gage_id"].unique().tolist()
 
-    chunks = [
-        site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
-    ]
-    domain_locations = pd.DataFrame()
+#     chunks = [
+#         site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
+#     ]
+#     domain_locations = pd.DataFrame()
 
-    for site_group in chunks:
-        try:
-            chunk_data, _ = waterdata.get_monitoring_locations(
-                monitoring_location_number=site_group,
-                site_type_code="ST",
-                properties=[
-                    "monitoring_location_id",
-                    "geometry",
-                    "agency_code",
-                    "agency_name",
-                    "monitoring_location_number",
-                    "monitoring_location_name",
-                    "state_name",
-                    "drainage_area",
-                    "contributing_drainage_area",
-                ],
-            )
-            if not chunk_data.empty:
-                domain_locations = pd.concat([domain_locations, chunk_data])
-            else:
-                print("No info in NWIS.")
+#     for site_group in chunks:
+#         try:
+#             chunk_data, _ = waterdata.get_monitoring_locations(
+#                 monitoring_location_number=site_group,
+#                 site_type_code="ST",
+#                 properties=[
+#                     "monitoring_location_id",
+#                     "geometry",
+#                     "agency_code",
+#                     "agency_name",
+#                     "monitoring_location_number",
+#                     "monitoring_location_name",
+#                     "state_name",
+#                     "drainage_area",
+#                     "contributing_drainage_area",
+#                 ],
+#             )
+#             if not chunk_data.empty:
+#                 domain_locations = pd.concat([domain_locations, chunk_data])
+#             else:
+#                 print("No info in NWIS.")
 
-        except Exception as e:
-            print(f"Chunk failed: {e}")
-    if not domain_locations.empty:
-        domain_locations["latitude"] = (
-            domain_locations.geometry.y
-        )  # need this for the notebooks
-        domain_locations["longitude"] = (
-            domain_locations.geometry.x
-        )  # need this for the notebooks
+#         except Exception as e:
+#             print(f"Chunk failed: {e}")
+#     if not domain_locations.empty:
+#         domain_locations["latitude"] = (
+#             domain_locations.geometry.y
+#         )  # need this for the notebooks
+#         domain_locations["longitude"] = (
+#             domain_locations.geometry.x
+#         )  # need this for the notebooks
 
-        waterdata_info = None
-        waterdata_info = (
-            domain_locations.set_index(
-                "monitoring_location_number", drop=False
-            ).set_crs("EPSG:4326")
-            # .to_crs(crs)
-        )
+#         waterdata_info = None
+#         waterdata_info = (
+#             domain_locations.set_index(
+#                 "monitoring_location_number", drop=False
+#             ).set_crs("EPSG:4326")
+#             # .to_crs(crs)
+#         )
 
-        field_map = {
-            "agency_code": "poi_agency",
-            "monitoring_location_number": "poi_gage_id",
-            "monitoring_location_name": "poi_name",
-            "geometry": "geometry",
-            "latitude": "latitude",
-            "longitude": "longitude",
-            "drainage_area": "drainage_area",
-            "contributing_drainage_area": "drainage_area_contrib",
-        }
-        include_cols = list(field_map.keys())
+#         field_map = {
+#             "agency_code": "poi_agency",
+#             "monitoring_location_number": "poi_gage_id",
+#             "monitoring_location_name": "poi_name",
+#             "geometry": "geometry",
+#             "latitude": "latitude",
+#             "longitude": "longitude",
+#             "drainage_area": "drainage_area",
+#             "contributing_drainage_area": "drainage_area_contrib",
+#         }
+#         include_cols = list(field_map.keys())
 
-        waterdata_info = waterdata_info.loc[:, include_cols]
-        waterdata_info.rename(columns=field_map, inplace=True)
-        waterdata_info.set_index("poi_gage_id", inplace=True)
-        waterdata_info = waterdata_info.sort_index()
-        waterdata_info.reset_index(inplace=True)
+#         waterdata_info = waterdata_info.loc[:, include_cols]
+#         waterdata_info.rename(columns=field_map, inplace=True)
+#         waterdata_info.set_index("poi_gage_id", inplace=True)
+#         waterdata_info = waterdata_info.sort_index()
+#         waterdata_info.reset_index(inplace=True)
 
-        gages_lacking_info_list = []
-        gages_found_info_list = []
-        check_list = waterdata_info["poi_gage_id"].to_list()
+#         gages_lacking_info_list = []
+#         gages_found_info_list = []
+#         check_list = waterdata_info["poi_gage_id"].to_list()
 
-        for idx, row in gages_df.iterrows():
-            columns = [
-                "latitude",
-                "longitude",
-                "poi_name",
-                "poi_agency",
-                "drainage_area",
-                "drainage_area_contrib",
-            ]
-            item_lacking_list = []
-            item_found_list = []
-            for item in columns:
-                if pd.isnull(row[item]):
-                    item_lacking_list.append(item)
-                    gages_lacking_info_list.append(row["poi_gage_id"])
-                    new_poi_id = row["poi_gage_id"]
-                    if new_poi_id in check_list:
-                        gages_found_info_list.append(row["poi_gage_id"])
-                        item_found_list.append(item)
-                        new_item = waterdata_info.loc[
-                            waterdata_info.poi_gage_id == new_poi_id, item
-                        ].values[0]
-                        gages_df.loc[idx, item] = new_item
-                    else:
-                        pass
+#         for idx, row in gages_df.iterrows():
+#             columns = [
+#                 "latitude",
+#                 "longitude",
+#                 "poi_name",
+#                 "poi_agency",
+#                 "drainage_area",
+#                 "drainage_area_contrib",
+#             ]
+#             item_lacking_list = []
+#             item_found_list = []
+#             for item in columns:
+#                 if pd.isnull(row[item]):
+#                     item_lacking_list.append(item)
+#                     gages_lacking_info_list.append(row["poi_gage_id"])
+#                     new_poi_id = row["poi_gage_id"]
+#                     if new_poi_id in check_list:
+#                         gages_found_info_list.append(row["poi_gage_id"])
+#                         item_found_list.append(item)
+#                         new_item = waterdata_info.loc[
+#                             waterdata_info.poi_gage_id == new_poi_id, item
+#                         ].values[0]
+#                         gages_df.loc[idx, item] = new_item
+#                     else:
+#                         pass
 
-        lacking_info_list = list(set(gages_lacking_info_list))
-        gages_found_info_list = list(set(gages_found_info_list))
-        still_lacking_info_list = [
-            x for x in lacking_info_list if x not in gages_found_info_list
-        ]
+#         lacking_info_list = list(set(gages_lacking_info_list))
+#         gages_found_info_list = list(set(gages_found_info_list))
+#         still_lacking_info_list = [
+#             x for x in lacking_info_list if x not in gages_found_info_list
+#         ]
 
-        print(
-            f"{len(gages_found_info_list)} gages found metadata in USGS WaterData database.",
-            # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
-        )
-    else:
-        print("Gage metadata not found in USGS WaterData database.")
-    # Have to make code for if exists, check for, and then append so we don't overwrite
-    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
-    gages_missing_info_df = gages_df.loc[gages_df[cols].isna().any(axis=1)]
-    print(
-        f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the {info_file_name}_supplemental.csv",
-        f"User must complete needed information and rerun this notebook to include these gages {list(gages_missing_info_df['poi_gage_id'])}.",
-    )
-    gages_df = gages_df[
-        ~gages_df["poi_gage_id"].isin(gages_missing_info_df["poi_gage_id"])
-    ]
+#         print(
+#             f"{len(gages_found_info_list)} gages found metadata in USGS WaterData database.",
+#             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
+#         )
+#     else:
+#         print("Gage metadata not found in USGS WaterData database.")
+#     # Have to make code for if exists, check for, and then append so we don't overwrite
+#     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+#     gages_missing_info_df = gages_df.loc[gages_df[cols].isna().any(axis=1)]
+#     print(
+#         f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the {info_file_name}_supplemental.csv",
+#         f"User must complete needed information and rerun this notebook to include these gages {list(gages_missing_info_df['poi_gage_id'])}.",
+#     )
+#     gages_df = gages_df[
+#         ~gages_df["poi_gage_id"].isin(gages_missing_info_df["poi_gage_id"])
+#     ]
 
-    if info_supplement_path.exists():
-        existing_resource_df = info_supplement_df.copy()
-        gages_missing_info_df = pd.concat(
-            [existing_resource_df, gages_missing_info_df], ignore_index=True
-        )
-        gages_missing_info_df.to_csv(info_supplement_path, index=False)
-    else:
-        if not gages_missing_info_df.empty:
-            gages_missing_info_df.to_csv(info_supplement_path, index=False)
-        else:
-            print(
-                "All gages in the gage list provided have all required metadata.",
-                f"see gage meta data file at {dest_dir}/npoigages_info.csv",
-            )
+#     if info_supplement_path.exists():
+#         existing_resource_df = info_supplement_df.copy()
+#         gages_missing_info_df = pd.concat(
+#             [existing_resource_df, gages_missing_info_df], ignore_index=True
+#         )
+#         gages_missing_info_df.to_csv(info_supplement_path, index=False)
+#     else:
+#         if not gages_missing_info_df.empty:
+#             gages_missing_info_df.to_csv(info_supplement_path, index=False)
+#         else:
+#             print(
+#                 "All gages in the gage list provided have all required metadata.",
+#                 f"see gage meta data file at {dest_dir}/npoigages_info.csv",
+#             )
 
-    gages_df.to_csv(dest_dir / f"{info_file_name}.csv", index=False)
+#     gages_df.to_csv(dest_dir / f"{info_file_name}.csv", index=False)
 
-    return gages_df
+#     return gages_df
 
 
 def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
@@ -472,9 +473,10 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
     dups_df["line_geom"] = dups_df["nhm_seg_id"].map(line_geom_map)
 
     # distance between point geometry and its line geometry
-    dups_df["dist_to_line"] = dups_df.apply(
-        lambda r: r.geometry.distance(r.line_geom), axis=1
-    )
+    # dups_df["dist_to_line"] = dups_df.apply(
+    #     lambda r: r.geometry.distance(r.line_geom), axis=1
+    # )
+    dups_df["dist_to_line"] = dups_df.geometry.distance(dups_df["line_geom"])
 
     dups_df = dups_df.sort_values(
         by=["poi_gage_id", "dist_to_line"], ascending=[True, True]
@@ -602,7 +604,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Malheur_Lake"
+child_name = "Sandy_River"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -683,13 +685,13 @@ with open(param_source_files_dir / "nhm_seg.csv", "w", newline="") as f:
 # These parameters are highly tailored for specific model application. In this section, a subset of pois associated with streamflow gages from the GFv2 are selected for the child domain and are filtered to include gages that have at least one year of daily discharge data. Note: this gage list is meant to be a starting point and often, and likely, incomplete for the domain. NHM-assist offers workflows that can be used to evaluate other gages in the domain and add gages to the paramter file if needed.
 
 # %%
-poi_gdb.columns
-
-# %%
 child_npoi_gdf = poi_gdb.copy()
 child_npoi_gdf["segment_id"] = child_npoi_gdf["segment_id"].astype(
     int
-)  # or 'int64' / 'Int64'
+)  # or 'int' / 'Int64'
+
+# %%
+poi_gdb.columns
 
 # %% [markdown]
 # ##### Create a unique id for each poi for cross-reference
@@ -699,6 +701,9 @@ child_npoi_gdf["segment_id"] = child_npoi_gdf["segment_id"].astype(
 child_npoi_gdf["merge_id"] = (
     child_npoi_gdf["vpu"].astype(str) + "-" + child_npoi_gdf["vpu_poi_id"].astype(str)
 )
+
+# %%
+child_npoi_gdf
 
 # %% [markdown]
 # ##### `merge_id` checks
@@ -737,7 +742,7 @@ child_npoi_gdf.info()
 # child_npoi_gdf.loc[child_npoi_gdf["merge_id"] == "17-15012"]
 
 # %% [markdown]
-# ##### Import the gage metadata (npoi_data) included in the GF
+# ##### Import the poi metadata (npoi_data) included in the GF
 # The metadata is referrenced directly from the parent .gpkg
 
 # %%
@@ -748,12 +753,19 @@ gage_data_df = npoi_data.loc[
     npoi_data.hl_reference == "type_gage"
 ]  # not to be confused with pws "poi_typo" param
 
+# Get the list of HUC-12s for the child model area
+huc12pp_df = npoi_data.loc[npoi_data.hl_reference == "type_huc12"]
+
 # %% [markdown]
 # ##### Create a unique id for each poi for cross-reference
 
 # %%
 gage_data_df["merge_id"] = (
     gage_data_df["vpu"].astype(str) + "-" + gage_data_df["vpu_poi_id"].astype(str)
+)
+
+huc12pp_df["merge_id"] = (
+    huc12pp_df["vpu"].astype(str) + "-" + huc12pp_df["vpu_poi_id"].astype(str)
 )
 
 # %% [markdown]
@@ -810,6 +822,14 @@ gage_data_df.loc[gage_data_df.merge_id == "18-8687", "hl_link"] = "11532700"
 poi_gdf = pd.merge(
     child_npoi_gdf,
     gage_data_df,
+    left_on="merge_id",
+    right_on="merge_id",
+    how="inner",
+)
+
+huc12pp_gdf = pd.merge(
+    child_npoi_gdf,
+    huc12pp_df,
     left_on="merge_id",
     right_on="merge_id",
     how="inner",
@@ -906,6 +926,11 @@ seg_mapping = seg_mapping_df.set_index("nhm_seg_id")["segment_id"]
 
 poi_gdf_child["segment_id"] = poi_gdf_child["nhm_seg_id"].map(seg_mapping)
 
+# %%
+huc12pp_gdf_child = huc12pp_gdf.copy()
+huc12pp_gdf_child.rename(columns={"segment_id": "nhm_seg_id"}, inplace=True)
+huc12pp_gdf_child["segment_id"] = huc12pp_gdf_child["nhm_seg_id"].map(seg_mapping)
+
 # %% [markdown]
 # Check if a gage was included in the poi dateframe (poi_gdf_child) that had no segment mapped to it. This would happen if the pois selected in the child domain fell on segments not included in the child segment domain.
 
@@ -921,6 +946,17 @@ poi_gdf_child["segment_id"] = poi_gdf_child["segment_id"].astype(int)
 poi_gdf_child.sort_values(by="hl_link", ascending=True, inplace=True)
 poi_gdf_child.reset_index(inplace=True, drop=True)
 poi_gdf_child["poi_type"] = 1
+
+# %%
+nan_rows = huc12pp_gdf_child[huc12pp_gdf_child["segment_id"].isna()]
+print(
+    list(nan_rows["hl_link"]),
+    " removed, and associated with a segment(s) outside of the model domain.",
+)
+huc12pp_gdf_child = huc12pp_gdf_child.dropna(subset=["segment_id"])
+huc12pp_gdf_child["segment_id"] = huc12pp_gdf_child["segment_id"].astype(int)
+huc12pp_gdf_child.sort_values(by="hl_link", ascending=True, inplace=True)
+huc12pp_gdf_child.reset_index(inplace=True, drop=True)
 
 # %% [markdown]
 # #### Remove poi's that have no flow data for period 1979-10-01 to 2025-09-30 and populated site information
@@ -1228,7 +1264,7 @@ else:
 # ##### Add Oregon Recharge Project "current" Specific Conductance sites (SC_current)
 # Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's SC data collection sites
 
-# %% jupyter={"source_hidden": true}
+# %%
 ### List of current gages where SC data was collected (Oregon Recharge Project)
 sc_current_dir = f"{parent_dir}/npoigages_data/OR_SC_sites"
 sc_current_gdf = gpd.read_file(f"{sc_current_dir}/OR_current_SC.shp").to_crs(
@@ -1309,7 +1345,7 @@ else:
 # ##### Add Oregon Recharge Project "possible" Specific Conductance sites (SC_current)
 # Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's SC data collection sites
 
-# %% jupyter={"source_hidden": true}
+# %%
 ### List of possible gages where SC data was collected (Oregon Recharge Project)
 sc_possible_dir = f"{parent_dir}/npoigages_data/OR_SC_sites"
 sc_possible_gdf = gpd.read_file(f"{sc_possible_dir}/OR_possible_SC.shp").to_crs(
@@ -1393,7 +1429,7 @@ else:
 # ##### Add Oregon Recharge Project streamflow gages where Flow Management Index was determined (FMI_npoigages)
 # Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's FMI gages
 
-# %% jupyter={"source_hidden": true}
+# %%
 # If just given a list of Gage IDs
 FMI_GagedWatersheds_dir = pl.Path(f"{parent_dir}/npoigages_data/FMI_gages")
 FMI_GagedWatersheds_gdf = gpd.read_file(
@@ -1698,6 +1734,35 @@ seg_child_gdf.to_file(
     layer="nsegment",
     driver="GPKG",
 )
+
+# %%
+# Check validity for each geometry
+validity_series = huc12pp_gdf_child.geometry.is_valid
+
+# Check if ALL geometries are valid
+all_valid = validity_series.all()
+print("All huc12pp_gdf_child geometries valid?", all_valid)
+
+# If some are invalid, print their hru_id values (and optionally why)
+if not all_valid:
+    bad_rows = huc12pp_gdf_child.loc[~validity_series, ["segment_id", "geometry"]]
+    print("Rows with invalid geometry (by segment_id):")
+    print(bad_rows["segment_id"].tolist())
+
+    # # Optional: show validity reason for each bad geometry
+    # bad_rows = bad_rows.assign(
+    #     validity_reason=bad_rows["geometry"].apply(explain_validity)
+    # )
+    # print(bad_rows[["segment_id", "validity_reason"]])
+
+huc12pp_gdf_child.to_file(
+    f"{child_model_gis_dir}/model_layers.gpkg",
+    layer="huc12_pp",
+    driver="GPKG",
+)
+
+# %%
+huc12pp_gdf_child
 
 # %%
 # npoigages layer
