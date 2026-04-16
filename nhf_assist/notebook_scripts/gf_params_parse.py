@@ -282,7 +282,7 @@ def read_data(filename):
 
 #     # Get monitoring location information from USGS WaterData
 #     """Now, get the site infomation for the new list
-#             used the chunk format from the example: 
+#             used the chunk format from the example:
 #             https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
 #     """
 #     chunk_size = 100
