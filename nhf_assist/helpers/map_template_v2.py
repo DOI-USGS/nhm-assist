@@ -117,8 +117,8 @@ highlight_function_seg_map = lambda x: {
 }
 
 popup_seg = folium.GeoJsonPopup(
-    fields=["segment_id", "tosegment"],
-    aliases=["segment", "flows to segment"],
+    fields=["segment_id", "tosegment", "huc12_pp"],
+    aliases=["segment", "flows to segment", "huc12_pp"],
     labels=True,
     localize=False,
 )
@@ -1639,7 +1639,64 @@ def make_hf_map(
     )
     hru_simple = hru_simple.to_crs(crs)
     hru_map = create_hru_map(hru_simple)
+
+    huc10_map = gpd.read_file(
+        root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
+    ).to_crs(epsg=4326)
+    huc10_map =huc10_map[["huc10","geometry"]]
+    #huc10_map = gpd.clip(huc10_map, hru_map)
+    hru_union = hru_simple.geometry.unary_union
+    # If you’re on newer GeoPandas/Shapely, you can use:
+    # hru_union = hru_simple.geometry.union_all()
+
+    # Compute centroids and select HUC10s whose centroids fall within HRU union
+    huc10_centroids = huc10_map.copy()
+    huc10_centroids["geometry"] = huc10_centroids.geometry.centroid
+
+    huc10_in_hru = huc10_map[huc10_centroids.within(hru_union)]
+
+    huc10_map_layer = folium.GeoJson(
+        huc10_in_hru,
+        style_function= lambda x:{
+            "opacity": 1,
+            "fillColor": "#00000000",  #'goldenrod',
+            "color": "black",
+            "weight": 3,
+            },
+        name="HUC-10 basins",
+        # tooltip=tooltip_hru,
+        popup=folium.GeoJsonPopup(
+            fields=["huc10"],
+            aliases=["HUC-10"],
+            labels=True,
+            localize=False,
+            style=(
+                "font-size: 16px;"
+            ),  # Note that this tooltip style sets the style for all tool_tips.
+            # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
+        ),
+            )
     
+    huc12_pp_map = gpd.read_file(
+        root_dir / "domain_data" / subdomain / "GIS" / "model_layers.gpkg",
+        layer="huc12_pp",
+    ).to_crs(epsg=4326)
+    
+    
+    huc12_layer = folium.GeoJson(
+        huc12_pp_map,
+        name="HUC12 points",
+        show=True,
+        marker=folium.CircleMarker(radius=2, color="yellow", fill=True, fill_color = "yellow", fill_opacity=1,),
+        #tooltip=folium.GeoJsonTooltip(fields=["hl_link", "segment_id"]),
+        #popup=folium.GeoJsonPopup(fields=["hl_link", "segment_id"]),
+    )
+
+    
+    huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
+    seg_gdf["huc12_pp"] = "none"
+    seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
+        
     seg_map_show = create_segment_map_show(seg_gdf)
 
     poi_marker_cluster, poi_marker_cluster_label = create_poi_obs_marker_cluster(
@@ -1695,7 +1752,10 @@ def make_hf_map(
     m2.add_child(MeasureControl(position="bottomright"))
 
     hru_map.add_to(m2)
+    huc10_map_layer.add_to(m2)
+    
     seg_map_show.add_to(m2)
+    huc12_layer.add_to(m2)
 
     ref_poi_marker_cluster.add_to(m2)
     ref_poi_marker_cluster_label.add_to(m2)
@@ -2958,7 +3018,7 @@ def create_ref_gages_markers(
     )
 
     #### READ FMI table (.csv) for selected gages
-    ref_df_file = model_dir / "ref_npoigages_info.csv"
+    ref_df_file = model_dir / "metadata"/ "ref_npoigages_info.csv"
     
     col_names = [
         "poi_gage_id",
@@ -3058,7 +3118,7 @@ def create_non_ref_gages_markers(
     )
 
     #### READ FMI table (.csv) for selected gages
-    non_ref_df_file = model_dir / "non_ref_npoigages_info.csv"
+    non_ref_df_file = model_dir / "metadata" / "non_ref_npoigages_info.csv"
     
     col_names = [
         "poi_gage_id",
