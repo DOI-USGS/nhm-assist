@@ -115,7 +115,7 @@ print(root_dir)
 # <font size = '3'>The default is set to the example NHM subdomain model name, "willamette_river". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
-subdomain = "Willamette_River"
+subdomain = "Rogue_River"
 
 model_dir = root_dir / "domain_data" / subdomain
 
