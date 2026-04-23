@@ -6,7 +6,7 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from helpers.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_nwis_gage_info
+from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_nwis_gage_info
 
 import sys
 import pathlib as pl

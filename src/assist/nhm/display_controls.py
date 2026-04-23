@@ -1,19 +1,19 @@
 from ipywidgets import widgets
 from IPython.display import display, clear_output
-from nhm_helpers.map_template import make_var_map
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
-from nhm_helpers.nhm_output_visualization import retrieve_hru_output_info
+from assist.nhm.map_template import make_var_map
+from assist.nhm.nhm_hydrofabric import make_hf_map_elements
+from assist.nhm.nhm_output_visualization import retrieve_hru_output_info
 from ipywidgets import VBox
-from nhm_helpers.output_plots import plot_colors
-from nhm_helpers.output_plots import (
+from assist.nhm.output_plots import plot_colors
+from assist.nhm.output_plots import (
     var_colors_dict,
     leg_only_dict,
     make_plot_var_for_hrus_in_poi_basin,
     oopla,
 )
-from nhm_helpers.output_plots import create_streamflow_plot
-from nhm_helpers.map_template import make_streamflow_map
-from nhm_helpers.nhm_output_visualization import retrieve_hru_output_info
+from assist.nhm.output_plots import create_streamflow_plot
+from assist.nhm.map_template import make_streamflow_map
+from assist.nhm.nhm_output_visualization import retrieve_hru_output_info
 
 # import pathlib as pl
 # import os

@@ -22,8 +22,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rich import pretty
 from rich.progress import Progress
-from helpers.efc import efc
-from helpers.nhm_assist_utilities_v2 import fetch_nwis_gage_info
+from assist.nhf.efc import efc
+from assist.nhf.nhm_assist_utilities_v2 import fetch_nwis_gage_info
 
 import sys
 import os

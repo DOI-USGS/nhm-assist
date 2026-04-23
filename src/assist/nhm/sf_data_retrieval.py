@@ -25,8 +25,8 @@ from typing import Iterable, List, Tuple
 
 from rich import pretty
 from rich.progress import Progress
-from nhm_helpers.efc import efc
-from nhm_helpers.nhm_assist_utilities import fetch_nwis_gage_info
+from assist.nhm.efc import efc
+from assist.nhm.nhm_assist_utilities import fetch_nwis_gage_info
 
 
 

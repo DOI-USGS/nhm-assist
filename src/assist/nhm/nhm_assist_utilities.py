@@ -19,7 +19,7 @@ from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from rich.console import Console
 import glob
-from nhm_helpers.nhm_helpers import hrus_by_poi
+from assist.nhm.nhm_helpers import hrus_by_poi
 import yaml
 
 pretty.install()
