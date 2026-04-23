@@ -5,7 +5,7 @@ All notable changes to nhm-assist will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — 2025-05-14 through 2026-03-30
+## [1.1.0] — 2025-05-14 through 2026-03-30
 
 ### Added
 
@@ -46,7 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] — 2025-05-14
 
-Initial official release.
+This is the initial release of the NHM-Assist notebooks, which are a collection of python workflows presented in Jupyter notebooks for evaluating, running and interpreting National Hydrologic Model (NHM) subdomain models using pywatershed.
 
-[Unreleased]: https://github.com/DOI-USGS/NHM-Assist/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/DOI-USGS/NHM-Assist/releases/tag/v1.0.0
+### Citation
+Haj, A.E., Barker, M.I., Norton, P.A., McCreight, J.L., Ludden, L.L., and Snyder, A.M., 2025, nhm-assist: a collection of python workflows presented in Jupyter notebooks for evaluating, running and interpreting National Hydrologic Model (NHM) subdomain models, version 1.0.0: U.S. Geological Survey software release, https://doi.org/10.5066/P1NMW6US.
+
+
+[1.1.0]: https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.1.0
+[1.0.0]: https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.0.0
