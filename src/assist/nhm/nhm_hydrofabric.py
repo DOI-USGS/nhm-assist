@@ -6,7 +6,7 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from nhm_helpers.nhm_assist_utilities import (fetch_nwis_gage_info,
+from assist.nhm.nhm_assist_utilities import (fetch_nwis_gage_info,
                                               make_HW_cal_level_files)
 pretty.install()
 warnings.filterwarnings("ignore")
