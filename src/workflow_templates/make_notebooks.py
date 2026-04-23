@@ -4,19 +4,20 @@ from pathlib import Path
 import jupytext
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+TEMPLATES_ROOT = Path(__file__).resolve().parent
 
 WORKFLOW_DIRS = {
     "nhm": {
-        "input": REPO_ROOT / "workflow_templates" / "nhm",
+        "input": TEMPLATES_ROOT / "nhm",
         "output": REPO_ROOT / "notebooks",
     },
     "nhf": {
-        "input": REPO_ROOT / "workflow_templates" / "nhf",
+        "input": TEMPLATES_ROOT / "nhf",
         "output": REPO_ROOT / "nhf_assist" / "notebooks",
     },
     "pest": {
-        "input": REPO_ROOT / "workflow_templates" / "pest",
+        "input": TEMPLATES_ROOT / "pest",
         "output": REPO_ROOT / "pestpp_ies_calibration" / "notebooks",
     },
 }
