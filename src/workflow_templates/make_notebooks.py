@@ -3,30 +3,26 @@ from pathlib import Path
 
 import jupytext
 
+from assist.workspace.bridge import get_workflow_notebooks_dir
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+
 TEMPLATES_ROOT = Path(__file__).resolve().parent
 
-WORKFLOW_DIRS = {
-    "nhm": {
-        "input": TEMPLATES_ROOT / "nhm",
-        "output": REPO_ROOT / "notebooks",
-    },
-    "nhf": {
-        "input": TEMPLATES_ROOT / "nhf",
-        "output": REPO_ROOT / "nhf_assist" / "notebooks",
-    },
-    "pest": {
-        "input": TEMPLATES_ROOT / "pest",
-        "output": REPO_ROOT / "pestpp_ies_calibration" / "notebooks",
-    },
+WORKFLOW_INPUT_DIRS = {
+    "nhm": TEMPLATES_ROOT / "nhm",
+    "nhf": TEMPLATES_ROOT / "nhf",
+    "pest": TEMPLATES_ROOT / "pest",
 }
 
 
-def convert_workflow(name: str, *, dry_run: bool = False) -> list[Path]:
-    config = WORKFLOW_DIRS[name]
-    input_folder = config["input"]
-    output_folder = config["output"]
+def convert_workflow(
+    name: str,
+    *,
+    workspace_root: str | Path | None = None,
+    dry_run: bool = False,
+) -> list[Path]:
+    input_folder = WORKFLOW_INPUT_DIRS[name]
+    output_folder = get_workflow_notebooks_dir(name, workspace_root)
     created_paths = []
 
     if not input_folder.exists():
@@ -63,15 +59,23 @@ def parse_args(argv: list[str] | None = None, *, default_workflow: str = "nhm"):
         action="store_true",
         help="Print planned conversions without writing notebooks.",
     )
+    parser.add_argument(
+        "--workspace-root",
+        help="Optional external workspace root for notebook output.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None, *, default_workflow: str = "nhm") -> int:
     args = parse_args(argv, default_workflow=default_workflow)
-    workflows = list(WORKFLOW_DIRS) if args.workflow == "all" else [args.workflow]
+    workflows = list(WORKFLOW_INPUT_DIRS) if args.workflow == "all" else [args.workflow]
 
     for workflow in workflows:
-        convert_workflow(workflow, dry_run=args.dry_run)
+        convert_workflow(
+            workflow,
+            workspace_root=args.workspace_root,
+            dry_run=args.dry_run,
+        )
 
     return 0
 
