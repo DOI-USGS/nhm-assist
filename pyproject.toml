@@ -11,3 +11,45 @@ requires-python = ">=3.11"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[tool.pixi.pypi-dependencies]
+nhm-assist = { path = ".", editable = true }
+
+[tool.pixi.feature.nhm]
+channels = ["conda-forge", "nodefaults"]
+
+[tool.pixi.feature.nhm.dependencies]
+dask = "*"
+dataretrieval = "*"
+distributed = "*"
+folium = "==0.18"
+ipyleaflet = "==0.19.2"
+jupyter_contrib_nbextensions = "*"
+jupytext = "*"
+numpy = "<=2.2.0"
+pandas = "==2.2.3"
+pint-xarray = "*"
+pip = "*"
+plotly = "==5.24.1"
+pywatershed = ">=2.0.1"
+tobler = "==0.12.0"
+
+[tool.pixi.environments]
+default = { features = ["nhm"], solve-group = "default" }
+nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
+
+[tool.pixi.tasks]
+notebooks = { cmd = "python make_notebooks.py --workflow {{ workflow }}", args = [{ arg = "workflow", default = "all" }], default-environment = "default" }
+notebooks-workspace = { cmd = "python make_notebooks.py --workflow {{ workflow }} --workspace-root {{ workspace_root }}", args = ["workspace_root", { arg = "workflow", default = "all" }], default-environment = "default" }
+workspace-init = { cmd = "python -m assist.workspace.cli bootstrap --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
+project-create = { cmd = "python -m assist.workspace.cli create-project --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
+project-list = { cmd = "python -m assist.workspace.cli list-projects --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
+project-copy-example = { cmd = "python -m assist.workspace.cli copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "example_name"], default-environment = "default" }
+project-import = { cmd = "python -m assist.workspace.cli import-project --workspace-root {{ workspace_root }} --project-name {{ project_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "source_dir"], default-environment = "default" }
+
+[dependency-groups]
+nhm = ["dotenv", "hydroeval==0.1", "jupyter-black", "gdptools", "pyprms"]
