@@ -27,3 +27,5 @@ pestpp_ies_calibration/data_dependencies/
 pestpp_ies_calibration/notebooks/
 
 CLAUDE.md
+docs/
+tests/
