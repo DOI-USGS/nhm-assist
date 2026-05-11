@@ -69,7 +69,7 @@ from rich import pretty
 pretty.install()
 
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -604,7 +604,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Sandy_River"  # Powder_River, John_Day_River
+child_name = "North_Coast"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -686,9 +686,12 @@ with open(param_source_files_dir / "nhm_seg.csv", "w", newline="") as f:
 
 # %%
 child_npoi_gdf = poi_gdb.copy()
+child_npoi_gdf = child_npoi_gdf.loc[~child_npoi_gdf["segment_id"].isna()]
+
 child_npoi_gdf["segment_id"] = child_npoi_gdf["segment_id"].astype(
     int
 )  # or 'int' / 'Int64'
+# Put a drop rows with ["segment_id"] na
 
 # %%
 poi_gdb.columns
