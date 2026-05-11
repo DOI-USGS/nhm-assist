@@ -57,7 +57,7 @@ transparent = lambda x: {
 style_function_hru_map = lambda x: {
     "opacity": 1,
     "fillColor": "#00000000",  #'goldenrod',
-    "color": "black",
+    "color": "gray",
     "weight": 1.0,
 }
 highlight_function_hru_map = lambda x: {
@@ -1661,7 +1661,7 @@ def make_hf_map(
             "opacity": 1,
             "fillColor": "#00000000",  #'goldenrod',
             "color": "black",
-            "weight": 3,
+            "weight": 2,
             },
         name="HUC-10 basins",
         # tooltip=tooltip_hru,
