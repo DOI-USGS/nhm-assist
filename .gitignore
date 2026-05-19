@@ -13,3 +13,4 @@ domain_data/
 subdomain_config.yaml
 
 .env
+.DS_Store
