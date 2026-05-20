@@ -21,7 +21,7 @@
     "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
     "vcs": "git",
 
-    "laborHours": 1200,
+    "laborHours": 800,
 
     "tags": [
       "NHM",
@@ -40,14 +40,14 @@
     },
 
     "date": {
-      "metadataLastUpdated": "2025-03-20"
+      "metadataLastUpdated": "2026-05-20"
     }
   },
   {
     "name": "NHM-Assist",
     "organization": "U.S. Geological Survey",
     "description": "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed.",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "status": "Production",
     "permissions": {
       "usageType": "openSource",
@@ -60,12 +60,12 @@
     },
 
     "homepageURL": "https://code.usgs.gov/wma/hytest/nhm-assist",
-    "downloadURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/archive/1.0.0/nhm-assist-1.0.0.zip",
-    "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.0.0/DISCLAIMER.md",
+    "downloadURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/archive/1.1.0/nhm-assist-1.1.0.zip",
+    "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.1.0/DISCLAIMER.md",
     "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
     "vcs": "git",
 
-    "laborHours": 1200,
+    "laborHours": 800,
 
     "tags": [
       "NHM",
@@ -84,8 +84,7 @@
     },
 
     "date": {
-      "metadataLastUpdated": "2025-03-20"
+      "metadataLastUpdated": "2026-05-20"
     }
   }
-
 ]
