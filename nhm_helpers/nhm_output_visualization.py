@@ -11,6 +11,23 @@ con = Console()
 warnings.filterwarnings("ignore")
 
 
+def _normalize_hru_id_column(df):
+    """Ensure downstream tables expose a stable `nhm_id` column."""
+    if "nhm_id" in df.columns:
+        return df
+    if "nhru" in df.columns:
+        return df.rename(columns={"nhru": "nhm_id"})
+    raise KeyError("Expected an HRU id column named 'nhm_id' or 'nhru'.")
+
+
+def _hru_dim_name(data_array):
+    if "nhm_id" in data_array.dims:
+        return "nhm_id"
+    if "nhru" in data_array.dims:
+        return "nhru"
+    raise KeyError("Expected an HRU dimension named 'nhm_id' or 'nhru'.")
+
+
 def retrieve_hru_output_info(*, out_dir, water_years):
     """
     Retrieve pywatershed output file information for mapping and plotting.
@@ -157,8 +174,6 @@ def create_sum_var_dataarrays(
     """
 
     with xr.load_dataarray(out_dir / f"{output_var_sel}.nc") as da:
-        # these machinations are to keep downstream things as they were before some refactoring
-        da = da.to_dataset().rename_dims({"nhm_id": "nhru"})[da.name]
         var_units = da.units
         var_desc = da.desc
         var_daily = da.sel(time=slice(plot_start_date, plot_end_date))
@@ -214,8 +229,6 @@ def create_mean_var_dataarrays(
     """
 
     with xr.load_dataarray(out_dir / f"{output_var_sel}.nc") as da:
-        # these machinations are to keep downstream things as they were before some refactoring
-        da = da.to_dataset().rename_dims({"nhm_id": "nhru"})[da.name]
         var_units = da.units
         var_desc = da.desc
         var_daily = da.sel(time=slice(plot_start_date, plot_end_date))
@@ -282,9 +295,10 @@ def create_sum_var_annual_gdf(
     )
 
     df_output_var_annual = sum_var_annual.copy().to_dataframe(
-        dim_order=["time", "nhru"]
+        dim_order=["time", _hru_dim_name(sum_var_annual)]
     )
     df_output_var_annual.reset_index(inplace=True, drop=False)
+    df_output_var_annual = _normalize_hru_id_column(df_output_var_annual)
     df_output_var_annual.set_index(
         "nhm_id", inplace=True, drop=True
     )  # resets the index to that new value and type
@@ -295,7 +309,7 @@ def create_sum_var_annual_gdf(
         columns={output_var_sel: "output_var"}, inplace=True
     )  # Rename the column to a general heading for later code
 
-    df_output_var_annual.drop(columns=["time", "nhru"], inplace=True)
+    df_output_var_annual.drop(columns=["time"], inplace=True)
 
     table = pd.pivot_table(
         df_output_var_annual,
@@ -367,8 +381,11 @@ def create_sum_var_annual_df(
         "nhm_id", drop=True
     )  # Consider a dictionary from the par file and using .map() instead of merge
 
-    sum_var_annual_df = sum_var_annual.to_dataframe(dim_order=["time", "nhru"])
+    sum_var_annual_df = sum_var_annual.to_dataframe(
+        dim_order=["time", _hru_dim_name(sum_var_annual)]
+    )
     sum_var_annual_df.reset_index(inplace=True, drop=False)
+    sum_var_annual_df = _normalize_hru_id_column(sum_var_annual_df)
 
     sum_var_annual_df = sum_var_annual_df.merge(
         hru_area_df, how="left", right_index=True, left_on="nhm_id"
@@ -384,9 +401,6 @@ def create_sum_var_annual_df(
     sum_var_annual_df["vol_inch_acres"] = (
         sum_var_annual_df[output_var_sel] * sum_var_annual_df["hru_area"]
     )
-
-    # Drop unneeded columns
-    sum_var_annual_df.drop(columns=["nhru"], inplace=True)
 
     return sum_var_annual_df
 
@@ -422,8 +436,11 @@ def create_sum_var_monthly_df(
         "nhm_id", drop=True
     )  # Consider a dictionary from the par file and using .map() instead of merge
 
-    sum_var_monthly_df = sum_var_monthly.to_dataframe(dim_order=["time", "nhru"])
+    sum_var_monthly_df = sum_var_monthly.to_dataframe(
+        dim_order=["time", _hru_dim_name(sum_var_monthly)]
+    )
     sum_var_monthly_df.reset_index(inplace=True, drop=False)
+    sum_var_monthly_df = _normalize_hru_id_column(sum_var_monthly_df)
 
     # add the HRU area to the dataframe
     sum_var_monthly_df = sum_var_monthly_df.merge(
@@ -434,9 +451,6 @@ def create_sum_var_monthly_df(
     sum_var_monthly_df["vol_inch_acres"] = (
         sum_var_monthly_df[output_var_sel] * sum_var_monthly_df["hru_area"]
     )
-
-    # Drop unneeded columns
-    sum_var_monthly_df.drop(columns=["nhru"], inplace=True)
 
     return sum_var_monthly_df
 
@@ -469,8 +483,9 @@ def create_var_daily_df(
         "nhm_id", drop=True
     )  # Consider a dictionary from the par file and using .map() instead of merge
 
-    var_daily_df = var_daily.to_dataframe(dim_order=["time", "nhru"])
+    var_daily_df = var_daily.to_dataframe(dim_order=["time", _hru_dim_name(var_daily)])
     var_daily_df.reset_index(inplace=True, drop=False)
+    var_daily_df = _normalize_hru_id_column(var_daily_df)
 
     # add the HRU area to the dataframe
     var_daily_df = var_daily_df.merge(
@@ -481,9 +496,6 @@ def create_var_daily_df(
     var_daily_df["vol_inch_acres"] = (
         var_daily_df[output_var_sel] * var_daily_df["hru_area"]
     )
-
-    # Drop unneeded columns
-    var_daily_df.drop(columns=["nhru"], inplace=True)
 
     return var_daily_df
 
@@ -527,8 +539,11 @@ def create_var_ts_for_poi_basin_df(
     ds_mean_var_ts = (
         mean_var_ts.copy()
     )  # Change all variables to this pattern in the funct.
-    df_mean_var_ts = ds_mean_var_ts.to_dataframe(dim_order=["time", "nhru"])
+    df_mean_var_ts = ds_mean_var_ts.to_dataframe(
+        dim_order=["time", _hru_dim_name(ds_mean_var_ts)]
+    )
     df_mean_var_ts.reset_index(inplace=True, drop=False)
+    df_mean_var_ts = _normalize_hru_id_column(df_mean_var_ts)
     df_mean_var_ts.rename(columns={var: "output_var"}, inplace=True)
 
     # add the HRU area to the dataframe
@@ -547,9 +562,6 @@ def create_var_ts_for_poi_basin_df(
         )
         / (12 * 12 * 12)
     ) / 86400  # constant is number of seconds in a day
-
-    # Drop unneeded columns
-    df_mean_var_ts.drop(columns=["nhru"], inplace=True)
 
     # subset to only hrus in the selected poi
     df_basin1 = df_mean_var_ts.loc[
