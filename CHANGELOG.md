@@ -5,7 +5,7 @@ All notable changes to nhm-assist will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] — 2025-05-14 through 2026-03-30
+## [1.1.0] — 2025-05-14 through 2026-05-19
 
 ### Added
 
@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Stabilized legacy NHM visualization helpers (!29):** Fixed crashes and `NameError` exceptions in `display_controls.py` when notebook widget state was not yet initialized. All module-level state variables are now explicitly initialized to `None`, and a new `_require_state()` guard function emits a user-friendly warning rather than crashing when controls are used before setup. Added `_ensure_output_dirs()` to create output directories on demand.
+- **Normalized HRU identifier column names (!29):** `nhm_output_visualization.py` now handles both `nhm_id` and `nhru` as valid HRU dimension and column names via new helper functions `_normalize_hru_id_column()` and `_hru_dim_name()`. Removed forced `nhm_id → nhru` dimension rename that caused `KeyError` with newer pywatershed output. Updated README to note that `nhru` in map outputs corresponds to `nhm_id`.
+- Removed stale `states_gdf` reference from `nhm_assist_utilities.py` (!29).
 - Fixed column name mismatch (PR #62).
 - Fixed values outside valid range in `pref_flow_infil_frac` (Notebook 4).
 - Fixed `delete_model_output` function and cleaned up Notebooks 1 and 2.
