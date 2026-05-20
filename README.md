@@ -75,6 +75,9 @@ nhm-assist interactive plots are created using [plotly](https://plotly.com/pytho
 
 Additionally, nhm-assist interactive maps are created using [folium v0.18.0](https://python-visualization.github.io/folium/v0.18.0/index.html). These maps visualize geospatial elements of the NHM subdomain. Additionally, select maps include embedded plotly figures. Folium maps will open in new browser tabs and are exported as html files to `./domain_data/subdomain/notebook_output_files/html_maps`. Users may interact with these maps and embed them in webpages, presentations, or other places external to the jupyter notebook repository.
 
+**Note:** In some map outputs, the field labeled `nhru` corresponds to the NHM hydrologic response unit identifier, `nhm_id` in the map outputs.
+
+
 ### Plot interaction
 
 ![plotly guide](./data_dependencies/images/plotly.png)
