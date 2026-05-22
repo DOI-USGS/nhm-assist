@@ -275,7 +275,17 @@ def folium_map_tiles():
         show=False,
     )
 
-    return USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap
+    KB_Geology = folium.WmsTileLayer(url="https://carto.nationalmap.gov/arcgis/services/geology/MapServer/WMSServer",
+                                     layers="0",  # Layer 0 is typically the main geologic units layer
+                                     fmt="image/png",
+                                     transparent=False,
+                                     name="USGS Bedrock Geology",
+                                     overlay=False,  # Makes it a basemap option
+                                     control=True,
+                                     attr="USGS National Map"
+                                     )
+    
+    return USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap, KB_Geology
 
 
 def create_minimap():
@@ -1622,7 +1632,7 @@ def make_hf_map(
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(
         hru_gdf, poi_df, poi_id_sel
     )
-    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
+    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap, KB_Geology = (
         folium_map_tiles()
     )
     minimap = create_minimap()
@@ -1653,6 +1663,7 @@ def make_hf_map(
     USGStopo_layer.add_to(m2)
     OpenTopoMap.add_to(m2)
     Esri_WorldImagery.add_to(m2)
+    KB_Geology.add_to(m2)
 
     # Add widgets
     m2.add_child(minimap)
@@ -1770,7 +1781,7 @@ def make_par_map(
     m3 = folium.Map()
 
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(hru_gdf, poi_df, "")
-    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
+    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap, KB_Geology = (
         folium_map_tiles()
     )
     minimap = create_minimap()
@@ -1947,7 +1958,7 @@ def make_var_map(
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(
         hru_gdf, poi_df, poi_id_sel
     )
-    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
+    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap, KB_Geology = (
         folium_map_tiles()
     )
     minimap = create_minimap()
@@ -1968,6 +1979,7 @@ def make_var_map(
     USGStopo_layer.add_to(m3)
     OpenTopoMap.add_to(m3)
     Esri_WorldImagery.add_to(m3)
+    KB_Geology.add_to(m3)
 
     # Add widgets
     m3.add_child(minimap)
@@ -2135,7 +2147,7 @@ def make_streamflow_map(
         hru_gdf, poi_df, poi_id_sel
     )
 
-    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
+    USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap, KB_Geology = (
         folium_map_tiles()
     )
 
@@ -2157,6 +2169,7 @@ def make_streamflow_map(
     USGStopo_layer.add_to(m)
     OpenTopoMap.add_to(m)
     Esri_WorldImagery.add_to(m)
+    KB_Geology.add_to(m)
 
     # Add widgets
     m.add_child(minimap)

@@ -611,6 +611,55 @@ import netCDF4
 import pandas as pd
 import numpy as np
 
+def fetch_daily_temperature_batch(
+    monitoring_location_ids: List[str],
+    *,
+    start_date: str,
+    end_date: str,
+    parameter_code: str = "00010",
+    statistic_id: str = "00003",
+    skip_geometry: bool = True,
+    limit: int = 50000,
+) -> WaterDataBatchResult:
+    """
+    Pull daily mean water temperature for a batch of sites using the modern Water Data APIs.
+
+    Example:
+        df, metadata = waterdata.get_daily(
+            monitoring_location_id="USGS-01646500",
+            parameter_code="00010",
+            time="2024-10-01/2025-09-30",
+        )
+    """
+    try:
+        time_range = f"{start_date}/{end_date}"
+
+        df, md = waterdata.get_daily(
+            monitoring_location_id=monitoring_location_ids,
+            parameter_code=parameter_code,
+            statistic_id=statistic_id,
+            time=time_range,
+            skip_geometry=skip_geometry,
+            limit=limit,
+        )
+
+        if df is None or len(df) == 0:
+            return WaterDataBatchResult(
+                df=pd.DataFrame(),
+                missing_ids=list(monitoring_location_ids),
+            )
+
+        found = set(df["monitoring_location_id"].astype(str).unique())
+        missing = [mid for mid in monitoring_location_ids if mid not in found]
+        return WaterDataBatchResult(df=df, missing_ids=missing)
+
+    except Exception as e:
+        return WaterDataBatchResult(
+            df=pd.DataFrame(),
+            missing_ids=list(monitoring_location_ids),
+            error=str(e),
+        )
+
 
 def create_waterdata_sf_df(
     *,
@@ -847,7 +896,322 @@ def create_waterdata_sf_df(
 
     return waterdata_df
 
+def create_waterdata_temperature_df(
+    *,
+    root_dir,
+    control_file_name,
+    model_dir,
+    output_netcdf_filename,
+    hru_gdf,
+    poi_df,
+    waterdata_gage_nobs_min,
+    seg_gdf,
+    batch_size: int = 75,
+    max_workers: int = 4,
+):
+    """
+    Create a dataframe for POI gages with daily mean USGS water temperature
+    retrieved from the Water Data API.
+    """
+    _ensure_usgs_pat_stripped()
 
+    temp_cache_file = (
+        model_dir / "notebook_output_files" / "nc_files" / "watertemp_cache.nc"
+    )
+    control = pws.Control.load_prms(
+        pl.Path(model_dir / control_file_name), warn_unused_options=False
+    )
+    waterdata_temp_gages_file = model_dir / "WaterDataTemperatureGages.csv"
+
+    # Reuse existing site-discovery logic, then constrain to POI gages only.
+    waterdata_gage_info_aoi = fetch_nwis_gage_info(
+        root_dir=root_dir,
+        model_dir=model_dir,
+        control_file_name=control_file_name,
+        nwis_gage_nobs_min=waterdata_gage_nobs_min,
+        hru_gdf=hru_gdf,
+        seg_gdf=seg_gdf,
+    )
+
+    poi_ids_keep = set(poi_df["poi_id"].astype(str).unique().tolist())
+    waterdata_gage_info_aoi = waterdata_gage_info_aoi[
+        waterdata_gage_info_aoi["poi_id"].astype(str).isin(poi_ids_keep)
+    ].copy()
+
+    if temp_cache_file.exists():
+        with xr.open_dataset(temp_cache_file) as watertemp_ds:
+            watertemp_df = watertemp_ds.to_dataframe()
+            print(
+                "Cached copy of water temperature data exists. "
+                "To re-download, remove the cache file."
+            )
+            del watertemp_ds
+        return watertemp_df
+
+    temp_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
+    temp_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
+
+    site_ids = waterdata_gage_info_aoi["poi_id"].tolist()
+    monitoring_ids = _as_monitoring_location_ids(site_ids)
+
+    all_parts = []
+    err_batches = []
+    missing_ids_all = []
+
+    with Progress() as progress:
+        task = progress.add_task(
+            "[red]Downloading daily water temperature (Water Data API)...",
+            total=len(monitoring_ids),
+        )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {}
+            for batch in _chunked(monitoring_ids, batch_size):
+                fut = executor.submit(
+                    fetch_daily_temperature_batch,
+                    batch,
+                    start_date=temp_start,
+                    end_date=temp_end,
+                    parameter_code="00010",
+                    statistic_id="00003",
+                    skip_geometry=True,
+                    limit=50000,
+                )
+                future_map[fut] = len(batch)
+
+            for fut in as_completed(future_map):
+                batch_len = future_map[fut]
+                res = fut.result()
+                progress.update(task, advance=batch_len)
+
+                if res.error is not None:
+                    err_batches.append(res.error)
+                    missing_ids_all.extend(res.missing_ids)
+                    continue
+
+                if len(res.missing_ids) > 0:
+                    missing_ids_all.extend(res.missing_ids)
+
+                if res.df is not None and len(res.df) > 0:
+                    all_parts.append(res.df)
+
+    if not all_parts:
+        raise RuntimeError(
+            "No daily water temperature data returned from Water Data API for any "
+            f"requested POI sites ({len(monitoring_ids)} sites). First error: "
+            f"{err_batches[0] if err_batches else 'None'}"
+        )
+
+    watertemp_raw_df = pd.concat(all_parts, ignore_index=True)
+
+    watertemp_raw_df["poi_id"] = (
+        watertemp_raw_df["monitoring_location_id"]
+        .astype(str)
+        .str.split("-", n=1)
+        .str[-1]
+    )
+    watertemp_raw_df["time"] = pd.to_datetime(
+        watertemp_raw_df["time"], utc=True
+    ).dt.tz_localize(None)
+    watertemp_raw_df["water_temperature"] = pd.to_numeric(
+        watertemp_raw_df["value"], errors="coerce"
+    )
+    watertemp_raw_df["agency_id"] = "USGS"
+
+    watertemp_raw_df = (
+        watertemp_raw_df.sort_values(
+            ["poi_id", "time", "water_temperature"],
+            ascending=[True, True, False],
+        ).drop_duplicates(subset=["poi_id", "time"], keep="first")
+    )
+
+    keep_always = set(poi_df["poi_id"].astype(str).unique().tolist())
+    obs_counts = watertemp_raw_df.groupby("poi_id")["water_temperature"].apply(
+        lambda s: s.notna().sum()
+    )
+    too_few = obs_counts[
+        (obs_counts < waterdata_gage_nobs_min)
+        & (~obs_counts.index.isin(keep_always))
+    ].index.tolist()
+
+    if too_few:
+        con.print(
+            f"{len(too_few)} POI gages had fewer temperature obs than "
+            f"waterdata_gage_nobs_min and will be omitted unless they appear "
+            f"in the parameter file.\n{too_few}"
+        )
+        watertemp_raw_df = watertemp_raw_df[
+            ~watertemp_raw_df["poi_id"].isin(too_few)
+        ]
+
+    if missing_ids_all:
+        missing_site_nos = [m.split("-", 1)[-1] for m in sorted(set(missing_ids_all))]
+        con.print(
+            f"{len(set(missing_site_nos))} POI gages returned no temperature rows "
+            f"from Water Data API: {missing_site_nos}"
+        )
+
+    watertemp_df = watertemp_raw_df[
+        ["poi_id", "time", "water_temperature", "agency_id"]
+    ].copy()
+    watertemp_df.set_index(["poi_id", "time"], inplace=True)
+
+    watertemp_ds = xr.Dataset.from_dataframe(watertemp_df)
+
+    watertemp_ds["water_temperature"].attrs = {
+        "units": "degC",
+        "long_name": "daily mean water temperature",
+        "parameter_code": "00010",
+    }
+    watertemp_ds["poi_id"].attrs = {
+        "role": "timeseries_id",
+        "long_name": "Point-of-Interest ID",
+        "_Encoding": "ascii",
+    }
+    watertemp_ds["agency_id"].attrs = {"_Encoding": "ascii"}
+
+    watertemp_ds["poi_id"].encoding.update(
+        {"dtype": "S15", "char_dim_name": "poiid_nchars"}
+    )
+    watertemp_ds["time"].encoding.update(
+        {
+            "_FillValue": None,
+            "standard_name": "time",
+            "calendar": "standard",
+            "units": "days since 1940-01-01 00:00:00",
+        }
+    )
+    watertemp_ds["agency_id"].encoding.update(
+        {"dtype": "S5", "char_dim_name": "agency_nchars"}
+    )
+
+    var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
+    for cvar in watertemp_ds.data_vars:
+        if cvar not in ["agency_id"]:
+            watertemp_ds[cvar].encoding.update(var_encoding)
+
+    watertemp_ds.attrs = {
+        "Description": "Water temperature data for PRMS/NHM-Assist POI gages",
+        "FeatureType": "timeSeries",
+    }
+
+    con.print(
+        f"Water Data API daily water temperature retrieved, writing data to "
+        f"{temp_cache_file}."
+    )
+    watertemp_ds.to_netcdf(temp_cache_file)
+
+    out_gage_info = waterdata_gage_info_aoi[
+        ~waterdata_gage_info_aoi["poi_id"].astype(str).isin(too_few)
+    ]
+    out_gage_info.to_csv(waterdata_temp_gages_file, index=False)
+
+    return watertemp_df
+
+
+def create_poi_water_temperature_nc(
+    *,
+    output_netcdf_filename,
+    temperature_df,
+    gages_df,
+):
+    """
+    Build a POI water-temperature NetCDF analogous to the streamflow file shape,
+    but without EFC fields.
+    """
+    if output_netcdf_filename.exists():
+        with xr.open_dataset(output_netcdf_filename) as ds:
+            xr_temperature = ds.load()
+        con.print(
+            "All available water temperature observations were previously "
+            "retrieved and included in the NetCDF file. "
+            "To update, delete the file and rerun Notebook 1."
+        )
+        return xr_temperature
+
+    temp_df = temperature_df.reset_index().copy()
+    temp_df = temp_df.set_index(["poi_id", "time"]).sort_index()
+
+    xr_station_info = xr.Dataset.from_dataframe(gages_df)
+    xr_temp_only = xr.Dataset.from_dataframe(temp_df)
+    xr_temperature = xr.merge(
+        [xr_temp_only, xr_station_info], combine_attrs="drop_conflicts"
+    )
+    xr_temperature = xr_temperature.sortby("time", ascending=True)
+
+    xr_temperature["water_temperature"].attrs = {
+        "units": "degC",
+        "long_name": "daily mean water temperature",
+        "parameter_code": "00010",
+    }
+    xr_temperature["drainage_area"].attrs = {
+        "units": "mi2",
+        "long_name": "Drainage Area",
+    }
+    xr_temperature["drainage_area_contrib"].attrs = {
+        "units": "mi2",
+        "long_name": "Effective drainage area",
+    }
+    xr_temperature["latitude"].attrs = {
+        "units": "degrees_north",
+        "long_name": "Latitude",
+    }
+    xr_temperature["longitude"].attrs = {
+        "units": "degrees_east",
+        "long_name": "Longitude",
+    }
+    xr_temperature["poi_id"].attrs = {
+        "role": "timeseries_id",
+        "long_name": "Point-of-Interest ID",
+        "_Encoding": "ascii",
+    }
+    xr_temperature["poi_name"].attrs = {
+        "long_name": "Name of POI station",
+        "_Encoding": "ascii",
+    }
+    xr_temperature["time"].attrs = {"standard_name": "time"}
+    xr_temperature["poi_agency"].attrs = {"_Encoding": "ascii"}
+    xr_temperature["agency_id"].attrs = {"_Encoding": "ascii"}
+
+    xr_temperature["poi_id"].encoding.update(
+        {"dtype": "S15", "char_dim_name": "poiid_nchars"}
+    )
+    xr_temperature["time"].encoding.update(
+        {
+            "_FillValue": None,
+            "calendar": "standard",
+            "units": "days since 1940-01-01 00:00:00",
+        }
+    )
+    xr_temperature["latitude"].encoding.update({"_FillValue": None})
+    xr_temperature["longitude"].encoding.update({"_FillValue": None})
+    xr_temperature["agency_id"].encoding.update(
+        {"dtype": "S5", "char_dim_name": "agency_nchars"}
+    )
+    xr_temperature["poi_name"].encoding.update(
+        {"dtype": "S50", "char_dim_name": "poiname_nchars"}
+    )
+    xr_temperature["poi_agency"].encoding.update(
+        {"dtype": "S5", "char_dim_name": "mro_nchars", "_FillValue": ""}
+    )
+
+    var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
+    for cvar in xr_temperature.data_vars:
+        if xr_temperature[cvar].dtype != object and cvar not in [
+            "latitude",
+            "longitude",
+        ]:
+            xr_temperature[cvar].encoding.update(var_encoding)
+
+    xr_temperature.attrs = {
+        "Description": "Water temperature data for PRMS/NHM-Assist POI gages",
+        "FeatureType": "timeSeries",
+    }
+
+    xr_temperature.to_netcdf(output_netcdf_filename)
+
+    return xr_temperature
+    
 def create_sf_efc_df(
     *,
     output_netcdf_filename,

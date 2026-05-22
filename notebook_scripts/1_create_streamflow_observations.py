@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -57,10 +57,13 @@ load_dotenv(dotenv_path=dotenv_path)
 
 from nhm_helpers.sf_data_retrieval import (
     create_waterdata_sf_df,
+    create_waterdata_temperature_df,
+    create_poi_water_temperature_nc,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
+
 from nhm_helpers.nhm_hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
@@ -76,6 +79,9 @@ from nhm_helpers.nhm_assist_utilities import (
 )
 
 config = load_subdomain_config(root_dir)
+poi_water_temp_netcdf_filename = (
+    config["model_dir"] / "notebook_output_files" / "nc_files" / "poi_water_temp.nc"
+)
 
 # %%
 delete_notebook_output_files(
@@ -149,6 +155,26 @@ waterdata_df = create_waterdata_sf_df(
 )
 
 # %% [markdown]
+# # Retrieve USGS POI water-temperature observations
+# This section retrieves daily mean water temperature for POI gages using the
+# USGS Water Data API through dataretrieval.waterdata.get_daily with
+# parameter_code="00010", then writes a POI temperature NetCDF analogous to
+# the streamflow product.
+#
+
+# %%
+temperature_df = create_waterdata_temperature_df(
+    root_dir=root_dir,
+    control_file_name=config["control_file_name"],
+    model_dir=config["model_dir"],
+    output_netcdf_filename=poi_water_temp_netcdf_filename,
+    hru_gdf=hru_gdf,
+    poi_df=poi_df,
+    waterdata_gage_nobs_min=config["nwis_gage_nobs_min"],
+    seg_gdf=seg_gdf,
+)
+
+# %% [markdown]
 # ## Make the default gages file (default_gages.csv)
 # The `default_gages.csv` contains gages from the parameter file and NWIS gages from the domain (`nwis_gages_cache.nc`). The gages from the parameter file are represented in the variable `poi_df`. The gages in the `default_gages.csv` are represented in the variable `gages_df` here. The `default_gages.csv` may be missing site information if there are gages in the parameter file that are not in NWIS. If this is the case, an error will be displayed below and the `default_gages.csv` must be manually updated, and the file must be renamed `gages.csv`, and this notebook must be re-run. If `gages.csv` exists, then gages in the `gages.csv` are represented in the variable `gages_df`.
 
@@ -172,6 +198,13 @@ gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
 con.print(
     f"\n{gages_txt}",
     f"\n{gages_txt_nb2}",
+)
+
+# %%
+xr_temperature = create_poi_water_temperature_nc(
+    output_netcdf_filename=poi_water_temp_netcdf_filename,
+    temperature_df=temperature_df,
+    gages_df=gages_df,
 )
 
 # %% [markdown]
@@ -242,6 +275,27 @@ end_date = config[
 ds_sub = xr_streamflow.sel(poi_id=cpoi_id, time=slice(start_date, end_date))
 ds_sub = ds_sub.to_dataframe()
 flow_col = "discharge"
+plot_efc(ds_sub, flow_col)
+
+# %%
+cpoi_id = xr_temperature.poi_id.values[0]  # "08049300"
+print(
+    f"Daily stream temperature for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
+)
+
+# control = pws.Control.load_prms(
+#     model_dir / control_file_name, warn_unused_options=False
+# )
+
+start_date = config[
+    "start_date"
+]  # pd.to_datetime(str(control.start_time)).strftime("%m/%d/%Y")
+end_date = config[
+    "end_date"
+]  # pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
+ds_sub = xr_temperature.sel(poi_id=cpoi_id, time=slice(start_date, end_date))
+ds_sub = ds_sub.to_dataframe()
+flow_col = "water_temperature"
 plot_efc(ds_sub, flow_col)
 
 # %% [markdown]
