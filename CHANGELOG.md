@@ -9,10 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Water Data Retrieval API integration:** Replaced legacy NWIS direct calls with the USGS Water Data Retrieval API across streamflow data retrieval workflows. Includes support for API Personal Access Tokens (PAT) stored via `.env` for local use and from the home directory on Nebari. Metadata fetch now uses a bounding box (AOI) query rather than explicit date ranges.
+- **Water Data Retrieval API integration:** Replaced legacy NWIS direct calls with the USGS Water Data Retrieval API across streamflow data retrieval workflows. Includes support for API Personal Access Tokens (PAT) stored via `.env` for local use and from the home directory on Nebari. Metadata fetch now uses a bounding box (AOI) query rather than state(s) boundaries.
 - **PESTPP-IES parameter estimation workflow:** Added PESTPP-IES workflows directory.
-- **NHGF modification workflow:** Added National Hydrologic Geospatial Framework (NHGF) modification workflow as a new notebook with supporting scripts and folders.
-- **New supporting notebook — Add POIs to Parameters:** Notebook for adding Points of Interest (POIs) to NHM parameters with gage ranking logic. Revamped how the default gages file is created and handled.
+- **NHGF modification workflow:** Added nhgf_v2_fabric_modification directory that contains National Hydrofabric HRU modification Upland/Lowland workflow as a notebook.
+- **New supporting notebook — Adds POI parameters to parameter file:** Notebook for adding Points of Interest (POIs) parameters to pywatershed parameter file with gage ranking logic. Revamped how the default gages file is created and handled.
 - **Nebari/WSL plotting support:** Added helper functions so Plotly plots render correctly across local, WSL, and Nebari environments without duplicating OS-check code in individual notebooks.
 - Added `ST-TS` (stream/tidal) to the site type code list in utilities.
 - Added `subdomain_config.yaml` to `.gitignore`.
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Notebooks → Python scripts (CI/CD):** Converted all notebooks to `.py` files tracked via Jupytext; `.ipynb` files added to `.gitignore`. Added `make_notebooks.py` script to regenerate notebooks from scripts. CI reconfigured to execute `.py` scripts instead of `.ipynb` notebooks and now runs only on pull requests.
 - **EFC module:** Refactored to use NumPy arrays instead of pandas Series, squashing deprecation warnings and improving efficiency.
-- **NWIS fetch:** Switched to bounding-box query from HRU extents and added time lag between requests to handle API rate limiting. Patched to respond to updated NWIS data tags.
+- **NWIS fetch:** Switched to bounding-box query from HRU extents and added time lag between requests to handle API rate limiting. Patched to respond to updated NWIS data tags. This change was superseded by Water Data Retrieval API integration.
 - **Metadata fetch:** Updated start date and switched to bbox-based AOI query in `utilities.py`.
 - Updated `pyPRMS` source to PyPI (previously from a git location).
 - Locked `pandas` to `2.2.3` for compatibility.
