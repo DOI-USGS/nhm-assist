@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Water Data Retrieval API integration:** Replaced legacy NWIS direct calls with the USGS Water Data Retrieval API across streamflow data retrieval workflows. Includes support for API Personal Access Tokens (PAT) stored via `.env` for local use and from the home directory on Nebari. Metadata fetch now uses a bounding box (AOI) query rather than explicit date ranges.
-- **PESTPP-IES parameter estimation workflow:** Added Notebook 6 containing PESTPP-IES workflows ported from the nhm-pestpp repository, including supporting button logic in helpers and NHGF modification workflow files.
+- **PESTPP-IES parameter estimation workflow:** Added PESTPP-IES workflows directory.
 - **NHGF modification workflow:** Added National Hydrologic Geospatial Framework (NHGF) modification workflow as a new notebook with supporting scripts and folders.
 - **New supporting notebook — Add POIs to Parameters:** Notebook for adding Points of Interest (POIs) to NHM parameters with gage ranking logic. Revamped how the default gages file is created and handled.
 - **Nebari/WSL plotting support:** Added helper functions so Plotly plots render correctly across local, WSL, and Nebari environments without duplicating OS-check code in individual notebooks.
