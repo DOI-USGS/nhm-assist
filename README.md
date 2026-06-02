@@ -63,6 +63,8 @@ To generate notebooks for the `nhf_assist` directory, run
 
 `python make_notebooks.py nhf_assist`
 
+If target notebooks already exist, the script will prompt once per run so you can either archive the old notebooks into `archive/` or delete them before writing fresh copies.
+
 ## Launch Jupyter
 
 In the miniforge prompt, navigate to the nhm-assist folder, and run
