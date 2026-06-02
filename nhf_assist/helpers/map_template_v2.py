@@ -39,7 +39,6 @@ from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
 import geopandas as gpd
-import topojson
 
 admin_basin_style = lambda x: {
     "fillColor": "#00000000",

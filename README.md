@@ -59,6 +59,10 @@ In the miniforge prompt, run
 
 `python make_notebooks.py`
 
+To generate notebooks for the `nhf_assist` directory, run
+
+`python make_notebooks.py nhf_assist`
+
 ## Launch Jupyter
 
 In the miniforge prompt, navigate to the nhm-assist folder, and run
