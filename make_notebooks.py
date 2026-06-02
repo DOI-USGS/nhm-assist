@@ -33,11 +33,11 @@ def prompt_conflict_action():
             return choice
 
 
-def archive_notebook(output_folder, output_path, timestamp):
+def archive_notebook(output_folder, output_path, run_timestamp):
     relative_path = output_path.relative_to(output_folder)
-    archive_dir = output_folder / "archive" / relative_path.parent
+    archive_dir = output_folder / "archive" / run_timestamp / relative_path.parent
     archive_dir.mkdir(parents=True, exist_ok=True)
-    archive_path = archive_dir / f"{output_path.stem}_{timestamp}{output_path.suffix}"
+    archive_path = archive_dir / output_path.name
     output_path.rename(archive_path)
 
 
@@ -47,9 +47,9 @@ def handle_existing_outputs(output_folder, existing_outputs):
 
     action = prompt_conflict_action()
     if action == "Y":
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         for output_path in existing_outputs:
-            archive_notebook(output_folder, output_path, timestamp)
+            archive_notebook(output_folder, output_path, run_timestamp)
         return
 
     for output_path in existing_outputs:
