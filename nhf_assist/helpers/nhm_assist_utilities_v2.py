@@ -1242,6 +1242,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
     return gages_df
 
 def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
+    #Consider (Eddie) instead of using hru_gdf, just using a merge with the npoi_gages
 
     # list your three directories here (relative or absolute)
     dirs = [
@@ -1285,7 +1286,8 @@ def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
     hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
     gdf_proj = gdf.to_crs(hru_proj.crs)
 
-    # create a buffer around the mask, 1000 meters, to get gages that may be downstream from outlet segments
+    # create a buffer around hru_gdf (domain), 1000 meters, to get gages that intersect domain
+    # note: in the future, we may want to just use the seg_gdf for this to exclude gages in the domain not on the flow network
     hru_buffered = hru_proj.buffer(1000)
 
     # clip using the buffered mask to the model domain
@@ -1360,3 +1362,58 @@ def fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf):
     gdf_clipped.to_csv(non_ref_npoigages_info_file_path, index=False)
 
     return gdf_clipped
+
+
+def fetch_FMI_npoigages_info(root_dir, model_dir, poi_df):
+    #### READ FMI table (.csv) for selected gages
+    fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+    
+    cols = {"gageid": np.str_,
+            "name": np.str_,
+            "comid": np.int_,
+            "area_mi2": float,
+            "oregon": np.str_,
+            "owrd_adminbasin_nbr": np.int_,
+            "q0001_annual_cfs": float,
+            "q0001c_jun_cfs": float,
+            "q0001c_jul_cfs": float,
+            "q0001c_aug_cfs": float,
+            "unitq_cfsmi2": float,
+            "q0001c_summer_cfs": float,
+            "dams_n": np.int_,
+            "pou_acres": float,
+            "nonag_npixel": np.int_,
+            "ag_npixel": np.int_,
+            "nid_norm_storage_acft": float,
+            "sw_withdrawal_acft": float,
+            "ag_pct": float,
+            "nid_storage_annual_pct": float,
+            "sw_withdrawal_summer_pct": float,
+            "sw_withdrawal_annual_pct": float,
+            "storage_index": np.int_,
+            "use_index": np.int_,
+            "flow_management_index": np.int_,
+           }
+    
+    # Creates a dictionary of column header and datatype called below.
+    
+    fmi_df = pd.read_csv(
+        fmi_df_file,
+        dtype=cols,
+        usecols=[
+            "gageid",
+            "storage_index",
+            "use_index",
+            "flow_management_index",
+        ],
+    )
+    fmi_gages_child = fmi_df.merge(
+        poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
+    )
+    fmi_gages_child.drop(columns={"gageid"}, inplace=True)
+    
+    print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
+    fmi_gages_child_info_file_path = model_dir / "metadata" / "fmi_gages_info.csv"
+    fmi_gages_child.to_csv(fmi_gages_child_info_file_path, index=False)
+    
+    return fmi_gages_child
