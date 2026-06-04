@@ -157,8 +157,8 @@ def make_webbrowser_map(map_file):
         This function does not return anything.
     """
 
-    # create string of map file path
-    map_file_str = f"{map_file}"
+    map_path = pl.Path(map_file).resolve()
+    map_file_str = str(map_path)
     
     # if running in Nebari, print url to open map, else use webbrowser to have map popup directly
     if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
@@ -177,6 +177,8 @@ def make_webbrowser_map(map_file):
                 subprocess.check_output(["wslpath", "-w", map_file_str]).decode().strip()
             )
             map_file_str = f"file:///{windows_path}"
+        else:
+            map_file_str = map_path.as_uri()
         webbrowser.open(map_file_str, new=2)
 
 

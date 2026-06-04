@@ -31,3 +31,4 @@ CLAUDE.md
 docs/
 tests/
 .pixi/
+.DS_Store
