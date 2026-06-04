@@ -162,12 +162,6 @@ def fetch_nwis_gage_info(
     """
     crs = 4326
 
-    # Make a list of the state abbreviations the subdomain intersects for NWIS queries
-    states_gdf = gpd.read_file(
-        root_dir / "data_dependencies/US_states/tl_2017_us_state.shp"
-    ).to_crs(crs)
-    states_name = list(gpd.clip(states_gdf, hru_gdf).loc[:]["NAME"].values)
-
     """
     Use caution if start and end dates may be modified here. 
     If gages are present in the param file, recommend adding metadata in the gage_resource.csv

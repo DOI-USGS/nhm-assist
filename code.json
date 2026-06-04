@@ -20,27 +20,98 @@
     "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/main/DISCLAIMER.md",
     "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
     "vcs": "git",
-
-    "laborHours": 1200,
-
+    "laborHours": 2500,
     "tags": [
       "NHM",
       "pywatershed",
       "PRMS"
     ],
-
     "languages": [
       "markdown",
       "python"
     ],
-
     "contact": {
       "name": "Adel Haj",
       "email": "ahaj@usgs.gov"
     },
-
     "date": {
-      "metadataLastUpdated": "2025-03-20"
+      "metadataLastUpdated": "2026-06-01"
+    }
+  },
+  {
+    "name": "NHM-Assist",
+    "organization": "U.S. Geological Survey",
+    "description": "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed.",
+    "version": "1.2.0",
+    "status": "Production",
+    "permissions": {
+      "usageType": "openSource",
+      "licenses": [
+        {
+          "name": "Public Domain, CC0-1.0",
+          "URL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.2.0/LICENSE.md"
+        }
+      ]
+    },
+    "homepageURL": "https://code.usgs.gov/wma/hytest/nhm-assist",
+    "downloadURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/archive/1.2.0/nhm-assist-1.2.0.zip",
+    "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.2.0/DISCLAIMER.md",
+    "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
+    "vcs": "git",
+    "laborHours": 2500,
+    "tags": [
+      "NHM",
+      "pywatershed",
+      "PRMS"
+    ],
+    "languages": [
+      "markdown",
+      "python"
+    ],
+    "contact": {
+      "name": "Adel Haj",
+      "email": "ahaj@usgs.gov"
+    },
+    "date": {
+      "metadataLastUpdated": "2026-06-01"
+    }
+  },
+  {
+    "name": "NHM-Assist",
+    "organization": "U.S. Geological Survey",
+    "description": "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed.",
+    "version": "1.1.0",
+    "status": "Production",
+    "permissions": {
+      "usageType": "openSource",
+      "licenses": [
+        {
+          "name": "Public Domain, CC0-1.0",
+          "URL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.1.0/LICENSE.md"
+        }
+      ]
+    },
+    "homepageURL": "https://code.usgs.gov/wma/hytest/nhm-assist",
+    "downloadURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/archive/1.1.0/nhm-assist-1.1.0.zip",
+    "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.1.0/DISCLAIMER.md",
+    "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
+    "vcs": "git",
+    "laborHours": 2000,
+    "tags": [
+      "NHM",
+      "pywatershed",
+      "PRMS"
+    ],
+    "languages": [
+      "markdown",
+      "python"
+    ],
+    "contact": {
+      "name": "Adel Haj",
+      "email": "ahaj@usgs.gov"
+    },
+    "date": {
+      "metadataLastUpdated": "2026-05-21"
     }
   },
   {
@@ -58,34 +129,27 @@
         }
       ]
     },
-
     "homepageURL": "https://code.usgs.gov/wma/hytest/nhm-assist",
     "downloadURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/archive/1.0.0/nhm-assist-1.0.0.zip",
     "disclaimerURL": "https://code.usgs.gov/wma/hytest/nhm-assist/-/raw/1.0.0/DISCLAIMER.md",
     "repositoryURL": "https://code.usgs.gov/wma/hytest/nhm-assist.git",
     "vcs": "git",
-
     "laborHours": 1200,
-
     "tags": [
       "NHM",
       "pywatershed",
       "PRMS"
     ],
-
     "languages": [
       "markdown",
       "python"
     ],
-
     "contact": {
       "name": "Adel Haj",
       "email": "ahaj@usgs.gov"
     },
-
     "date": {
       "metadataLastUpdated": "2025-03-20"
     }
   }
-
 ]

@@ -5,6 +5,7 @@ import branca.colormap as cm
 import folium
 import jupyter_black
 import matplotlib as mplib
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -19,10 +20,13 @@ from rich.console import Console
 from assist.nhf.nhm_output_visualization_v2 import (
     create_streamflow_obs_datasets, create_sum_seg_var_dataarrays,
     create_sum_var_annual_gdf)
+from assist.nhf.nhm_assist_utilities_v2 import fetch_FMI_npoigages_info, fetch_ref_npoigages_info, fetch_non_ref_npoigages_info
+
 from assist.nhf.output_plots_v2 import calculate_monthly_kge_in_poi_df
 import subprocess
 import os
 import webbrowser
+
 
 pretty.install()
 con = Console()
@@ -39,7 +43,6 @@ from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
 import geopandas as gpd
-import topojson
 
 admin_basin_style = lambda x: {
     "fillColor": "#00000000",
@@ -57,7 +60,7 @@ transparent = lambda x: {
 style_function_hru_map = lambda x: {
     "opacity": 1,
     "fillColor": "#00000000",  #'goldenrod',
-    "color": "black",
+    "color": "gray",
     "weight": 1.0,
 }
 highlight_function_hru_map = lambda x: {
@@ -1569,6 +1572,148 @@ def create_streamflow_poi_markers(
 
     return marker_cluster, marker_cluster_label_poi
 
+def make_geo_map(hru_gdf, out_sr=4326, batch_size=1000):
+    """Fetch SGMC geology features within the hru_gdf bounding box,
+    remove water polygons, and clip to the HRU boundary.
+
+    Parameters
+    ----------
+    url : str
+        ArcGIS FeatureServer URL for the SGMC geology layer.
+    hru_gdf : GeoDataFrame
+        HRU GeoDataFrame used for bounding box query and clipping.
+    out_sr : int, optional
+        Output spatial reference (default 4326).
+    batch_size : int, optional
+        Number of features per request batch (default 1000).
+
+    Returns
+    -------
+    gdf : GeoDataFrame
+        Clipped geology GeoDataFrame with water removed.
+    style_function : callable
+        Folium style function that colors polygons by UNIT_NAME.
+    """
+    # Fetch all features within the HRU bounding box
+    url = (
+        "https://services2.arcgis.com/FiaPA4ga0iQKduv3/ArcGIS/rest/services/"
+        "State_Geologic_Map_Compilation_%E2%80%93_Geology/FeatureServer/0"
+    )
+    bb = hru_gdf.total_bounds.tolist()
+    query_url = f"{url}/query"
+    all_features = []
+    offset = 0
+    geometry = ",".join(map(str, bb))
+
+    while True:
+        params = {
+            "where": "1=1",
+            "geometry": geometry,
+            "geometryType": "esriGeometryEnvelope",
+            "inSR": out_sr,
+            "spatialRel": "esriSpatialRelIntersects",
+            "outFields": "*",
+            "f": "geojson",
+            "outSR": out_sr,
+            "returnGeometry": "true",
+            "resultOffset": offset,
+            "resultRecordCount": batch_size,
+        }
+        resp = requests.get(query_url, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        features = data.get("features", [])
+        if not features:
+            break
+        all_features.extend(features)
+        offset += batch_size
+
+    # Convert to GeoDataFrame
+    geo_data = {"type": "FeatureCollection", "features": all_features}
+    gdf = gpd.GeoDataFrame.from_features(geo_data, crs=f"EPSG:{out_sr}")
+    print(f"Loaded {len(gdf)} SGMC features")
+
+    # Remove polygons with UNIT_NAME == "Water"
+    gdf = gdf[~gdf["UNIT_NAME"].str.lower().str.strip().eq("water")].copy()
+    print(f"After removing water: {len(gdf)} features")
+
+    # Clip geology to the hru_gdf boundary
+    clip_boundary = hru_gdf.dissolve().geometry.union_all()
+    gdf = gpd.clip(gdf, clip_boundary)
+    print(f"After clipping to HRU extent: {len(gdf)} features")
+
+    # Build color map keyed by UNIT_NAME
+    unique_units = gdf["UNIT_NAME"].unique()
+    cmap = __import__("matplotlib").colormaps.get_cmap("tab20")
+    unit_colors = {
+        unit: mcolors.to_hex(cmap(i % 20)) for i, unit in enumerate(unique_units)
+    }
+
+    def style_function(feature):
+        unit_name = feature["properties"].get("UNIT_NAME", "")
+        return {
+            "fillColor": unit_colors.get(unit_name, "#808080"),
+            "color": "black",
+            "weight": 0.3,
+            "fillOpacity": 0.5,
+        }
+
+    return gdf, style_function, unit_colors
+
+
+def make_geo_legend(unit_colors):
+    """Create a folium HTML legend for geology UNIT_NAME colors.
+
+    Parameters
+    ----------
+    unit_colors : dict
+        Dictionary mapping UNIT_NAME strings to hex color strings,
+        as returned by make_geo_map.
+
+    Returns
+    -------
+    legend : branca.element.Element
+        A legend element that can be added to a folium map with
+        m.get_root().html.add_child(legend).
+    """
+    from branca.element import Element
+
+    # Build legend items as static HTML
+    items_html = ""
+    for name, color in unit_colors.items():
+        items_html += (
+            f'<div style="margin: 2px 0;">'
+            f'<span style="display:inline-block;width:14px;height:14px;'
+            f"background-color:{color};opacity:0.6;border:1px solid black;"
+            f'vertical-align:middle;margin-right:6px;"></span>'
+            f'<span style="vertical-align:middle;">{name}</span>'
+            f"</div>"
+        )
+
+    legend_html = (
+        '<div id="geo-legend" style="'
+        "position:fixed;"
+        "top:330px;"
+        "left:10px;"
+        "z-index:1000;"
+        "background-color:white;"
+        "padding:10px 14px;"
+        "border:2px solid grey;"
+        "border-radius:5px;"
+        "font-size:11px;"
+        "max-height:130px;"
+        "overflow-y:auto;"
+        '">'
+        '<div onclick="var c=document.getElementById(\'geo-legend-content\');'
+        "c.style.display=c.style.display==='none'?'block':'none';"
+        '" style="cursor:pointer;font-weight:bold;margin-bottom:4px;">'
+        "&#9660; Geology (UNIT_NAME)</div>"
+        f'<div id="geo-legend-content">{items_html}</div>'
+        "</div>"
+    )
+
+    return Element(legend_html)
+
 
 def make_hf_map(
     *,
@@ -1661,7 +1806,7 @@ def make_hf_map(
             "opacity": 1,
             "fillColor": "#00000000",  #'goldenrod',
             "color": "black",
-            "weight": 3,
+            "weight": 2,
             },
         name="HUC-10 basins",
         # tooltip=tooltip_hru,
@@ -1692,7 +1837,6 @@ def make_hf_map(
         #popup=folium.GeoJsonPopup(fields=["hl_link", "segment_id"]),
     )
 
-    
     huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
     seg_gdf["huc12_pp"] = "none"
     seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
@@ -1708,16 +1852,24 @@ def make_hf_map(
     )
 
     fmi_poi_marker_cluster, fmi_poi_marker_cluster_label = create_FMI_poi_markers(
+        root_dir,
+        root_dir / "domain_data" / subdomain,
         poi_df,
     )
 
     ref_poi_marker_cluster, ref_poi_marker_cluster_label = create_ref_gages_markers(
-    root_dir / "domain_data" / subdomain,
+        root_dir,
+        root_dir / "domain_data" / subdomain,
+        hru_gdf,
     )
 
     non_ref_poi_marker_cluster, non_ref_poi_marker_cluster_label = create_non_ref_gages_markers(
-    root_dir / "domain_data" / subdomain,
+        root_dir,
+        root_dir / "domain_data" / subdomain,
+        hru_gdf,
     )
+
+    geo_map, geo_style, unit_colors = make_geo_map(hru_gdf)
 
     m2 = folium.Map()
     m2 = folium.Map(
@@ -1733,23 +1885,22 @@ def make_hf_map(
     OpenTopoMap.add_to(m2)
     Esri_WorldImagery.add_to(m2)
 
-    # VectorTileLayer(
-    #     hru_lines_url,
-    #     name="nhru boundaries",
-    #     options={
-    #         "vectorTileLayerStyles": {
-    #             "boundaries": {  # Layer name inside the tile
-    #                 "color": "#3388ff",
-    #                 "weight": 2,
-    #                 "opacity": 0.8
-    #             }
-    #         }
-    #     }
-    # ).add_to(m2)
-
     # Add widgets
     m2.add_child(minimap)
     m2.add_child(MeasureControl(position="bottomright"))
+
+    # Add geology layer
+    folium.GeoJson(
+        geo_map.to_json(),
+        name="SGMC Geology",
+        style_function=geo_style,
+        popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
+    ).add_to(m2)
+    
+    # Add the geology legend
+    legend = make_geo_legend(unit_colors)
+    m2.get_root().html.add_child(legend)
+
 
     hru_map.add_to(m2)
     huc10_map_layer.add_to(m2)
@@ -1780,10 +1931,10 @@ def make_hf_map(
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
     explan_txt = f"HRUs: {pdb.dimensions.get('nhru').meta['size']}, segments: {pdb.dimensions.get('nsegment').meta['size']},<br>gages: {pdb.dimensions.get('npoigages').meta['size']}, Potential gages: {len(additional_gages)}"
-    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
+    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2.png").resolve()
+    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2_v2.png").resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -1792,7 +1943,7 @@ def make_hf_map(
         image="data:image/png;base64,{}".format(b64_content),
         bottom=15,
         left=1,
-        style="position:fixed; width:3.042in; height:1.349in;",
+        style="position:fixed; width:3.0in; height:auto;",
     )
     m2.add_child(legend_image)
     
@@ -1936,7 +2087,7 @@ def make_par_map(
         mo_txt = f"{mo_name} "
         map_file = f"{html_maps_dir}/{par_sel}_{mo_name}_map.html"
 
-    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: {mo_txt}{par_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {pdb.get(par_sel).meta['help']}. {scale_bar_txt}</h1>"
+    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {mo_txt}{par_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {pdb.get(par_sel).meta['help']}. {scale_bar_txt}</h1>"
 
     #add custom legend
     legend_file = pl.Path(root_dir/"data_dependencies/map_custom_explanations/nb_5.png").resolve()
@@ -2110,7 +2261,7 @@ def make_var_map(
     else:
         scale_bar_txt = f"Values for {output_var_sel} range from {value_min} to {value_max} {var_units} in the model domain."
 
-    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: {sel_year} {output_var_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {var_desc}. {scale_bar_txt}</h1>"
+    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {sel_year} {output_var_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {var_desc}. {scale_bar_txt}</h1>"
     
     #add custom legend
     legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_5.png").resolve()
@@ -2297,7 +2448,7 @@ def make_streamflow_map(
         m
     )
 
-    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: streamflow evaluation, Kling-Gupta efficiency (KGE)</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '></h1>"
+    title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: streamflow evaluation, Kling-Gupta efficiency (KGE)</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '></h1>"
 
 
     #add custom legend
@@ -2688,7 +2839,7 @@ def make_gf_map(
     # additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
     # explan_txt = f"HRUs: {pdb.dimensions.get('nhru').meta['size']}, segments: {pdb.dimensions.get('nsegment').meta['size']},<br>gages: {pdb.dimensions.get('npoigages').meta['size']}, Potential gages: {len(additional_gages)}"
-    # title_html = 'f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
+    # title_html = 'f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
 
     # add custom legend
     legend_file = pl.Path(
@@ -2717,6 +2868,8 @@ def make_gf_map(
     return map_file
 
 def create_FMI_poi_markers(
+    root_dir,
+    model_dir,
     poi_df,
 ):
 
@@ -2753,56 +2906,66 @@ def create_FMI_poi_markers(
         z_index_offset=4004,
     )
 
-    #### READ FMI table (.csv) for selected gages
-    fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+    # #### READ FMI table (.csv) for selected gages
+    # fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
     
-    col_names = [
-        "gageid",
-        "name",
-        "comid",
-        "dams_n",
-        "ag_pct",
-        "nid_storage_annual_pct",
-        "sw_withdrawal_summer_pct",
-        "sw_withdrawal_annual_pct",
-        "storage_index",
-        "use_index",
-        "flow_management_index",
-        "storage_index",
-    ]
-    col_types = [
-        np.str_,
-        np.str_,
-        np.str_,
-        np.int_,
-        float,
-        float,
-        float,
-        float,
-        np.int_,
-        np.int_,
-        np.int_,
-        np.int_,
-    ]
-    cols = dict(
-        zip(col_names, col_types)
-    )  # Creates a dictionary of column header and datatype called below.
+    # col_names = [
+    #     "gageid",
+    #     "name",
+    #     "comid",
+    #     "dams_n",
+    #     "ag_pct",
+    #     "nid_storage_annual_pct",
+    #     "sw_withdrawal_summer_pct",
+    #     "sw_withdrawal_annual_pct",
+    #     "storage_index",
+    #     "use_index",
+    #     "flow_management_index",
+    #     "storage_index",
+    # ]
+    # col_types = [
+    #     np.str_,
+    #     np.str_,
+    #     np.str_,
+    #     np.int_,
+    #     float,
+    #     float,
+    #     float,
+    #     float,
+    #     np.int_,
+    #     np.int_,
+    #     np.int_,
+    #     np.int_,
+    # ]
+    # cols = dict(
+    #     zip(col_names, col_types)
+    # )  # Creates a dictionary of column header and datatype called below.
     
-    fmi_df = pd.read_csv(
-        fmi_df_file,
-        dtype=cols,
-        usecols=[
-            "gageid",
+    # fmi_df = pd.read_csv(
+    #     fmi_df_file,
+    #     dtype=cols,
+    #     usecols=[
+    #         "gageid",
+    #         "flow_management_index",
+    #     ],
+    # )
+    # fmi_gages_child = fmi_df.merge(
+    #     poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
+    # )
+    # fmi_gages_child.drop(columns={"gageid"}, inplace=True)
+    
+    # print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
+    # fmi_gages_child_info_file_path = model_dir / "metadata" / "fmi_gages_info.csv"
+    # fmi_gages_child.to_csv(fmi_gages_child_info_file_path, index=False)
+    
+    fmi_gages_child = fetch_FMI_npoigages_info(root_dir, model_dir, poi_df)
+    fmi_gages_child = fmi_gages_child[[
+            "poi_gage_id",
             "flow_management_index",
-        ],
+        ]]
+    fmi_gages_child = fmi_gages_child.merge(
+        poi_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
     )
-    fmi_gages_child = fmi_df.merge(
-        poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
-    )
-    fmi_gages_child.drop(columns={"gageid"}, inplace=True)
-    
-    print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
-    
     
     for idx, row in fmi_gages_child.iterrows():
         poi_gage_id = row["poi_gage_id"]
@@ -2990,10 +3153,14 @@ def create_FMI_poi_markers(
                 ),
             ).add_to(marker_cluster_label_poi)
 
+            # print fmi_gages_child here, maybe merge it with a meta data file or something
+
     return marker_cluster, marker_cluster_label_poi
 
 def create_ref_gages_markers(
+    root_dir,
     model_dir,
+    hru_gdf,
     ):
 
     """
@@ -3016,40 +3183,43 @@ def create_ref_gages_markers(
         icon_create_function=None,
         z_index_offset=4004,
     )
+    #### Fetch the child domain gages from the source dataset
+    ref_df = fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf)
 
-    #### READ FMI table (.csv) for selected gages
-    ref_df_file = model_dir / "metadata"/ "ref_npoigages_info.csv"
     
-    col_names = [
-        "poi_gage_id",
-        "poi_agency",
-        "poi_name",
-        "latitude",
-        "longitude",
-        "drainage_area",
-        "drainage_area_contrib",
-    ]
-    col_types = [
-        np.str_,
-        np.str_,
-        np.str_,
-        float,
-        float,
-        float,
-        float,
-    ]
-    cols = dict(
-        zip(col_names, col_types)
-    )  # Creates a dictionary of column header and datatype called below.
+    # #### READ FMI table (.csv) for selected gages
+    # ref_df_file = model_dir / "metadata"/ "ref_npoigages_info.csv"
     
-    ref_df = pd.read_csv(
-        ref_df_file,
-        dtype=cols,
-        # usecols=[
-        #     "gageid",
-        #     "flow_management_index",
-        # ],
-    )
+    # col_names = [
+    #     "poi_gage_id",
+    #     "poi_agency",
+    #     "poi_name",
+    #     "latitude",
+    #     "longitude",
+    #     "drainage_area",
+    #     "drainage_area_contrib",
+    # ]
+    # col_types = [
+    #     np.str_,
+    #     np.str_,
+    #     np.str_,
+    #     float,
+    #     float,
+    #     float,
+    #     float,
+    # ]
+    # cols = dict(
+    #     zip(col_names, col_types)
+    # )  # Creates a dictionary of column header and datatype called below.
+    
+    # ref_df = pd.read_csv(
+    #     ref_df_file,
+    #     dtype=cols,
+    #     # usecols=[
+    #     #     "gageid",
+    #     #     "flow_management_index",
+    #     # ],
+    # )
     
     
     for idx, row in ref_df.iterrows():
@@ -3093,7 +3263,9 @@ def create_ref_gages_markers(
     return marker_cluster, marker_cluster_label_poi
 
 def create_non_ref_gages_markers(
-    model_dir,
+    root_dir, 
+    model_dir, 
+    hru_gdf
     ):
 
     """
@@ -3118,38 +3290,40 @@ def create_non_ref_gages_markers(
     )
 
     #### READ FMI table (.csv) for selected gages
-    non_ref_df_file = model_dir / "metadata" / "non_ref_npoigages_info.csv"
+    non_ref_df = fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf)
     
-    col_names = [
-        "poi_gage_id",
-        "poi_agency",
-        "poi_name",
-        "latitude",
-        "longitude",
-        "drainage_area",
-        "drainage_area_contrib",
-    ]
-    col_types = [
-        np.str_,
-        np.str_,
-        np.str_,
-        float,
-        float,
-        float,
-        float,
-    ]
-    cols = dict(
-        zip(col_names, col_types)
-    )  # Creates a dictionary of column header and datatype called below.
+    # non_ref_df_file = model_dir / "metadata" / "non_ref_npoigages_info.csv"
     
-    non_ref_df = pd.read_csv(
-        non_ref_df_file,
-        dtype=cols,
-        # usecols=[
-        #     "gageid",
-        #     "flow_management_index",
-        # ],
-    )
+    # col_names = [
+    #     "poi_gage_id",
+    #     "poi_agency",
+    #     "poi_name",
+    #     "latitude",
+    #     "longitude",
+    #     "drainage_area",
+    #     "drainage_area_contrib",
+    # ]
+    # col_types = [
+    #     np.str_,
+    #     np.str_,
+    #     np.str_,
+    #     float,
+    #     float,
+    #     float,
+    #     float,
+    # ]
+    # cols = dict(
+    #     zip(col_names, col_types)
+    # )  # Creates a dictionary of column header and datatype called below.
+    
+    # non_ref_df = pd.read_csv(
+    #     non_ref_df_file,
+    #     dtype=cols,
+    #     # usecols=[
+    #     #     "gageid",
+    #     #     "flow_management_index",
+    #     # ],
+    # )
     
     
     for idx, row in non_ref_df.iterrows():
@@ -3191,3 +3365,27 @@ def create_non_ref_gages_markers(
         ).add_to(marker_cluster_label_poi)
 
     return marker_cluster, marker_cluster_label_poi
+
+def create_geology_map():
+    """
+    Creates a folium.map object from the U.S. Geological Survey's State Geologic Map Compilation (SGMC) geodatabase of the conterminous United States.
+
+    Parameters
+    ----------
+
+    Returns
+    -------
+    geology_map : a folium map object
+        geology foium.map object created to display geologic boundaries.
+
+    """
+
+    geo_map = folium.GeoJson(
+        hru_gdf,
+        style_function=style_function_hru_map,
+        highlight_function=highlight_function_hru_map,
+        name="HRUs",
+        # tooltip=tooltip_hru,
+        popup=popup_hru,
+    )
+    return hru_map

@@ -327,7 +327,7 @@ xr_streamflow = create_sf_efc_df(
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_gage_id.values[1]  # "08049300" "130875049"
+cpoi_id = xr_streamflow.poi_gage_id.values[2]  # "08049300" "130875049"
 # cpoi_id = "130875049"
 print(
     f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
@@ -362,24 +362,22 @@ make_obs_plot_files(
 )
 
 # %%
-xr_streamflow
+# xr_streamflow
 
 # %%
-flows = xr_streamflow["discharge"]
+# flows = xr_streamflow["discharge"]
 
-# True where all times are NaN for each poi_id
-all_nan_per_poi = flows.isnull().all(dim="time")
+# # True where all times are NaN for each poi_id
+# all_nan_per_poi = flows.isnull().all(dim="time")
 
-# Count poi_id with all-NaN flows
-n_all_nan_poi = int(all_nan_per_poi.sum())
-print(n_all_nan_poi)
-
-# %%
-# Get the poi_id values (as a DataArray)
-poi_all_nan = all_nan_per_poi[all_nan_per_poi]  # boolean indexing on coord dim [web:19]
-poi_ids_all_nan = poi_all_nan["poi_gage_id"].values
+# # Count poi_id with all-NaN flows
+# n_all_nan_poi = int(all_nan_per_poi.sum())
+# print(n_all_nan_poi)
 
 # %%
-poi_ids_all_nan
+# # Get the poi_id values (as a DataArray)
+# poi_all_nan = all_nan_per_poi[all_nan_per_poi]  # boolean indexing on coord dim [web:19]
+# poi_ids_all_nan = poi_all_nan["poi_gage_id"].values
 
 # %%
+# poi_ids_all_nan
