@@ -1,3 +1,7 @@
 [formats]
 "notebooks/" = "ipynb"
-"notebook_scripts/" = "py:percent"
+"nhf_assist/notebooks/" = "ipynb"
+"pestpp_ies_calibration/notebooks/" = "ipynb"
+"src/workflow_templates/nhm/" = "py:percent"
+"src/workflow_templates/nhf/" = "py:percent"
+"src/workflow_templates/pest/" = "py:percent"
