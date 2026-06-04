@@ -9,10 +9,6 @@ domain_data/
 # Jupyter Notebooks (ipynb files)
 *.ipynb
 
-# Archived generated notebooks
-notebooks/archive/
-nhf_assist/notebooks/archive/
-
 # subdomain_config.yaml has PPI
 subdomain_config.yaml
 .env
@@ -31,4 +27,6 @@ pestpp_ies_calibration/data_dependencies/
 pestpp_ies_calibration/notebooks/
 
 CLAUDE.md
+docs/
+tests/
 .DS_Store
