@@ -5,6 +5,34 @@ All notable changes to nhm-assist will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+_Changes on the `nhf_dev` branch since the 1.1.0 release._
+
+### Added
+
+- **NHF Assist workflow tree (`nhf_assist/`):** Added a parallel National Hydrofabric (NHF) workflow alongside the existing NHM notebooks, with its own `notebook_scripts/` and a set of `_v2` helper modules (`nhm_assist_utilities_v2.py`, `nhm_hydrofabric_v2.py`, `nhm_output_visualization_v2.py`, `output_plots_v2.py`, `map_template_v2.py`, `sf_data_retrieval_v2.py`, `display_controls_v2.py`, `nhm_helpers_v2.py`, `efc.py`, and a new `nhm_config.py` config module). Includes the core numbered notebooks (`0_workspace_setup` through `6_streamflow_output_visualization_new`) and a work-in-progress `2_model_hydrofabric_visualization_FMI` (Flow Management Index) variant.
+- **POI supplemental information notebook:** `Fetch_poi_supplimental_information.py` builds an interactive map of hydrofabric elements and fetches supplemental Point-of-Interest (POI) metadata; the new POI metadata fetch function was also added to the shared helper functions and notebooks.
+- **Domain geopackage builders:** `Create_OHM_domain_geopackage.py` and `Create_child_domain_geopackage.py` generate domain polygons (e.g. one per `basin_id`) for parent and child/subdomain hydrofabrics.
+- **HUC / gage / parameter utilities:** Added supplemental processing notebooks — `Write_huc_12pp_data_as_netcdf.py`, `get_huc_ids.py`, `gf_params_parse.py`, `make_hydat_gage_resource.py`, `make_param_file.py`, `Oregon_GFv2_parameters.py`, and `HRU_geom_check.py`.
+- **PEST++ IES observation & control file workflow:** Added `01_Prepare_observations.py` (builds `allobs.dat` and related observation inputs, replacing `01_Create_allobs_dat.py`), `02_Create_pest_instruction_file.py`, `02b_Create_pest_template_file.py`, and `05_Re-weighting_obs.py` (switches from manual re-weighting to a "phi factor" objective-function approach and prunes localization groups containing only zero-weighted observations).
+- **PEST++ IES forward run scripts:** Added `forward_run.py` and `forward_run_revised.py` for the PESTPP-IES forward model run.
+- Added `make_notebooks.py` to the PESTPP-IES calibration directory to regenerate notebooks from `.py` scripts.
+
+### Changed
+
+- **Reorganized NHF directory layout:** Renamed the `nhf-assist` directory to `nhf_assist`, moved and reorganized folder paths, and corrected `.gitignore` entries accordingly (including ignoring `claude.md`).
+- **Rewrote PEST++ setup notebook:** Substantially reworked `03_set_up_PEST++.py` and updated `04_add_localization_matrix.py`, `00_Subset_NHM_baselines.py`, and `helpers/pest_utils.py`.
+- Updated `Observation_standard_deviation.csv` and `localization_groups.csv` ancillary templates, and moved the `pestpp-ies` binary out of the `dependencies/` subdirectory.
+- Merged the latest `main` into `nhf_dev` several times to keep the branch current with the 1.1.0 line.
+
+### Fixed
+
+- **Reduced SCA memory usage (PR #63):** Lowered memory consumption in snow-covered-area (SCA) calculations by computing Dask tasks earlier and deleting intermediate variables after use.
+- Fixed bugs in the PEST++ IES setup notebooks and several NHF workflow tweaks.
+- Removed user-specific `kernelspec` metadata from notebooks for cleaner, reproducible diffs.
+- Removed an extraneous file and applied small corrections in `03_set_up_PEST++.py` and the `utilities_v2` / `2_FMI` notebook.
+
 ## [1.1.0] — 2026-06-01
 
 ### Added
