@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -33,7 +33,8 @@ jupyter_black.load()
 root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
-from helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
+#from helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
+from helpers.sf_data_retrieval import fetch_daily_discharge_batch
 from helpers.nhm_assist_utilities_v2 import find_missing_gage_info
 
 
@@ -69,7 +70,7 @@ from rich import pretty
 pretty.install()
 
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -525,6 +526,9 @@ for kk in file_it:
     gf_files.append(kk)
 gf_files.sort()
 
+# %%
+root_dir
+
 # %% [markdown]
 # ### Read in the pywatershed control file.
 # The control file used for the parent pywatershed model is somewhat universal and not model dependent
@@ -604,7 +608,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Sandy_River"  # Powder_River, John_Day_River
+child_name = "Hood_River"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -686,9 +690,12 @@ with open(param_source_files_dir / "nhm_seg.csv", "w", newline="") as f:
 
 # %%
 child_npoi_gdf = poi_gdb.copy()
+child_npoi_gdf = child_npoi_gdf.loc[~child_npoi_gdf["segment_id"].isna()]
+
 child_npoi_gdf["segment_id"] = child_npoi_gdf["segment_id"].astype(
     int
 )  # or 'int' / 'Int64'
+# Put a drop rows with ["segment_id"] na
 
 # %%
 poi_gdb.columns
@@ -755,6 +762,9 @@ gage_data_df = npoi_data.loc[
 
 # Get the list of HUC-12s for the child model area
 huc12pp_df = npoi_data.loc[npoi_data.hl_reference == "type_huc12"]
+
+# %%
+npoi_data.hy_id[0]
 
 # %% [markdown]
 # ##### Create a unique id for each poi for cross-reference
@@ -915,6 +925,9 @@ poi_gdf[poi_gdf["segment_id"].isna()]
 poi_gdf_child = poi_gdf.copy()
 poi_gdf_child.rename(columns={"segment_id": "nhm_seg_id"}, inplace=True)
 
+# %%
+poi_gdf_child
+
 # %% [markdown]
 # Now create a mapping series to find the child segment_id (child) associated with the nhm_seg_id (parent) and add the segment_id to the dataframe.
 
@@ -958,36 +971,52 @@ huc12pp_gdf_child["segment_id"] = huc12pp_gdf_child["segment_id"].astype(int)
 huc12pp_gdf_child.sort_values(by="hl_link", ascending=True, inplace=True)
 huc12pp_gdf_child.reset_index(inplace=True, drop=True)
 
+# %%
+poi_gdf_child
+
 # %% [markdown]
 # #### Remove poi's that have no flow data for period 1979-10-01 to 2025-09-30 and populated site information
-# Update with Luca's fix when is done
+# Update with Luca's fix when is done. On second thought, maybe we don't need to do this here. When we run notebook 1, it should sow if the gages have less than a length of record speified in notebook 0.
 
 # %%
-noq_list = []
-poi_gdf_child["poi_id"] = (
-    np.nan
-)  # Added temporarily as fetch function criteria for NHM-assist.
+result_1 = fetch_daily_discharge_batch(
+    monitoring_location_ids=list(poi_gdf_child.hl_link),
+    start_date="1979-10-01",
+    end_date="2025-09-30",
+)
+gage_poi_flow_list = [
+    x for x in list(poi_gdf_child.hl_link) if x not in result_1.missing_ids
+]
 
-for ii in list(poi_gdf_child.hl_link):
-    data = fetch_single_nwis_gage(ii, "1979-10-01", "2025-09-30", poi_gdf_child, 365)
-    df = data[1]
+# %%
+# # noq_list = []
+# # poi_gdf_child["poi_id"] = (
+# #     np.nan
+# # )  # Added temporarily as fetch function criteria for NHM-assist.
 
-    if isinstance(df, pd.DataFrame):
-        if df["00060_Mean"].isna().all():
-            noq_list.append(ii)
-            print(
-                f"{ii} --Added to noq_gages_file. No streamflow obs from 10/01/1979 to 9/30/2025."
-            )
-        else:
-            print(
-                f"{ii} --Added parameter file. >365 streamflow obs from 10/01/1979 to 9/30/2025. "
-            )
-    else:
-        noq_list.append(ii)
+# # for ii in list(poi_gdf_child.hl_link):
+# #     data = fetch_single_nwis_gage(ii, "1979-10-01", "2025-09-30", poi_gdf_child, 365)
+# #     df = data[1]
 
-# Update list of gages for the param file to those only with discharge data in NWIS
-gage_poi_flow_list = [x for x in list(poi_gdf_child.hl_link) if x not in noq_list]
-poi_gdf_child.drop(columns=["poi_id"], inplace=True)  # Remove column to avoid confusion
+# #     if isinstance(df, pd.DataFrame):
+# #         if df["00060_Mean"].isna().all():
+# #             noq_list.append(ii)
+# #             print(
+# #                 f"{ii} --Added to noq_gages_file. No streamflow obs from 10/01/1979 to 9/30/2025."
+# #             )
+# #         else:
+# #             print(
+# #                 f"{ii} --Added parameter file. >365 streamflow obs from 10/01/1979 to 9/30/2025. "
+# #             )
+# #     else:
+# #         noq_list.append(ii)
+
+# # Update list of gages for the param file to those only with discharge data in NWIS
+# gage_poi_flow_list = [x for x in list(poi_gdf_child.hl_link) if x not in result_1.missing_ids]
+# #poi_gdf_child.drop(columns=["poi_id"], inplace=True)  # Remove column to avoid confusion
+
+# %%
+npoigages_params_gdf
 
 # %% [markdown]
 # #### Now, some reshaping an cleaning of the gage poi information prior to parameter csv file creation
@@ -1006,7 +1035,7 @@ npoigages_params_df = npoigages_params_df.sort_values("poi_gage_id")
 # %% [markdown]
 # The parmater file cannot have more than one gage associated with a segment. If more than one gage has been associated with a segment, all gages will be written to the gage_resource_info.csv. These gages can be further evaluated and can be exchanged in the model using using NHM-assist. The gage with the longest POR will be selected here and associated with the segment.
 
-# %% jupyter={"source_hidden": true}
+# %%
 has_duplicates = npoigages_params_df["segment_id"].duplicated().any()
 if has_duplicates == True:
     rows_with_duplicates = npoigages_params_df[
