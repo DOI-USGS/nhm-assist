@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -32,12 +32,20 @@ jupyter_black.load()
 root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from helpers.map_template_v2 import make_hf_map
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config, find_missing_gage_info, fetch_non_ref_npoigages_info, fetch_ref_npoigages_info
-import topojson
+from helpers.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+
+from helpers.nhm_assist_utilities_v2 import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
+
+# import topojson
+
 
 config = load_subdomain_config(root_dir)
-#con.print(config)
+# con.print(config)
 
 # %% [markdown]
 # ## Introduction
@@ -151,12 +159,7 @@ con.print(
 )
 
 # %%
-ref_npoigages_df = fetch_ref_npoigages_info(root_dir, config["model_dir"], hru_gdf)
-
-# %%
-non_ref_npoigages_df = fetch_non_ref_npoigages_info(
-    root_dir, config["model_dir"], hru_gdf
-)
+poi_df
 
 # %%
 map_file = make_hf_map(
@@ -178,206 +181,165 @@ map_file = make_hf_map(
 # %% [markdown]
 # # Want to Add a potential gage to the parameter file? [Click here!](./add_pois_to_parameters.ipynb)
 
-# %% [markdown]
-# ### Find the ref gages
-
 # %%
-import glob
-import os
-
-# list your three directories here (relative or absolute)
-dirs = [
-    root_dir / "data_dependencies" / "ref_gages" / "region17",
-    root_dir / "data_dependencies" / "ref_gages" / "region16",
-    root_dir / "data_dependencies" / "ref_gages" / "region18",
-]
-
-# collect all matching files from the three directories
-files = []
-for d in dirs:
-    # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
-    files.extend(glob.glob(os.path.join(d, "output_*.txt")))
-
-# extract the numeric part after "_" and before ".txt"
-monitoring_station_number_list = []
-for f in files:
-    base = os.path.basename(f)  # e.g. "output_10396000.txt"
-    num_str = base.split("_")[1].split(".")[0]  # "10396000"
-    monitoring_station_number_list.append((num_str))  # or keep as string if you prefer
-
-print(len(list(set(monitoring_station_number_list))))
-print(len(monitoring_station_number_list))
-
-# %%
-import glob
-import os
-import pydot
-import networkx as nx
-from dataretrieval import waterdata
+# Make meta_table
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv(
-    dotenv_path=root_dir / ".env"
-)  # this will load the environment variables from the .env file
-
-
-# def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
-
-#     # list your three directories here (relative or absolute)
-#     dirs = [
-#         root_dir / "data_dependencies" / "ref_gages" / "region17",
-#         root_dir / "data_dependencies" / "ref_gages" / "region16",
-#         root_dir / "data_dependencies" / "ref_gages" / "region18",
-#     ]
-
-#     # collect all matching files from the three directories
-#     files = []
-#     for d in dirs:
-#         # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
-#         files.extend(glob.glob(os.path.join(d, "output_*.txt")))
-
-#     # extract the numeric part after "_" and before ".txt"
-#     monitoring_station_number_list = []
-#     for f in files:
-#         base = os.path.basename(f)  # e.g. "output_10396000.txt"
-#         num_str = base.split("_")[1].split(".")[0]  # "10396000"
-#         monitoring_station_number_list.append(
-#             (num_str)
-#         )  # or keep as string if you prefer
-
-#     all_ref_npoigages_info = find_missing_gage_info(
-#         root_dir,
-#         root_dir / "data_dependencies" / "ref_gages",
-#         monitoring_station_number_list,
-#         "ref_npoigages_info",
-#     )
-
-#     # Make a geodataframe from the info df
-#     gdf = gpd.GeoDataFrame(
-#         all_ref_npoigages_info,
-#         geometry=gpd.points_from_xy(
-#             all_ref_npoigages_info["longitude"], all_ref_npoigages_info["latitude"]
-#         ),
-#         crs="EPSG:4326",  # WGS84 lat/lon
-#     )
-
-#     # make sure CRS is projected (meters/feet) to add buffer distances in real units
-#     hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
-#     gdf_proj = gdf.to_crs(hru_proj.crs)
-
-#     # create a buffer around the mask, 1000 meters, to get gages that may be downstream from outlet segments
-#     hru_buffered = hru_proj.buffer(1000)
-
-#     # clip using the buffered mask to the model domain
-#     gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
-
-#     # (optional) go back to original CRS and drop the "geometry" column
-#     gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
-#     gdf_clipped.drop(columns={"geometry"}, inplace=True)
-
-#     ref_npoigages_info_file_path = model_dir / "ref_npoigages_info.csv"
-#     gdf_clipped.to_csv(ref_npoigages_info_file_path, index=False)
-
-#     return gdf_clipped
-
-
-# def fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf):
-
-#     # list your three directories here (relative or absolute)
-#     dirs = [
-#         root_dir / "data_dependencies" / "non_ref_gages" / "region17",
-#         root_dir / "data_dependencies" / "non_ref_gages" / "region16",
-#         root_dir / "data_dependencies" / "non_ref_gages" / "region18",
-#     ]
-
-#     # collect all matching files from the three directories
-#     files = []
-#     for d in dirs:
-#         # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
-#         files.extend(glob.glob(os.path.join(d, "output_*.txt")))
-
-#     # extract the numeric part after "_" and before ".txt"
-#     monitoring_station_number_list = []
-#     for f in files:
-#         base = os.path.basename(f)  # e.g. "output_10396000.txt"
-#         num_str = base.split("_")[1].split(".")[0]  # "10396000"
-#         monitoring_station_number_list.append(
-#             (num_str)
-#         )  # or keep as string if you prefer
-
-#     all_non_ref_npoigages_info = find_missing_gage_info(
-#         root_dir,
-#         root_dir / "data_dependencies" / "non_ref_gages",
-#         monitoring_station_number_list,
-#         "non_ref_npoigages_info",
-#     )
-
-#     # Make a geodataframe from the info df
-#     gdf = gpd.GeoDataFrame(
-#         all_non_ref_npoigages_info,
-#         geometry=gpd.points_from_xy(
-#             all_non_ref_npoigages_info["longitude"],
-#             all_non_ref_npoigages_info["latitude"],
-#         ),
-#         crs="EPSG:4326",  # WGS84 lat/lon
-#     )
-
-#     # make sure CRS is projected (meters/feet) to add buffer distances in real units
-#     hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
-#     gdf_proj = gdf.to_crs(hru_proj.crs)
-
-#     # create a buffer around the mask, 1000 meters, to get gages that may be downstream from outlet segments
-#     hru_buffered = hru_proj.buffer(1000)
-
-#     # clip using the buffered mask to the model domain
-#     gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
-
-#     # (optional) go back to original CRS and drop the "geometry" column
-#     gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
-#     gdf_clipped.drop(columns={"geometry"}, inplace=True)
-
-#     non_ref_npoigages_info_file_path = model_dir / "non_ref_npoigages_info.csv"
-#     gdf_clipped.to_csv(non_ref_npoigages_info_file_path, index=False)
-
-#     return gdf_clipped
+model_dir = config["model_dir"]
 
 # %%
-ref_npoigages_df = fetch_ref_npoigages_info(root_dir, config["model_dir"], hru_gdf)
+npoigages_df_file = model_dir / "metadata" / "npoigages_info.csv"
+ref_df_file = model_dir / "metadata" / "ref_npoigages_info.csv"
+non_ref_df_file = model_dir / "metadata" / "non_ref_npoigages_info.csv"
 
-# %%
-non_ref_npoigages_df = fetch_non_ref_npoigages_info(
-    root_dir, config["model_dir"], hru_gdf
+col_names = [
+    "poi_gage_id",
+    "poi_agency",
+    "poi_name",
+    "latitude",
+    "longitude",
+    "drainage_area",
+    "drainage_area_contrib",
+]
+col_types = [
+    np.str_,
+    np.str_,
+    np.str_,
+    float,
+    float,
+    float,
+    float,
+]
+cols = dict(
+    zip(col_names, col_types)
+)  # Creates a dictionary of column header and datatype called below.
+
+npoigages_df = pd.read_csv(
+    npoigages_df_file,
+    dtype=cols,
+    usecols=[
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+    ],
 )
 
-# %%
-non_ref_npoigages_df
+non_ref_df = pd.read_csv(
+    non_ref_df_file,
+    dtype=cols,
+    usecols=[
+        "poi_gage_id",
+    ],
+)
+non_ref_list = list(non_ref_df.poi_gage_id)
+
+ref_df = pd.read_csv(
+    ref_df_file,
+    dtype=cols,
+    usecols=[
+        "poi_gage_id",
+    ],
+)
+ref_list = list(ref_df.poi_gage_id)
+
+npoigages_df["gagesII"] = "nan"
+
+npoigages_df.loc[npoigages_df["poi_gage_id"].isin(ref_list), "gagesII"] = "ref"
+npoigages_df.loc[npoigages_df["poi_gage_id"].isin(non_ref_list), "gagesII"] = "non_ref"
+
+# Find the HUC10
+huc10_map = gpd.read_file(
+    root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
+).to_crs(epsg=4326)
+print(huc10_map.columns)
+
+# Make sure both are in the same CRS
+gdf_points = gpd.GeoDataFrame(
+    npoigages_df,
+    geometry=gpd.points_from_xy(npoigages_df["longitude"], npoigages_df["latitude"]),
+    crs="EPSG:4326",
+)
+
+# Spatial join: each line gets attributes of the polygon it intersects
+gdf_points_with_huc = gpd.sjoin(
+    gdf_points,
+    huc10_map[["huc10", "geometry"]],
+    how="left",
+    predicate="intersects",  # or 'within' if you prefer strict containment
+)
+# # Clean up: keep original columns plus huc10
+gdf_points_with_huc = gdf_points_with_huc.drop(columns=["index_right"])
+npoigages_df = gdf_points_with_huc.copy()
+
+#### READ FMI table (.csv) for selected gages
+fmi_df_file = model_dir / "metadata" / "fmi_gages_info.csv"
+
+col_names = [
+    "storage_index",
+    "use_index",
+    "flow_management_index",
+    "poi_gage_id",
+    "poi_agency",
+    "poi_name",
+    "latitude",
+    "longitude",
+    "drainage_area",
+    "drainage_area_contrib",
+]
+col_types = [
+    np.int_,
+    np.int_,
+    np.int_,
+    np.str_,
+    np.str_,
+    np.str_,
+    float,
+    float,
+    float,
+    float,
+]
+cols = dict(
+    zip(col_names, col_types)
+)  # Creates a dictionary of column header and datatype called below.
+
+fmi_df = pd.read_csv(
+    fmi_df_file,
+    dtype=cols,
+    usecols=[
+        "storage_index",
+        "use_index",
+        "flow_management_index",
+        "poi_gage_id",
+    ],
+)
+
+npoigages_df = fmi_df.merge(
+    npoigages_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
+)
+npoigages_df["ohm_cal"] = "no"
+cols = [
+    "huc10",
+    "poi_gage_id",
+    "ohm_cal",
+    "gagesII",
+    "flow_management_index",
+    "storage_index",
+    "use_index",
+    "poi_agency",
+    "poi_name",
+    "latitude",
+    "longitude",
+]
+npoigages_df = npoigages_df[cols]
+npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
+
+
+npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
+npoigages_df.to_csv(npoigages_info_file_path, index=False)
 
 # %%
-# gdf = gpd.GeoDataFrame(
-#     test,
-#     geometry=gpd.points_from_xy(test["longitude"], test["latitude"]),
-#     crs="EPSG:4326",  # WGS84 lat/lon
-# )
-# # make sure CRS is projected (meters/feet) if you want buffer distances in real units
-# hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
-# gdf_proj = gdf.to_crs(hru_proj.crs)
-
-# # create a buffer around the mask, e.g. 1000 meters
-# hru_buffered = hru_proj.buffer(1000)
-
-# # clip using the buffered mask
-# gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
-
-# # (optional) go back to original CRS
-# gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
-# gdf_clipped.drop(columns={"geometry"}, inplace=True)
-
-# %%
-poi_df
-
-# %%
+npoigages_df

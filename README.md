@@ -59,6 +59,13 @@ In the miniforge prompt, run
 
 `python make_notebooks.py`
 
+To generate notebooks for the `nhf_assist` directory, run
+
+`python make_notebooks.py nhf_assist`
+
+If target notebooks already exist, the script will prompt once per run so you can either archive the old notebooks into `archive/` or delete them before writing fresh copies.
+Archived notebooks from one run are grouped under a timestamped folder such as `notebooks/archive/20260602_104512/`.
+
 ## Launch Jupyter
 
 In the miniforge prompt, navigate to the nhm-assist folder, and run
@@ -74,6 +81,9 @@ Ready to go! :+1:
 nhm-assist interactive plots are created using [plotly](https://plotly.com/python-api-reference/). These figures facilitate evaluation of NHM subdomain model parameters and output. Interactive plots will open in new browser tabs and are exported to `./domain_data/subdomain/notebook_output_files/html_plots`.
 
 Additionally, nhm-assist interactive maps are created using [folium v0.18.0](https://python-visualization.github.io/folium/v0.18.0/index.html). These maps visualize geospatial elements of the NHM subdomain. Additionally, select maps include embedded plotly figures. Folium maps will open in new browser tabs and are exported as html files to `./domain_data/subdomain/notebook_output_files/html_maps`. Users may interact with these maps and embed them in webpages, presentations, or other places external to the jupyter notebook repository.
+
+**Note:** In some map outputs, the field labeled `nhru` corresponds to the NHM hydrologic response unit identifier, `nhm_id` in the map outputs.
+
 
 ### Plot interaction
 
