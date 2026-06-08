@@ -390,7 +390,7 @@ def create_poi_df(
     npoigages_info = find_missing_gage_info(root_dir=root_dir,
                                                 dest_dir= model_dir / "metadata",
                                                 gages_list=poi["poi_gage_id"].to_list(),
-                                                info_file_name= "npoigages_info")
+                                                resource_file_path= model_dir / "gages.csv")
 
     poi = poi.merge(npoigages_info, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
@@ -517,7 +517,7 @@ def create_default_gages_file(
     
     """Read in additional non-nwis gages from the resource gage file. These are a list of user requested gages that may or may not be in the parameter file or the nwis gage file, and likely include non NWIS gages.
     """
-    resource_gages_file = model_dir / "resource_gages.csv"
+    resource_gages_file = model_dir / "gages.csv"
 
     #if len(drop_list) > 0:
     nan_list = [np.nan] * len(keep_list)
@@ -845,3 +845,104 @@ def make_hf_map_elements(
 #        HW_basins_gdf,
 #        HW_basins,
     )
+
+
+def evaluate_and_fix_nhru_geometry(gpkg_path, layer="nhru", fix=True):
+    """
+    Evaluate and optionally fix geometries in the nhru layer of a GeoPackage.
+
+    Checks for:
+    - Invalid geometries (self-intersections, etc.)
+    - Non-finite coordinates (NaN, Inf)
+    - Null/empty geometries
+
+    Parameters
+    ----------
+    gpkg_path : str or pathlib.Path
+        Path to the model_layers.gpkg file.
+    layer : str, optional
+        Layer name to evaluate (default "nhru").
+    fix : bool, optional
+        If True, attempt to fix invalid geometries using shapely.make_valid
+        and save the corrected layer back to the GeoPackage (default True).
+
+    Returns
+    -------
+    report : dict
+        Dictionary with keys:
+        - "total_features": int
+        - "invalid_geom": list of indices with invalid geometries
+        - "nonfinite_coords": list of indices with NaN/Inf coordinates
+        - "null_or_empty": list of indices with null or empty geometries
+        - "fixed": bool, whether fixes were applied and saved
+        - "gpkg_path": str, path to the GeoPackage
+    """
+    import geopandas as gpd
+    import numpy as np
+    from shapely import get_coordinates, make_valid
+    from pathlib import Path
+
+    gpkg_path = Path(gpkg_path)
+    gdf = gpd.read_file(gpkg_path, layer=layer)
+
+    report = {
+        "total_features": len(gdf),
+        "invalid_geom": [],
+        "nonfinite_coords": [],
+        "null_or_empty": [],
+        "fixed": False,
+        "gpkg_path": str(gpkg_path),
+    }
+
+    # Check for null/empty geometries
+    null_mask = gdf.geometry.is_empty | gdf.geometry.isna()
+    report["null_or_empty"] = gdf.index[null_mask].tolist()
+
+    # Check for invalid geometries
+    valid_mask = gdf.geometry.is_valid
+    report["invalid_geom"] = gdf.index[~valid_mask & ~null_mask].tolist()
+
+    # Check for non-finite coordinates
+    def has_nonfinite_coords(geom):
+        if geom is None or geom.is_empty:
+            return False  # already caught above
+        coords = get_coordinates(geom, include_z=False)
+        return not np.isfinite(coords).all()
+
+    nonfinite_mask = gdf.geometry.apply(has_nonfinite_coords)
+    report["nonfinite_coords"] = gdf.index[nonfinite_mask].tolist()
+
+    # Print summary
+    print(f"Layer: '{layer}' in {gpkg_path.name}")
+    print(f"  Total features: {report['total_features']}")
+    print(f"  Null/empty geometries: {len(report['null_or_empty'])}")
+    print(f"  Invalid geometries: {len(report['invalid_geom'])}")
+    print(f"  Non-finite coordinates: {len(report['nonfinite_coords'])}")
+
+    needs_fix = (
+        len(report["invalid_geom"]) > 0 or len(report["nonfinite_coords"]) > 0
+    )
+
+    if fix and needs_fix:
+        print("  Applying make_valid to fix geometries...")
+        gdf["geometry"] = gdf.geometry.apply(
+            lambda g: make_valid(g, method="structure", keep_collapsed=True)
+            if g is not None and not g.is_empty
+            else g
+        )
+
+        # Verify fix
+        still_invalid = (~gdf.geometry.is_valid & ~null_mask).sum()
+        if still_invalid > 0:
+            print(f"  WARNING: {still_invalid} geometries still invalid after fix.")
+        else:
+            print("  All geometries now valid.")
+
+        # Save back to GeoPackage
+        gdf.to_file(gpkg_path, layer=layer, driver="GPKG")
+        print(f"  Fixed layer saved to {gpkg_path}")
+        report["fixed"] = True
+    elif not needs_fix:
+        print("  All geometries are valid. No fix needed.")
+
+    return report
