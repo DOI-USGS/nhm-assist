@@ -7,4 +7,4 @@ _SRC = Path(__file__).resolve().parents[2] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from assist.nhf.sf_data_retrieval_v2 import *  # noqa: F401,F403
+from assist.nhf.sf_data_retrieval_v2_1 import *  # noqa: F401,F403
