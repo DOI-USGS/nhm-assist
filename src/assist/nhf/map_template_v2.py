@@ -27,6 +27,9 @@ import subprocess
 import os
 import webbrowser
 
+from urllib import request
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 pretty.install()
 con = Console()
@@ -43,6 +46,7 @@ from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
 import geopandas as gpd
+import requests
 
 admin_basin_style = lambda x: {
     "fillColor": "#00000000",
@@ -1790,9 +1794,11 @@ def make_hf_map(
     ).to_crs(epsg=4326)
     huc10_map =huc10_map[["huc10","geometry"]]
     #huc10_map = gpd.clip(huc10_map, hru_map)
-    hru_union = hru_simple.geometry.unary_union
-    # If you’re on newer GeoPandas/Shapely, you can use:
-    # hru_union = hru_simple.geometry.union_all()
+    from shapely import make_valid
+    hru_simple["geometry"] = hru_simple.geometry.apply(
+        lambda g: make_valid(g) if g is not None and not g.is_empty else g
+    )
+    hru_union = hru_simple.geometry.union_all()
 
     # Compute centroids and select HUC10s whose centroids fall within HRU union
     huc10_centroids = huc10_map.copy()
