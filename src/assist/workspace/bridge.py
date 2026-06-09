@@ -99,3 +99,31 @@ def list_projects(
             if child.name != "notebooks" and is_project_dir(child)
         ]
     )
+
+
+def resolve_workspace_notebook_context(
+    cwd: str | Path | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Path | str] | None:
+    del env  # reserved for future runtime overrides
+    current = Path.cwd() if cwd is None else Path(cwd)
+    current = current.expanduser().resolve()
+
+    for candidate in (current, *current.parents):
+        if candidate.name not in WORKFLOW_NAMES:
+            continue
+        notebooks_dir = candidate.parent
+        if notebooks_dir.name != "notebooks":
+            continue
+
+        workspace_root = notebooks_dir.parent.resolve()
+        return {
+            "workspace_root": workspace_root,
+            "config_root": workspace_root,
+            "workflow": candidate.name,
+            "notebooks_dir": notebooks_dir.resolve(),
+            "workflow_dir": candidate.resolve(),
+        }
+
+    return None
