@@ -42,8 +42,21 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
+repo_name = "nhm-assist"
+pixi_root = os.environ.get("PIXI_PROJECT_ROOT")
+if pixi_root:
+    root_dir = pl.Path(pixi_root).expanduser().resolve()
+else:
+    root_dir = pl.Path(os.getcwd().rsplit(repo_name, 1)[0] + repo_name)
+for path in (root_dir, root_dir / "src"):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
+
+from assist.workspace.bridge import resolve_workspace_notebook_context
+
+workspace_context = resolve_workspace_notebook_context(cwd=os.getcwd(), env=os.environ)
+config_root = workspace_context["config_root"] if workspace_context else root_dir
 
 from dotenv import load_dotenv
 
@@ -75,7 +88,7 @@ from nhm_helpers.nhm_assist_utilities import (
     load_subdomain_config,
 )
 
-config = load_subdomain_config(root_dir)
+config = load_subdomain_config(config_root)
 
 # %%
 delete_notebook_output_files(

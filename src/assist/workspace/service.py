@@ -6,6 +6,8 @@ from assist.workspace.bridge import (
     WORKFLOW_NAMES,
     ensure_workspace_root,
     get_project_dir,
+    resolve_repo_root,
+    resolve_workspace_notebook_context,
     get_workflow_notebooks_dir,
     get_workspace_notebooks_dir,
     is_project_dir,
@@ -15,6 +17,7 @@ from assist.workspace.examples import resolve_example_source
 
 
 NORMALIZED_SOURCE_DIR = "source_data"
+SKIP_RUNTIME_COPY_NAMES = {"output", "notebook_output_files"}
 
 
 def bootstrap_workspace(workspace_root: str | Path) -> dict[str, Path | dict[str, Path]]:
@@ -107,3 +110,111 @@ def import_project(
 
     project_paths = create_project(workspace_root, project_name)
     return _copy_source_into_project(source, project_paths)
+
+
+def _resolve_runtime_project_dir(
+    workspace_root: str | Path,
+    subdomain: str,
+    project_name: str | None = None,
+) -> Path:
+    workspace = ensure_workspace_root(workspace_root)
+
+    if project_name is not None:
+        project_dir = workspace / project_name
+        if not is_project_dir(project_dir):
+            raise NotADirectoryError(project_dir)
+        return project_dir
+
+    matching_project = workspace / subdomain
+    if is_project_dir(matching_project):
+        return matching_project
+
+    projects = list_projects(workspace)
+    if len(projects) == 1:
+        return projects[0]
+
+    raise ValueError(
+        "could not determine workspace project automatically; "
+        "use a project whose name matches the subdomain or keep only one project "
+        "in the workspace"
+    )
+
+
+def _resolve_source_model_dir(project_dir: Path) -> Path:
+    normalized_root = project_dir / "inputs" / NORMALIZED_SOURCE_DIR
+    if normalized_root.is_dir():
+        return normalized_root
+
+    inputs_root = project_dir / "inputs"
+    if inputs_root.is_dir() and any(inputs_root.iterdir()):
+        return inputs_root
+
+    raise FileNotFoundError(
+        f"no source model data found under {normalized_root} or {inputs_root}"
+    )
+
+
+def _copy_model_source_into_runtime(source_model_dir: Path, runtime_model_dir: Path) -> None:
+    runtime_model_dir.mkdir(parents=True, exist_ok=True)
+    for child in source_model_dir.iterdir():
+        if child.name in SKIP_RUNTIME_COPY_NAMES:
+            continue
+        _copy_path(child, runtime_model_dir / child.name)
+
+
+def prepare_project_model_runtime(
+    workspace_root: str | Path,
+    subdomain: str,
+    project_name: str | None = None,
+) -> dict[str, Path]:
+    project_dir = _resolve_runtime_project_dir(
+        workspace_root, subdomain, project_name=project_name
+    )
+    source_model_dir = _resolve_source_model_dir(project_dir)
+    runtime_model_dir = project_dir / "outputs" / subdomain
+    runtime_model_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    control_file = runtime_model_dir / "control.default.bandit"
+    if not control_file.exists():
+        _copy_model_source_into_runtime(source_model_dir, runtime_model_dir)
+
+    return {
+        "workspace_root": ensure_workspace_root(workspace_root),
+        "project_dir": project_dir,
+        "source_model_dir": source_model_dir,
+        "runtime_model_dir": runtime_model_dir,
+        "config_root": ensure_workspace_root(workspace_root),
+    }
+
+
+def resolve_nhm_runtime_paths(
+    subdomain: str,
+    *,
+    cwd: str | Path | None = None,
+    env: dict[str, str] | None = None,
+    project_name: str | None = None,
+) -> dict[str, Path | None]:
+    repo_root = resolve_repo_root(env=env)
+    workspace_context = resolve_workspace_notebook_context(cwd=cwd, env=env)
+
+    if workspace_context is None:
+        return {
+            "repo_root": repo_root,
+            "config_root": repo_root,
+            "workspace_root": None,
+            "project_dir": None,
+            "model_dir": repo_root / "domain_data" / subdomain,
+        }
+
+    runtime = prepare_project_model_runtime(
+        workspace_context["workspace_root"],
+        subdomain,
+        project_name=project_name,
+    )
+    return {
+        "repo_root": repo_root,
+        "config_root": runtime["config_root"],
+        "workspace_root": runtime["workspace_root"],
+        "project_dir": runtime["project_dir"],
+        "model_dir": runtime["runtime_model_dir"],
+    }

@@ -33,8 +33,21 @@ con = Console()
 
 import sys
 import os
-root_folder = "nhm-assist"
-root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
+repo_name = "nhm-assist"
+pixi_root = os.environ.get("PIXI_PROJECT_ROOT")
+if pixi_root:
+    root_dir = pl.Path(pixi_root).expanduser().resolve()
+else:
+    root_dir = pl.Path(os.getcwd().rsplit(repo_name, 1)[0] + repo_name)
+for path in (root_dir, root_dir / "src"):
+    path_str = str(path)
+    if path_str not in sys.path:
+        sys.path.insert(0, path_str)
+
+from assist.workspace.bridge import resolve_workspace_notebook_context
+
+workspace_context = resolve_workspace_notebook_context(cwd=os.getcwd(), env=os.environ)
+config_root = workspace_context["config_root"] if workspace_context else root_dir
 print(root_dir)
 #pppo
 
@@ -117,7 +130,20 @@ print(root_dir)
 # %%
 subdomain = "Walla_Walla"
 
-model_dir = root_dir / "domain_data" / subdomain
+from assist.workspace.service import resolve_nhm_runtime_paths
+
+project_name = None  # Optional: set this if a workspace contains multiple projects.
+
+runtime_paths = resolve_nhm_runtime_paths(
+    subdomain,
+    cwd=os.getcwd(),
+    env=os.environ,
+    project_name=project_name,
+)
+config_root = runtime_paths["config_root"]
+workspace_root = runtime_paths["workspace_root"]
+project_dir = runtime_paths["project_dir"]
+model_dir = runtime_paths["model_dir"]
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **GIS file format**. </font><br>
@@ -313,7 +339,7 @@ dict_file = {
     "workspace_txt": f"NHM model domain: [bold black]{subdomain}[/bold black], parameter file: [bold black]{param_file}[/bold black]\nSimulation and observation data range: {pd.to_datetime(str(control.start_time)).strftime('%m/%d/%Y')} - {pd.to_datetime(str(control.end_time)).strftime('%m/%d/%Y')} (from [bold]{control_file_name}[/bold]).",
 }
 
-with open(root_dir / "subdomain_config.yaml", "w") as file:
+with open(config_root / "subdomain_config.yaml", "w") as file:
     documents = yaml.dump(dict_file, file)
 
 # %%
