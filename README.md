@@ -130,6 +130,7 @@ In workspace mode, notebook runtime files are written under:
 This includes generated gage files, model outputs, and exported HTML maps and plots.
 
 Detailed NHM workspace instructions are in [doc/pixi.md](./doc/pixi.md).
+Contributor onboarding for the new structure is in [doc/pixi-developer-guide.md](./doc/pixi-developer-guide.md).
 
 ## nhm-assist plots and maps
 
