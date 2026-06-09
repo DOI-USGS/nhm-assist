@@ -85,6 +85,52 @@ For NHM notebooks, in the miniforge prompt, navigate to the nhm-assist folder, a
 
 Ready to go! :+1:
 
+## Pixi Workspace for NHM
+
+This branch also supports an NHM workspace flow driven by Pixi. In this mode:
+
+- the repository stays the source of code, notebook templates, and shared `data_dependencies`
+- generated notebooks live in a separate workspace
+- imported or copied model files live under a workspace project
+- notebook and model outputs are written to the workspace project output area instead of back into the repository
+- the workspace commands are intended to work on macOS, Windows, and Linux
+
+Use the commands below from the repository root:
+
+```text
+pixi install
+pixi run workspace-init <workspace-root>
+pixi run project-copy-example <workspace-root> Walla_Walla Walla_Walla
+pixi run notebooks-workspace <workspace-root> nhm
+pixi run jupyter lab <workspace-notebooks-dir>
+```
+
+Example notebook directory:
+
+- macOS or Linux: `<workspace-root>/notebooks/nhm`
+- Windows: `<workspace-root>\notebooks\nhm`
+
+Run `0_workspace_setup.ipynb` first from the workspace notebook directory.
+
+The workspace project layout is:
+
+```text
+<workspace>/<project>/
+  config/
+  inputs/source_data/
+  outputs/<subdomain>/
+```
+
+In workspace mode, notebook runtime files are written under:
+
+```text
+<workspace>/<project>/outputs/<subdomain>/
+```
+
+This includes generated gage files, model outputs, and exported HTML maps and plots.
+
+Detailed NHM workspace instructions are in [doc/pixi.md](./doc/pixi.md).
+
 ## nhm-assist plots and maps
 
 nhm-assist interactive plots are created using [plotly](https://plotly.com/python-api-reference/). These figures facilitate evaluation of NHM subdomain model parameters and output. Interactive plots will open in new browser tabs and are exported to `./domain_data/subdomain/notebook_output_files/html_plots`.
