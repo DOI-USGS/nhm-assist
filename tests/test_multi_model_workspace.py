@@ -13,6 +13,7 @@ class ProjectSharedNotebookBridgeTests(unittest.TestCase):
     def test_resolve_project_notebook_context_detects_project_and_workflow(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_root = Path(tmpdir).resolve()
+            (workspace_root / "Project_A" / "models").mkdir(parents=True)
             cwd = workspace_root / "Project_A" / "notebooks" / "nhm"
             cwd.mkdir(parents=True)
 
