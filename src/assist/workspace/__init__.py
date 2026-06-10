@@ -29,10 +29,13 @@ from assist.workspace.service import (
     copy_example_model,
     create_model,
     create_project,
+    get_active_model_name,
+    get_active_model_root,
     get_models,
     get_projects,
     import_model,
     prepare_model_runtime,
+    set_active_model,
 )
 
 __all__ = [
@@ -44,6 +47,8 @@ __all__ = [
     "create_model",
     "create_project",
     "ensure_workspace_root",
+    "get_active_model_name",
+    "get_active_model_root",
     "get_model_dir",
     "get_model_workflow_notebooks_dir",
     "get_models",
@@ -66,4 +71,5 @@ __all__ = [
     "resolve_project_notebook_context",
     "resolve_repo_root",
     "resolve_workspace_root",
+    "set_active_model",
 ]
