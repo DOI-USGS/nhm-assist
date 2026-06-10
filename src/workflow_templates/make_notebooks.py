@@ -3,7 +3,10 @@ from pathlib import Path
 
 import jupytext
 
-from assist.workspace.bridge import get_workflow_notebooks_dir
+from assist.workspace.bridge import (
+    get_project_workflow_notebooks_dir,
+    get_workflow_notebooks_dir,
+)
 
 
 TEMPLATES_ROOT = Path(__file__).resolve().parent
@@ -19,10 +22,19 @@ def convert_workflow(
     name: str,
     *,
     workspace_root: str | Path | None = None,
+    project_name: str | None = None,
+    model_name: str | None = None,
     dry_run: bool = False,
 ) -> list[Path]:
     input_folder = WORKFLOW_INPUT_DIRS[name]
-    output_folder = get_workflow_notebooks_dir(name, workspace_root)
+    if workspace_root is None:
+        output_folder = get_workflow_notebooks_dir(name)
+    else:
+        if not project_name:
+            raise ValueError("project_name is required when workspace_root is set")
+        output_folder = get_project_workflow_notebooks_dir(
+            name, workspace_root, project_name
+        )
     created_paths = []
 
     if not input_folder.exists():
@@ -63,6 +75,14 @@ def parse_args(argv: list[str] | None = None, *, default_workflow: str = "nhm"):
         "--workspace-root",
         help="Optional external workspace root for notebook output.",
     )
+    parser.add_argument(
+        "--project-name",
+        help="Project name for model-local workspace notebook output.",
+    )
+    parser.add_argument(
+        "--model-name",
+        help="Model name for model-local workspace notebook output.",
+    )
     return parser.parse_args(argv)
 
 
@@ -74,6 +94,8 @@ def main(argv: list[str] | None = None, *, default_workflow: str = "nhm") -> int
         convert_workflow(
             workflow,
             workspace_root=args.workspace_root,
+            project_name=args.project_name,
+            model_name=args.model_name,
             dry_run=args.dry_run,
         )
 
