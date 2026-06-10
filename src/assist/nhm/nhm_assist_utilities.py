@@ -900,7 +900,16 @@ def delete_notebook_output_files(
 
 def load_subdomain_config(root_dir):
     """Loads subdomain config and returns a dictionary of processed keys/values."""
-    with open(root_dir / "subdomain_config.yaml") as file:
+    config_path = root_dir / "subdomain_config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(
+            "Missing subdomain config at "
+            f"{config_path}. Set the active model for the project, then run "
+            "0_workspace_setup.ipynb first from the same project notebook "
+            "directory before running later notebooks."
+        )
+
+    with open(config_path) as file:
         pp = yaml.load(file, Loader=yaml.FullLoader)
 
     # Map YAML keys to their processed Python values

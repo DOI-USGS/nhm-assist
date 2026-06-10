@@ -44,10 +44,18 @@ for path in (root_dir, root_dir / "src"):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
-from assist.workspace.bridge import resolve_workspace_notebook_context
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
 
-workspace_context = resolve_workspace_notebook_context(cwd=os.getcwd(), env=os.environ)
-config_root = workspace_context["config_root"] if workspace_context else root_dir
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    active_model_root = None
+    config_root = root_dir
 print(root_dir)
 #pppo
 
@@ -132,18 +140,23 @@ subdomain = "Walla_Walla"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
-project_name = None  # Optional: set this if a workspace contains multiple projects.
-
 runtime_paths = resolve_nhm_runtime_paths(
     subdomain,
     cwd=os.getcwd(),
     env=os.environ,
-    project_name=project_name,
 )
+active_model_name = runtime_paths.get("active_model_name")
+if active_model_name:
+    subdomain = active_model_name
 config_root = runtime_paths["config_root"]
 workspace_root = runtime_paths["workspace_root"]
 project_dir = runtime_paths["project_dir"]
+model_root = runtime_paths["model_root"]
 model_dir = runtime_paths["model_dir"]
+if project_dir and active_model_name:
+    print(f"Active project: {project_dir.name}")
+    print(f"Active model: {active_model_name}")
+    print(f"Runtime output: {model_dir}")
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **GIS file format**. </font><br>
