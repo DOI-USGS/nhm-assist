@@ -55,7 +55,7 @@ class ProjectNotebookGenerationTests(unittest.TestCase):
 
         self.assertEqual(args.workspace_root, "/tmp/workspace")
         self.assertEqual(args.project_name, "Project_A")
-        self.assertIsNone(args.model_name)
+        self.assertFalse(hasattr(args, "model_name"))
 
 
 if __name__ == "__main__":

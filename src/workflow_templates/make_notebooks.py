@@ -23,7 +23,6 @@ def convert_workflow(
     *,
     workspace_root: str | Path | None = None,
     project_name: str | None = None,
-    model_name: str | None = None,
     dry_run: bool = False,
 ) -> list[Path]:
     input_folder = WORKFLOW_INPUT_DIRS[name]
@@ -77,11 +76,7 @@ def parse_args(argv: list[str] | None = None, *, default_workflow: str = "nhm"):
     )
     parser.add_argument(
         "--project-name",
-        help="Project name for model-local workspace notebook output.",
-    )
-    parser.add_argument(
-        "--model-name",
-        help="Model name for model-local workspace notebook output.",
+        help="Project name for project-shared workspace notebook output.",
     )
     return parser.parse_args(argv)
 
@@ -95,7 +90,6 @@ def main(argv: list[str] | None = None, *, default_workflow: str = "nhm") -> int
             workflow,
             workspace_root=args.workspace_root,
             project_name=args.project_name,
-            model_name=args.model_name,
             dry_run=args.dry_run,
         )
 
