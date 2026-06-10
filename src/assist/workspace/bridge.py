@@ -9,7 +9,7 @@ REPO_NOTEBOOK_DIRS = {
     "nhf": Path("nhf_assist") / "notebooks",
     "pest": Path("pestpp_ies_calibration") / "notebooks",
 }
-MODEL_SUBDIRS = ("config", "inputs", "outputs", "notebooks")
+MODEL_SUBDIRS = ("config", "inputs", "outputs")
 
 
 def resolve_repo_root(env: Mapping[str, str] | None = None) -> Path:
@@ -157,58 +157,6 @@ def list_models(
     if not models_root.exists():
         return []
     return sorted([child for child in models_root.iterdir() if is_model_dir(child)])
-
-
-def get_model_workflow_notebooks_dir(
-    workflow: str,
-    workspace_root: str | Path | None,
-    project_name: str,
-    model_name: str,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> Path:
-    if workflow not in WORKFLOW_NAMES:
-        raise ValueError(f"unsupported workflow: {workflow}")
-    return get_model_dir(
-        workspace_root, project_name, model_name, env=env
-    ) / "notebooks" / workflow
-
-
-def resolve_model_notebook_context(
-    cwd: str | Path | None = None,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> dict[str, Path | str] | None:
-    del env  # reserved for future runtime overrides
-    current = Path.cwd() if cwd is None else Path(cwd)
-    current = current.expanduser().resolve()
-
-    for candidate in (current, *current.parents):
-        if candidate.name not in WORKFLOW_NAMES:
-            continue
-        notebooks_dir = candidate.parent
-        if notebooks_dir.name != "notebooks":
-            continue
-
-        model_root = notebooks_dir.parent.resolve()
-        models_root = model_root.parent
-        if models_root.name != "models":
-            continue
-
-        project_root = models_root.parent.resolve()
-        workspace_root = project_root.parent.resolve()
-
-        return {
-            "workspace_root": workspace_root,
-            "project_root": project_root,
-            "model_root": model_root,
-            "config_root": model_root / "config",
-            "workflow": candidate.name,
-            "notebooks_dir": notebooks_dir.resolve(),
-            "workflow_dir": candidate.resolve(),
-        }
-
-    return None
 
 
 def resolve_project_notebook_context(

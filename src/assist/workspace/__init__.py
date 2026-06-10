@@ -6,7 +6,6 @@ from assist.workspace.bridge import (
     WORKFLOW_NAMES,
     ensure_workspace_root,
     get_model_dir,
-    get_model_workflow_notebooks_dir,
     get_project_active_model_config_path,
     get_project_config_dir,
     get_project_dir,
@@ -20,7 +19,6 @@ from assist.workspace.bridge import (
     list_projects,
     resolve_project_notebook_context,
     resolve_repo_root,
-    resolve_model_notebook_context,
     resolve_workspace_root,
 )
 from assist.workspace.examples import resolve_example_source
@@ -50,7 +48,6 @@ __all__ = [
     "get_active_model_name",
     "get_active_model_root",
     "get_model_dir",
-    "get_model_workflow_notebooks_dir",
     "get_models",
     "get_projects",
     "get_project_active_model_config_path",
@@ -67,7 +64,6 @@ __all__ = [
     "list_projects",
     "prepare_model_runtime",
     "resolve_example_source",
-    "resolve_model_notebook_context",
     "resolve_project_notebook_context",
     "resolve_repo_root",
     "resolve_workspace_root",
