@@ -87,47 +87,51 @@ Ready to go! :+1:
 
 ## Pixi Workspace for NHM
 
-This branch also supports an NHM workspace flow driven by Pixi. In this mode:
+This branch also supports an NHM-first Pixi workspace flow. In this mode:
 
-- the repository stays the source of code, notebook templates, and shared `data_dependencies`
-- generated notebooks live in a separate workspace
-- imported or copied model files live under a workspace project
-- notebook and model outputs are written to the workspace project output area instead of back into the repository
-- the workspace commands are intended to work on macOS, Windows, and Linux
+- the repository remains the source of code, notebook templates, and shared `data_dependencies`
+- a workspace contains one or more projects
+- each project contains one or more models
+- generated NHM notebooks live once per project
+- each project records one active model for the shared notebook session
+- notebook and model outputs are written to model-local runtime folders instead of back into the repository
+- the commands are designed to work on macOS, Windows, and Linux
 
 Use the commands below from the repository root:
 
 ```text
 pixi install
 pixi run workspace-init <workspace-root>
-pixi run project-copy-example <workspace-root> Walla_Walla Walla_Walla
-pixi run notebooks-workspace <workspace-root> nhm
-pixi run jupyter lab <workspace-notebooks-dir>
+pixi run project-create <workspace-root> <project-name>
+pixi run model-copy-example <workspace-root> <project-name> <model-name> Walla_Walla
+pixi run project-set-active-model <workspace-root> <project-name> <model-name>
+pixi run notebooks-project <workspace-root> <project-name> nhm
+pixi run jupyter lab <workspace-root>/<project-name>/notebooks/nhm
 ```
 
-Example notebook directory:
+Run `0_workspace_setup.ipynb` first from the project notebook directory.
 
-- macOS or Linux: `<workspace-root>/notebooks/nhm`
-- Windows: `<workspace-root>\notebooks\nhm`
-
-Run `0_workspace_setup.ipynb` first from the workspace notebook directory.
-
-The workspace project layout is:
+The workspace layout is:
 
 ```text
-<workspace>/<project>/
-  config/
-  inputs/source_data/
-  outputs/<subdomain>/
+<workspace>/
+  <project>/
+    notebooks/nhm/
+    project_config/active_model.yaml
+    models/
+      <model>/
+        config/
+        inputs/source_data/
+        outputs/runtime/
 ```
 
 In workspace mode, notebook runtime files are written under:
 
 ```text
-<workspace>/<project>/outputs/<subdomain>/
+<workspace>/<project>/models/<model>/outputs/runtime/
 ```
 
-This includes generated gage files, model outputs, and exported HTML maps and plots.
+The shared project notebooks resolve the active model from `project_config/active_model.yaml`, then write generated gage files, model outputs, and exported HTML maps and plots into that model's runtime area.
 
 Detailed NHM workspace instructions are in [doc/pixi.md](./doc/pixi.md).
 Contributor onboarding for the new structure is in [doc/pixi-developer-guide.md](./doc/pixi-developer-guide.md).
