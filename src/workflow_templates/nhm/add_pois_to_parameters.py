@@ -40,10 +40,17 @@ for path in (root_dir, root_dir / "src"):
     if path_str not in sys.path:
         sys.path.insert(0, path_str)
 
-from assist.workspace.bridge import resolve_workspace_notebook_context
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
 
-workspace_context = resolve_workspace_notebook_context(cwd=os.getcwd(), env=os.environ)
-config_root = workspace_context["config_root"] if workspace_context else root_dir
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
 
 from nhm_helpers.nhm_assist_utilities import (
     make_plots_par_vals,
