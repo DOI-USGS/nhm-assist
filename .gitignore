@@ -221,6 +221,8 @@ __marimo__/
 
 ### Project-specific ignores ###
 *~
+.DS_Store
+
 
 # Jupyter Notebooks (ipynb files)
 *-checkpoint.ipynb
@@ -249,5 +251,3 @@ CLAUDE.md
 doc/*.md
 docs/
 tests/
-.pixi/
-.DS_Store
