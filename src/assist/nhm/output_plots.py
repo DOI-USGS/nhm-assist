@@ -604,7 +604,7 @@ def make_plot_var_for_hrus_in_poi_basin(
             plotly.offline.plot(fig, filename=f"{plot_file_path}", auto_open=False)
             make_webbrowser_map(plot_file_path)
 
-    return #plot_file_path
+    return plot_file_path
 
 
 def oopla(
@@ -866,7 +866,7 @@ def oopla(
         plotly.offline.plot(fig, filename=f"{plot_file_path}", auto_open=False)
         make_webbrowser_map(plot_file_path)
 
-    return #plot_file_path
+    return plot_file_path
 
 
 def stats_table(stats_df):
