@@ -28,6 +28,7 @@ pestpp_ies_calibration/notebooks/
 
 CLAUDE.md
 .worktrees/
+doc/*.md
 docs/
 tests/
 .pixi/
