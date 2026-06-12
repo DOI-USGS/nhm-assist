@@ -35,6 +35,7 @@ from assist.workspace.service import (
     prepare_model_runtime,
     set_active_model,
 )
+from assist.workspace.setup import run_setup
 
 __all__ = [
     "MODEL_SUBDIRS",
@@ -67,5 +68,6 @@ __all__ = [
     "resolve_project_notebook_context",
     "resolve_repo_root",
     "resolve_workspace_root",
+    "run_setup",
     "set_active_model",
 ]

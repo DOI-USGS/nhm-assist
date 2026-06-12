@@ -1,5 +1,6 @@
 import argparse
 
+from assist.workspace.setup import run_setup
 from assist.workspace.service import (
     bootstrap_workspace,
     copy_example_model,
@@ -15,6 +16,8 @@ from assist.workspace.service import (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    subparsers.add_parser("setup")
 
     bootstrap_parser = subparsers.add_parser("bootstrap")
     bootstrap_parser.add_argument("--workspace-root", required=True)
@@ -59,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.command == "setup":
+        return run_setup()
     if args.command == "bootstrap":
         bootstrap_workspace(args.workspace_root)
         return 0
