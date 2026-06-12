@@ -43,6 +43,7 @@ default = { features = ["nhm"], solve-group = "default" }
 nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
 
 [tool.pixi.tasks]
+setup = { cmd = "python -m assist.workspace.cli setup", default-environment = "default" }
 notebooks = { cmd = "python make_notebooks.py --workflow {{ workflow }}", args = [{ arg = "workflow", default = "all" }], default-environment = "default" }
 notebooks-project = { cmd = "python make_notebooks.py --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name", { arg = "workflow", default = "all" }], default-environment = "default" }
 workspace-init = { cmd = "python -m assist.workspace.cli bootstrap --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
