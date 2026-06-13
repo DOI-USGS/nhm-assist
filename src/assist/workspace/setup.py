@@ -211,16 +211,26 @@ def action_copy_example_model(
         return None
 
     examples = list_available_example_names(state.repo_root)
-    if examples:
-        print_func("Available examples (type one of these names):")
-        for example_name in examples:
-            print_func(f"- {example_name}")
+    if not examples:
+        print_func("No example models are available.")
+        return None
+
+    print_func("Available examples (choose a number):")
+    print_func("0. Cancel")
+    for idx, example_name in enumerate(examples, start=1):
+        print_func(f"{idx}. {example_name}")
 
     model_name = prompt_required_text("Type model name:", input_func=input_func)
-    example_name = prompt_required_text(
-        "Type example name from the list above:",
+    example_choice = prompt_menu_choice(
+        len(examples),
         input_func=input_func,
+        print_func=print_func,
     )
+    if example_choice == 0:
+        print_func("Example selection cancelled.")
+        return None
+
+    example_name = examples[example_choice - 1]
     workspace_root = require_workspace_root(state)
     paths = service.copy_example_model(
         workspace_root,

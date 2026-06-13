@@ -119,6 +119,48 @@ class WorkspaceSetupTests(unittest.TestCase):
 
         self.assertEqual(state.current_project, "Project_B")
 
+    def test_action_copy_example_model_uses_numbered_example_selection(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+
+        with patch.object(
+            setup,
+            "list_available_example_names",
+            return_value=["Rogue_River", "Walla_Walla"],
+        ), patch.object(
+            setup,
+            "prompt_required_text",
+            return_value="Model_A",
+        ) as mock_text, patch.object(
+            setup,
+            "prompt_menu_choice",
+            return_value=2,
+        ) as mock_choice, patch.object(
+            setup.service,
+            "copy_example_model",
+            return_value={"model": self.workspace_root / "Project_A" / "models" / "Model_A"},
+        ) as mock_copy:
+            setup.action_copy_example_model(state, print_func=lambda *_: None)
+
+        mock_text.assert_called_once_with(
+            "Type model name:",
+            input_func=input,
+        )
+        mock_choice.assert_called_once_with(
+            2,
+            input_func=input,
+            print_func=unittest.mock.ANY,
+        )
+        mock_copy.assert_called_once_with(
+            self.workspace_root,
+            "Project_A",
+            "Model_A",
+            "Walla_Walla",
+        )
+
     def test_require_current_project_returns_false_without_selection(self):
         state = setup.SetupState(
             repo_root=self.repo_root,
