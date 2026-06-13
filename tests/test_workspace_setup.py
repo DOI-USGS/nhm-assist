@@ -30,6 +30,52 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertIn("NHM_ASSIST_WORKSPACE_ROOT=", dotenv_text)
         self.assertIn(str(self.workspace_root.resolve()), dotenv_text)
 
+    def test_prompt_required_text_reprompts_with_clear_text_message(self):
+        prompts: list[str] = []
+        answers = iter(["", "Project_A"])
+
+        result = setup.prompt_required_text(
+            "Type project name:",
+            input_func=lambda prompt: prompts.append(prompt) or next(answers),
+        )
+
+        self.assertEqual(result, "Project_A")
+        self.assertEqual(
+            prompts,
+            [
+                "Type project name: ",
+                "Type project name: ",
+            ],
+        )
+
+    def test_prompt_menu_choice_uses_number_language(self):
+        prompts: list[str] = []
+        printed: list[str] = []
+        answers = iter(["Project_A", "12", "2"])
+
+        result = setup.prompt_menu_choice(
+            9,
+            input_func=lambda prompt: prompts.append(prompt) or next(answers),
+            print_func=printed.append,
+        )
+
+        self.assertEqual(result, 2)
+        self.assertEqual(
+            prompts,
+            [
+                "Select menu option number [0-9]: ",
+                "Select menu option number [0-9]: ",
+                "Select menu option number [0-9]: ",
+            ],
+        )
+        self.assertEqual(
+            printed,
+            [
+                "Please enter a menu number.",
+                "Please enter a menu number between 0 and 9.",
+            ],
+        )
+
     def test_action_create_project_sets_current_project(self):
         state = setup.SetupState(
             repo_root=self.repo_root,
@@ -41,6 +87,24 @@ class WorkspaceSetupTests(unittest.TestCase):
 
         self.assertEqual(state.current_project, "Project_A")
         self.assertTrue((self.workspace_root / "Project_A" / "models").is_dir())
+
+    def test_action_create_project_uses_type_project_name_prompt(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+        )
+
+        with patch.object(
+            setup,
+            "prompt_required_text",
+            return_value="Project_A",
+        ) as mock_prompt:
+            setup.action_create_project(state, print_func=lambda *_: None)
+
+        mock_prompt.assert_called_once_with(
+            "Type project name:",
+            input_func=input,
+        )
 
     def test_action_open_project_selects_existing_project(self):
         service.create_project(self.workspace_root, "Project_A")
