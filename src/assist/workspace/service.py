@@ -136,9 +136,17 @@ def copy_example_model(
     model_name: str,
     example_name: str,
 ) -> dict[str, Path]:
+    existing_models = get_models(workspace_root, project_name)
     model_paths = create_model(workspace_root, project_name, model_name)
     source = resolve_example_source(example_name)
-    return _copy_source_into_model(source, model_paths)
+    copied_paths = _copy_source_into_model(source, model_paths)
+    if not existing_models:
+        set_active_model(
+            workspace_root,
+            project_name=project_name,
+            model_name=model_name,
+        )
+    return copied_paths
 
 
 def import_model(

@@ -220,7 +220,6 @@ def action_copy_example_model(
     for idx, example_name in enumerate(examples, start=1):
         print_func(f"{idx}. {example_name}")
 
-    model_name = prompt_required_text("Type model name:", input_func=input_func)
     example_choice = prompt_menu_choice(
         len(examples),
         input_func=input_func,
@@ -231,6 +230,7 @@ def action_copy_example_model(
         return None
 
     example_name = examples[example_choice - 1]
+    model_name = example_name
     workspace_root = require_workspace_root(state)
     paths = service.copy_example_model(
         workspace_root,
