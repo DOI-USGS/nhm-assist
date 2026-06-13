@@ -74,16 +74,16 @@ def prompt_yes_no(prompt: str, *, default: bool = True, input_func=input) -> boo
 
 def prompt_menu_choice(max_choice: int, *, input_func=input, print_func=print) -> int:
     while True:
-        raw = input_func("Select option: ").strip()
+        raw = input_func(f"Select menu option number [0-{max_choice}]: ").strip()
         try:
             choice = int(raw)
         except ValueError:
-            print_func("Enter a number.")
+            print_func("Please enter a menu number.")
             continue
 
         if 0 <= choice <= max_choice:
             return choice
-        print_func(f"Enter a number between 0 and {max_choice}.")
+        print_func(f"Please enter a menu number between 0 and {max_choice}.")
 
 
 def get_active_model_name_for_state(state: SetupState) -> str | None:
@@ -115,7 +115,10 @@ def prompt_workspace_root(
     input_func=input,
 ) -> Path:
     while True:
-        raw_path = prompt_required_text("Enter workspace root:", input_func=input_func)
+        raw_path = prompt_required_text(
+            "Type workspace root path:",
+            input_func=input_func,
+        )
         workspace_root = Path(raw_path).expanduser().resolve()
 
         if workspace_root.exists() and not workspace_root.is_dir():
@@ -166,7 +169,7 @@ def require_current_project(state: SetupState, *, print_func=print) -> bool:
 
 def action_create_project(state: SetupState, *, print_func=print, input_func=input) -> Path:
     workspace_root = require_workspace_root(state)
-    project_name = prompt_required_text("Project name:", input_func=input_func)
+    project_name = prompt_required_text("Type project name:", input_func=input_func)
     paths = service.create_project(workspace_root, project_name)
     state.current_project = project_name
     print_func(f"Created project at {paths['project']}")
@@ -209,12 +212,15 @@ def action_copy_example_model(
 
     examples = list_available_example_names(state.repo_root)
     if examples:
-        print_func("Available examples:")
-        for idx, example_name in enumerate(examples, start=1):
-            print_func(f"{idx}. {example_name}")
+        print_func("Available examples (type one of these names):")
+        for example_name in examples:
+            print_func(f"- {example_name}")
 
-    model_name = prompt_required_text("Model name:", input_func=input_func)
-    example_name = prompt_required_text("Example name:", input_func=input_func)
+    model_name = prompt_required_text("Type model name:", input_func=input_func)
+    example_name = prompt_required_text(
+        "Type example name from the list above:",
+        input_func=input_func,
+    )
     workspace_root = require_workspace_root(state)
     paths = service.copy_example_model(
         workspace_root,
@@ -235,8 +241,8 @@ def action_import_model(
     if not require_current_project(state, print_func=print_func):
         return None
 
-    model_name = prompt_required_text("Model name:", input_func=input_func)
-    source_dir = prompt_required_text("Source folder:", input_func=input_func)
+    model_name = prompt_required_text("Type model name:", input_func=input_func)
+    source_dir = prompt_required_text("Type source folder path:", input_func=input_func)
     workspace_root = require_workspace_root(state)
     paths = service.import_model(
         workspace_root,
