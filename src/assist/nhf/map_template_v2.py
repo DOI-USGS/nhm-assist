@@ -27,6 +27,9 @@ import subprocess
 import os
 import webbrowser
 
+from urllib import request
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 pretty.install()
 con = Console()
@@ -43,6 +46,7 @@ from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
 import geopandas as gpd
+import requests
 
 admin_basin_style = lambda x: {
     "fillColor": "#00000000",
@@ -512,7 +516,7 @@ def create_poi_marker_cluster(
 
 def create_non_poi_marker_cluster(
     poi_df,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     cluster_zoom: pd.DataFrame,
 ) -> tuple[folium.plugins.MarkerCluster, folium.plugins.MarkerCluster]:
@@ -524,8 +528,8 @@ def create_non_poi_marker_cluster(
     ----------
     poi_df : pandas DataFrame()
         Pandas DataFrame() containing gages from the parameter file.
-    nwis_gages_aoi : Pandas DataFrame()
-        Pandas DataFrame() containing gages from NWIS in the subdomain.
+    waterdata_gages_aoi : Pandas DataFrame()
+        Pandas DataFrame() containing gages from WaterDatain the subdomain.
     gages_df : pandas DataFrame() 
         Represents data pertaining to subdomain gages in parameter file, NWIS, and others. 
     cluster_zoom : int
@@ -560,7 +564,7 @@ def create_non_poi_marker_cluster(
     gages_list = gages_df.index.to_list()
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
-    for idx, row in nwis_gages_aoi.iterrows():
+    for idx, row in waterdata_gages_aoi.iterrows():
         if row["poi_gage_id"] in additional_gages:
 
             text = f'{row["poi_gage_id"]}'
@@ -1724,7 +1728,7 @@ def make_hf_map(
     poi_df,
     poi_gage_id_sel,
     seg_gdf,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     html_maps_dir,
     Folium_maps_dir,
@@ -1748,8 +1752,8 @@ def make_hf_map(
         Gage id of selected gage.
     seg_gdf : geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
-    nwis_gages_aoi : Pandas DataFrame
-        Pandas DataFrame containing gages from NWIS in the subdomain.
+    waterdata_gages_aoi : Pandas DataFrame
+        Pandas DataFrame containing gages from WaterDatain the subdomain.
     gages_df : pandas DataFrame
         Pandas DataFrame containing gages from the default.csv or gages.csv (whichever is in use).
     html_maps_dir : pathlib Path class 
@@ -1790,9 +1794,11 @@ def make_hf_map(
     ).to_crs(epsg=4326)
     huc10_map =huc10_map[["huc10","geometry"]]
     #huc10_map = gpd.clip(huc10_map, hru_map)
-    hru_union = hru_simple.geometry.unary_union
-    # If you’re on newer GeoPandas/Shapely, you can use:
-    # hru_union = hru_simple.geometry.union_all()
+    from shapely import make_valid
+    hru_simple["geometry"] = hru_simple.geometry.apply(
+        lambda g: make_valid(g) if g is not None and not g.is_empty else g
+    )
+    hru_union = hru_simple.geometry.union_all()
 
     # Compute centroids and select HUC10s whose centroids fall within HRU union
     huc10_centroids = huc10_map.copy()
@@ -1848,7 +1854,7 @@ def make_hf_map(
     )
 
     non_poi_marker_cluster, non_poi_marker_cluster_label = (
-        create_non_poi_obs_marker_cluster(poi_df, nwis_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
+        create_non_poi_obs_marker_cluster(poi_df, waterdata_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
     )
 
     fmi_poi_marker_cluster, fmi_poi_marker_cluster_label = create_FMI_poi_markers(
@@ -2589,7 +2595,7 @@ def create_poi_obs_marker_cluster(
 
 def create_non_poi_obs_marker_cluster(
     poi_df,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     Folium_maps_dir,
     param_filename,
@@ -2603,8 +2609,8 @@ def create_non_poi_obs_marker_cluster(
     ----------
     poi_df : pandas DataFrame()
         Pandas DataFrame() containing gages from the parameter file.
-    nwis_gages_aoi : Pandas DataFrame()
-        Pandas DataFrame() containing gages from NWIS in the subdomain.
+    waterdata_gages_aoi : Pandas DataFrame()
+        Pandas DataFrame() containing gages from WaterDatain the subdomain.
     gages_df : pandas DataFrame() 
         Represents data pertaining to subdomain gages in parameter file, NWIS, and others. 
     cluster_zoom : int
@@ -2722,7 +2728,7 @@ def make_gf_map(
     # poi_df,
     # poi_gage_id_sel,
     seg_gdf,
-    # nwis_gages_aoi,
+    # waterdata_gages_aoi,
     # gages_df,
     # html_maps_dir,
     # Folium_maps_dir,
@@ -2746,8 +2752,8 @@ def make_gf_map(
         Gage id of selected gage.
     seg_gdf : geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
-    nwis_gages_aoi : Pandas DataFrame
-        Pandas DataFrame containing gages from NWIS in the subdomain.
+    waterdata_gages_aoi : Pandas DataFrame
+        Pandas DataFrame containing gages from WaterDatain the subdomain.
     gages_df : pandas DataFrame
         Pandas DataFrame containing gages from the default.csv or gages.csv (whichever is in use).
     html_maps_dir : pathlib Path class
@@ -2785,7 +2791,7 @@ def make_gf_map(
 
     # non_poi_marker_cluster, non_poi_marker_cluster_label = (
     #     create_non_poi_obs_marker_cluster(poi_df,
-    #                                       #nwis_gages_aoi,
+    #                                       #waterdata_gages_aoi,
     #                                       gages_df,
     #                                       #Folium_maps_dir,
     #                                       #param_filename,
@@ -2870,7 +2876,7 @@ def make_gf_map(
 def create_FMI_poi_markers(
     root_dir,
     model_dir,
-    poi_df,
+    gages_df,
 ):
 
     """
@@ -2878,8 +2884,8 @@ def create_FMI_poi_markers(
     
     Parameters
     ----------
-    poi_df : pandas DataFrame()
-        Pandas DataFrame() containing gages from the parameter file.
+    gages_df : pandas DataFrame()
+        Pandas DataFrame() containing gages from the parameter file and other gages in the domain.
             
     Returns
     -------
@@ -2888,7 +2894,7 @@ def create_FMI_poi_markers(
     marker_cluster_label_poi : a folium MarkerCluster() object
         Gage id as labels.
     """
-    
+    print(model_dir)
     marker_cluster = folium.FeatureGroup(
         name="FMI gages",
         overlay=True,
@@ -2905,67 +2911,16 @@ def create_FMI_poi_markers(
         icon_create_function=None,
         z_index_offset=4004,
     )
-
-    # #### READ FMI table (.csv) for selected gages
-    # fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+   
+    fmi_gages_child = fetch_FMI_npoigages_info(root_dir, model_dir, gages_df)
     
-    # col_names = [
-    #     "gageid",
-    #     "name",
-    #     "comid",
-    #     "dams_n",
-    #     "ag_pct",
-    #     "nid_storage_annual_pct",
-    #     "sw_withdrawal_summer_pct",
-    #     "sw_withdrawal_annual_pct",
-    #     "storage_index",
-    #     "use_index",
-    #     "flow_management_index",
-    #     "storage_index",
-    # ]
-    # col_types = [
-    #     np.str_,
-    #     np.str_,
-    #     np.str_,
-    #     np.int_,
-    #     float,
-    #     float,
-    #     float,
-    #     float,
-    #     np.int_,
-    #     np.int_,
-    #     np.int_,
-    #     np.int_,
-    # ]
-    # cols = dict(
-    #     zip(col_names, col_types)
-    # )  # Creates a dictionary of column header and datatype called below.
-    
-    # fmi_df = pd.read_csv(
-    #     fmi_df_file,
-    #     dtype=cols,
-    #     usecols=[
-    #         "gageid",
+    # fmi_gages_child = fmi_gages_child[[
+    #         "poi_gage_id",
     #         "flow_management_index",
-    #     ],
+    #     ]]
+    # fmi_gages_child = fmi_gages_child.merge(
+    #     gages_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
     # )
-    # fmi_gages_child = fmi_df.merge(
-    #     poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
-    # )
-    # fmi_gages_child.drop(columns={"gageid"}, inplace=True)
-    
-    # print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
-    # fmi_gages_child_info_file_path = model_dir / "metadata" / "fmi_gages_info.csv"
-    # fmi_gages_child.to_csv(fmi_gages_child_info_file_path, index=False)
-    
-    fmi_gages_child = fetch_FMI_npoigages_info(root_dir, model_dir, poi_df)
-    fmi_gages_child = fmi_gages_child[[
-            "poi_gage_id",
-            "flow_management_index",
-        ]]
-    fmi_gages_child = fmi_gages_child.merge(
-        poi_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
-    )
     
     for idx, row in fmi_gages_child.iterrows():
         poi_gage_id = row["poi_gage_id"]
