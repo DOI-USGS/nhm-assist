@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import dotenv_values, set_key
 
 from assist.workspace import bridge, service
-from assist.workspace.examples import EXAMPLE_SOURCE_DIR_NAMES
+from assist.workspace.examples import list_available_example_names
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -97,18 +97,6 @@ def get_active_model_name_for_state(state: SetupState) -> str | None:
         return service.get_active_model_name(state.workspace_root, state.current_project)
     except (FileNotFoundError, ValueError):
         return None
-
-
-def list_available_example_names(repo_root: Path) -> list[str]:
-    names: set[str] = set()
-    for dir_name in EXAMPLE_SOURCE_DIR_NAMES:
-        root = repo_root / dir_name
-        if not root.is_dir():
-            continue
-        for child in root.iterdir():
-            if child.is_dir():
-                names.add(child.name)
-    return sorted(names)
 
 
 DEFAULT_WORKSPACE_ROOT = Path("~/nhm-workspace")
@@ -248,7 +236,7 @@ def action_copy_example_model(
     if not require_current_project(state, print_func=print_func):
         return None
 
-    examples = list_available_example_names(state.repo_root)
+    examples = list_available_example_names()
     if not examples:
         print_func("No example models are available.")
         return None
