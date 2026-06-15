@@ -1269,7 +1269,8 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
 def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
     #Consider (Eddie) instead of using hru_gdf, just using a merge with the npoi_gages
 
-    ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
+    #ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
+    ref_npoigages_info_file_path = root_dir / "data_dependencies/ref_gages/ref_npoigages_info.csv"
 
     if ref_npoigages_info_file_path.exists():
         col_names = [
@@ -1380,7 +1381,8 @@ def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
 
 def fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf):
 
-    non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
+    #non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
+    non_ref_npoigages_info_file_path = root_dir / "data_dependencies/ref_gages/non_ref_npoigages_info.csv"
 
     if non_ref_npoigages_info_file_path.exists():
         col_names = [

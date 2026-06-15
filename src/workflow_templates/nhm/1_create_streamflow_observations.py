@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -32,8 +32,8 @@ jupyter_black.load()
 import pandas as pd
 
 # import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
+from pyPRMS.metadata.metadata import MetaData
+from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -42,40 +42,40 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
 sys.path.append(str(root_dir))
 
 from dotenv import load_dotenv
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
+load_dotenv(
+    dotenv_path=root_dir / ".env"
+)  # this will load the environment variables from the .env file
 
-load_dotenv(dotenv_path=dotenv_path)
 
-from nhm_helpers.sf_data_retrieval import (
+# Changed path here
+from helpers.sf_data_retrieval_v2 import (
+    # create_waterdata_sf_df,
     create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from nhm_helpers.nhm_hydrofabric import (
+from helpers.nhm_hydrofabric_v2 import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from nhm_helpers.efc import plot_efc
-from nhm_helpers.nhm_assist_utilities import (
+from helpers.efc import plot_efc
+from helpers.nhm_assist_utilities_v2 import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,
 )
 
 config = load_subdomain_config(root_dir)
+
 
 # %%
 delete_notebook_output_files(
@@ -86,13 +86,13 @@ delete_notebook_output_files(
 # # Introduction
 
 # %% [markdown]
-# Critical in the evaluation of the NHM simulated flows is the comparison to observed flows. This notebook retrieves available streamflow observations from NWIS and two state agencies, the Oregon Water Resources Department (OWRD) and the Washington Department of Ecology (ECY), combines these data sets into one daily streamflow observations file with streamflow gage information and metadata, and writes the database out as a netCDF file (`sf_efc.nc`) to be used in Notebook "6_streamflow_output_visualization" and other notebooks in NHM-Assist. Included in the `sf_efc.nc` are Environmental Flow Components (EFC) for daily flows using a python workflow (also in this notebook) as described by [Risley and others, 2010](https://pubs.usgs.gov/sir/2010/5016/pdf/sir20105016.pdf). 
+# Critical in the evaluation of the NHM simulated flows is the comparison to observed flows. This notebook retrieves available streamflow observations from WaterData and two state agencies, the Oregon Water Resources Department (OWRD) and the Washington Department of Ecology (ECY), combines these data sets into one daily streamflow observations file with streamflow gage information and metadata, and writes the database out as a netCDF file (`sf_efc.nc`) to be used in Notebook "6_streamflow_output_visualization" and other notebooks in NHM-Assist. Included in the `sf_efc.nc` are Environmental Flow Components (EFC) for daily flows using a python workflow (also in this notebook) as described by [Risley and others, 2010](https://pubs.usgs.gov/sir/2010/5016/pdf/sir20105016.pdf). 
 #
-# This notebook also writes a default gages file (`default_gages.csv`) that includes gage information for gages in the parameter file and other NWIS gages that have data for the simulation period in the domain. A complete database of streamflow gages and observations in the model domain is necessary to evaluate the NHM and identify other gages that could be included in a model recalibration to improve the model performance.
+# This notebook also writes a default gages file (`default_gages.csv`) that includes gage information for gages in the parameter file and other WaterData gages that have data for the simulation period in the domain. A complete database of streamflow gages and observations in the model domain is necessary to evaluate the NHM and identify other gages that could be included in a model recalibration to improve the model performance.
 #
 # Three facts about streamflow observations and the NHM must be reviewed.
 # - Streamflow observations are NOT used when running PRMS or `pywatershed`. These data are meant for comparison of simulated output only.
-# - The NHM DOES use streamflow observations from NWIS in the model calibration workflow (not the streamflow file).
+# - The NHM DOES use streamflow observations from WaterData in the model calibration workflow (not the streamflow file).
 # - Limited streamflow gage information is stored in the parameter file.
 #
 # The parameter file has few parameters associated with gages (dimensioned by npoigages):
@@ -105,7 +105,7 @@ delete_notebook_output_files(
 # The cell below reads the NHM subdomain model hydrofabric elements for mapping HRUs and gages.
 
 # %%
-hru_gdf, hru_txt, hru_cal_level_txt = create_hru_gdf(
+hru_gdf, hru_text = create_hru_gdf(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     GIS_format=config["GIS_format"],
@@ -127,14 +127,18 @@ poi_df = create_poi_df(
     control_file_name=config["control_file_name"],
     hru_gdf=hru_gdf,
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
+# %%
+len(hru_gdf)
+
 # %% [markdown]
-# # Retrieve all NWIS gage information and streamflow observations.
-# This function pulls time series data for all NWIS gages in the domain, and then filters data to the simulation period (`nwis_gages_cache.nc`), and creates `NWISgages.csv`. Both the time series data file and the NWISgages.csv contain all site information for gages with a period of record greater than the user specified threshold (`nwis_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** ALL gages in the parameter file regardless of a period of record less than the specified threshold.
+# # Retrieve all WaterData gage information and streamflow observations.
+# This function pulls time series data for all WaterData gages in the domain, and then filters data to the simulation period (`waterdata_gages_cache.nc`), and creates `WaterDataGages.csv`. Both the time series data file and the NWISgages.csv contain all site information for gages with a period of record greater than the user specified threshold (`waterdata_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** ALL gages in the parameter file regardless of a period of record less than the specified threshold.
 
 # %%
 waterdata_df = create_waterdata_sf_df(
@@ -144,25 +148,34 @@ waterdata_df = create_waterdata_sf_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
-    waterdata_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
 # %% [markdown]
 # ## Make the default gages file (default_gages.csv)
-# The `default_gages.csv` contains gages from the parameter file and NWIS gages from the domain (`nwis_gages_cache.nc`). The gages from the parameter file are represented in the variable `poi_df`. The gages in the `default_gages.csv` are represented in the variable `gages_df` here. The `default_gages.csv` may be missing site information if there are gages in the parameter file that are not in NWIS. If this is the case, an error will be displayed below and the `default_gages.csv` must be manually updated, and the file must be renamed `gages.csv`, and this notebook must be re-run. If `gages.csv` exists, then gages in the `gages.csv` are represented in the variable `gages_df`.
+# The `default_gages.csv` contains gages from:
+#     -the parameter file (`poi_df`)
+#     -any other USGS WaterData gages having streamflow data from 1980-2026 present in the domain (`waterdata_gages_cache.nc`). 
+#     
+# The gages in the `default_gages.csv` are represented in the variable `gages_df`. The `default_gages.csv` may be missing metadata if not found in the `resourece_gages.csv`, or the NLDI and USGS WaterData databases. If this is the case, an error will be displayed below. The gage numbers for gages missing metadata will be added to the resource_file, the file must be manually updated, and this notebook must be re-run. 
+#
+# Note: If the user wants to add a gage to the default gages file to be displayed in the notebooks (wihtout adding the gage to the model parameter file), the user can add the gage and its metadata and save the file as `gages.csv`. When the notebook is rerun, then the `gages_df` will me made using the `gages.csv` and NOT `default_gages.csv`.
 
 # %%
 default_gages_file = create_default_gages_file(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     control_file_name=config["control_file_name"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
     seg_gdf=seg_gdf,
 )
 
+# %%
+
+# %%
 gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
     model_dir=config["model_dir"],
     poi_df=poi_df,
@@ -206,7 +219,7 @@ ecy_df = create_ecy_sf_df(
 
 # %% [markdown]
 # # Create streamflow observations file with appended EFC values (sf_efc.nc)
-# The following cell creates the efc classification codes for the NWIS daily streamflow data, and daily streamflow data if collected from Washington or Oregon the data as an encoded netCDf file formatted to match the `sf.nc` file created during the NHM subdomain model extraction routine.
+# The following cell creates the efc classification codes for the WaterData daily streamflow data, and daily streamflow data if collected from Washington or Oregon the data as an encoded netCDf file formatted to match the `sf.nc` file created during the NHM subdomain model extraction routine.
 #
 # EFCs include extreme low flows (1), low flows(2), high-flow pulses(3), small floods (4; 2-year events), and large floods (5; 10-year events). 
 
@@ -215,16 +228,20 @@ xr_streamflow = create_sf_efc_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     owrd_df=owrd_df,
     ecy_df=ecy_df,
-    NWIS_df=waterdata_df,
+    waterdata_df=waterdata_df,
     gages_df=gages_df,
 )
+
+# %%
+xr_streamflow
 
 # %% [markdown]
 # # Check streamflow observations file: plot discharge and efc information for a selected gage.
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_id.values[0]  # "08049300"
+cpoi_id = xr_streamflow.poi_gage_id.values[0]  # "08049300" "130875049"
+# cpoi_id = "14053000"
 print(
     f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
 )
@@ -239,7 +256,7 @@ start_date = config[
 end_date = config[
     "end_date"
 ]  # pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
-ds_sub = xr_streamflow.sel(poi_id=cpoi_id, time=slice(start_date, end_date))
+ds_sub = xr_streamflow.sel(poi_gage_id=cpoi_id, time=slice(start_date, end_date))
 ds_sub = ds_sub.to_dataframe()
 flow_col = "discharge"
 plot_efc(ds_sub, flow_col)
@@ -256,5 +273,3 @@ make_obs_plot_files(
     xr_streamflow=xr_streamflow,
     Folium_maps_dir=config["Folium_maps_dir"],
 )
-
-# %%
