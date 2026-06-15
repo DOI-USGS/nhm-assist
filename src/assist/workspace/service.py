@@ -12,6 +12,7 @@ from assist.workspace.bridge import (
     get_project_config_dir,
     get_project_dir,
     is_model_dir,
+    is_project_dir,
     list_models,
     list_projects,
     resolve_project_notebook_context,
@@ -89,9 +90,17 @@ def set_active_model(
     project_name: str,
     model_name: str,
 ) -> Path:
+    project_dir = get_project_dir(workspace_root, project_name)
+    if not is_project_dir(project_dir):
+        raise FileNotFoundError(
+            f"Project '{project_name}' not found at {project_dir}."
+        )
+
     model_root = get_model_dir(workspace_root, project_name, model_name)
     if not model_root.is_dir():
-        raise FileNotFoundError(model_root)
+        raise FileNotFoundError(
+            f"Model '{model_name}' not found in project '{project_name}' at {model_root}."
+        )
 
     config_dir = get_project_config_dir(workspace_root, project_name)
     config_dir.mkdir(parents=True, exist_ok=True)

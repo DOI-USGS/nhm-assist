@@ -180,6 +180,24 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
                     model_name="Walla_Walla",
                 )
 
+    def test_set_active_model_rejects_missing_project_without_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            service.create_project(workspace_root, "Project_A")
+            service.create_model(workspace_root, "Project_A", "Walla_Walla")
+            before = sorted(c.name for c in workspace_root.iterdir())
+
+            with self.assertRaisesRegex(FileNotFoundError, "Project_Typo"):
+                service.set_active_model(
+                    workspace_root,
+                    project_name="Project_Typo",
+                    model_name="Walla_Walla",
+                )
+
+            after = sorted(c.name for c in workspace_root.iterdir())
+            self.assertEqual(before, after, "no project dir should be created on typo")
+            self.assertFalse((workspace_root / "Project_Typo").exists())
+
     def test_prepare_model_runtime_copies_source_data_without_model_notebooks_dir(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_root = Path(tmpdir).resolve()
