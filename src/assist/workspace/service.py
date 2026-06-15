@@ -181,15 +181,25 @@ def _copy_source_into_model(source: Path, model_paths: dict[str, Path]) -> dict[
     normalized_root.mkdir(parents=True, exist_ok=True)
 
     if is_model_dir(source):
+        for source_subdir_name in ("config", "inputs"):
+            source_subdir = source / source_subdir_name
+            if not source_subdir.is_dir():
+                continue
+            dest_subdir = model_paths["model"] / source_subdir_name
+            for child in source_subdir.iterdir():
+                _copy_path(child, dest_subdir / child.name)
+
+        source_outputs = source / "outputs"
+        if source_outputs.is_dir():
+            for child in source_outputs.iterdir():
+                if child.name == "runtime":
+                    continue
+                _copy_path(child, model_paths["outputs"] / child.name)
+
         for child in source.iterdir():
             if child.name in {"config", "inputs", "outputs", "notebooks"}:
                 continue
             _copy_path(child, normalized_root / child.name)
-
-        source_inputs = source / "inputs" / NORMALIZED_SOURCE_DIR
-        if source_inputs.is_dir():
-            for child in source_inputs.iterdir():
-                _copy_path(child, normalized_root / child.name)
         return model_paths
 
     for child in source.iterdir():
