@@ -46,6 +46,63 @@ class ProjectSharedNotebookBridgeTests(unittest.TestCase):
 
             self.assertIsNone(context)
 
+    def test_resolve_project_notebook_context_detects_marker_with_renamed_notebooks_dir(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            project_root = workspace_root / "Project_A"
+            project_root.mkdir(parents=True)
+            (project_root / bridge.PROJECT_MARKER_FILENAME).write_text(
+                "schema_version: 1\n", encoding="utf-8"
+            )
+            cwd = project_root / "my_runs" / "nhm"
+            cwd.mkdir(parents=True)
+
+            context = bridge.resolve_project_notebook_context(cwd=cwd)
+
+            self.assertIsNotNone(context)
+            self.assertEqual(context["workspace_root"], workspace_root)
+            self.assertEqual(context["project_root"], project_root)
+            self.assertEqual(context["workflow"], "nhm")
+            self.assertEqual(context["workflow_dir"], cwd)
+
+    def test_resolve_project_notebook_context_marker_without_workflow_subdir_returns_project_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            project_root = workspace_root / "Project_A"
+            project_root.mkdir(parents=True)
+            (project_root / bridge.PROJECT_MARKER_FILENAME).write_text(
+                "schema_version: 1\n", encoding="utf-8"
+            )
+            cwd = project_root / "exploration"
+            cwd.mkdir(parents=True)
+
+            context = bridge.resolve_project_notebook_context(cwd=cwd)
+
+            self.assertIsNotNone(context)
+            self.assertEqual(context["workspace_root"], workspace_root)
+            self.assertEqual(context["project_root"], project_root)
+            self.assertIsNone(context["workflow"])
+            self.assertIsNone(context["workflow_dir"])
+
+    def test_resolve_project_notebook_context_no_marker_anywhere_returns_none(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cwd = Path(tmpdir).resolve() / "random" / "nhm"
+            cwd.mkdir(parents=True)
+
+            context = bridge.resolve_project_notebook_context(cwd=cwd)
+
+            self.assertIsNone(context)
+
+    def test_create_project_writes_marker_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            marker = workspace_root / "Project_A" / bridge.PROJECT_MARKER_FILENAME
+            self.assertTrue(marker.is_file())
+            self.assertEqual(paths["marker"], marker)
+
 
 class ProjectSharedNotebookServiceTests(unittest.TestCase):
     def test_bootstrap_workspace_only_creates_workspace_root(self):
