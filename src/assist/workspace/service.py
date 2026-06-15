@@ -5,6 +5,7 @@ import yaml
 
 from assist.workspace.bridge import (
     MODEL_SUBDIRS,
+    PROJECT_MARKER_FILENAME,
     ensure_workspace_root,
     get_model_dir,
     get_project_active_model_config_path,
@@ -28,11 +29,23 @@ def bootstrap_workspace(workspace_root: str | Path) -> dict[str, Path]:
     return {"workspace": workspace}
 
 
+_PROJECT_MARKER_CONTENT = (
+    "# nhm-assist project marker.\n"
+    "# The CLI uses this file to detect the project root from a notebook's CWD.\n"
+    "# Do not delete unless removing this project.\n"
+    "schema_version: 1\n"
+)
+
+
 def create_project(workspace_root: str | Path, project_name: str) -> dict[str, Path]:
     project_dir = get_project_dir(workspace_root, project_name)
     project_dir.mkdir(parents=True, exist_ok=True)
 
-    paths = {"project": project_dir}
+    marker_path = project_dir / PROJECT_MARKER_FILENAME
+    if not marker_path.exists():
+        marker_path.write_text(_PROJECT_MARKER_CONTENT, encoding="utf-8")
+
+    paths = {"project": project_dir, "marker": marker_path}
     models_dir = project_dir / "models"
     models_dir.mkdir(parents=True, exist_ok=True)
     paths["models"] = models_dir

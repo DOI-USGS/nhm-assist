@@ -10,6 +10,7 @@ REPO_NOTEBOOK_DIRS = {
     "pest": Path("pestpp_ies_calibration") / "notebooks",
 }
 MODEL_SUBDIRS = ("config", "inputs", "outputs")
+PROJECT_MARKER_FILENAME = ".nhm-assist-project"
 
 
 def resolve_repo_root(env: Mapping[str, str] | None = None) -> Path:
@@ -131,7 +132,13 @@ def get_model_dir(
 
 
 def is_project_dir(path: Path) -> bool:
-    return path.is_dir() and (path / "models").is_dir()
+    if not path.is_dir():
+        return False
+    return (path / PROJECT_MARKER_FILENAME).is_file() or (path / "models").is_dir()
+
+
+def is_project_dir_by_marker(path: Path) -> bool:
+    return path.is_dir() and (path / PROJECT_MARKER_FILENAME).is_file()
 
 
 def is_model_dir(path: Path) -> bool:
@@ -159,15 +166,40 @@ def list_models(
     return sorted([child for child in models_root.iterdir() if is_model_dir(child)])
 
 
-def resolve_project_notebook_context(
-    cwd: str | Path | None = None,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> dict[str, Path | str] | None:
-    del env  # reserved for future runtime overrides
-    current = Path.cwd() if cwd is None else Path(cwd)
-    current = current.expanduser().resolve()
+def _build_marker_context(
+    project_root: Path,
+    current: Path,
+) -> dict[str, Path | str | None]:
+    workspace_root = project_root.parent.resolve()
+    workflow: str | None = None
+    workflow_dir: Path | None = None
+    notebooks_dir: Path | None = None
 
+    try:
+        relative_parts = current.relative_to(project_root).parts
+    except ValueError:
+        relative_parts = ()
+
+    for idx, part in enumerate(relative_parts):
+        if part in WORKFLOW_NAMES:
+            workflow = part
+            workflow_dir = project_root.joinpath(*relative_parts[: idx + 1])
+            notebooks_dir = workflow_dir.parent
+            break
+
+    return {
+        "workspace_root": workspace_root,
+        "project_root": project_root,
+        "project_config_root": project_root / "project_config",
+        "workflow": workflow,
+        "notebooks_dir": notebooks_dir,
+        "workflow_dir": workflow_dir,
+    }
+
+
+def _resolve_by_legacy_name_heuristic(
+    current: Path,
+) -> dict[str, Path | str] | None:
     for candidate in (current, *current.parents):
         if candidate.name not in WORKFLOW_NAMES:
             continue
@@ -188,5 +220,20 @@ def resolve_project_notebook_context(
             "notebooks_dir": notebooks_dir.resolve(),
             "workflow_dir": candidate.resolve(),
         }
-
     return None
+
+
+def resolve_project_notebook_context(
+    cwd: str | Path | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, Path | str | None] | None:
+    del env  # reserved for future runtime overrides
+    current = Path.cwd() if cwd is None else Path(cwd)
+    current = current.expanduser().resolve()
+
+    for candidate in (current, *current.parents):
+        if is_project_dir_by_marker(candidate):
+            return _build_marker_context(candidate, current)
+
+    return _resolve_by_legacy_name_heuristic(current)
