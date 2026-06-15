@@ -19,36 +19,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("setup")
 
-    bootstrap_parser = subparsers.add_parser("bootstrap")
-    bootstrap_parser.add_argument("--workspace-root", required=True)
+    workspace_init_parser = subparsers.add_parser("workspace-init")
+    workspace_init_parser.add_argument("--workspace-root", required=True)
 
-    create_parser = subparsers.add_parser("create-project")
-    create_parser.add_argument("--workspace-root", required=True)
-    create_parser.add_argument("--project-name", required=True)
+    project_create_parser = subparsers.add_parser("project-create")
+    project_create_parser.add_argument("--workspace-root", required=True)
+    project_create_parser.add_argument("--project-name", required=True)
 
-    list_parser = subparsers.add_parser("list-projects")
-    list_parser.add_argument("--workspace-root", required=True)
+    project_list_parser = subparsers.add_parser("project-list")
+    project_list_parser.add_argument("--workspace-root", required=True)
 
-    create_model_parser = subparsers.add_parser("create-model")
-    create_model_parser.add_argument("--workspace-root", required=True)
-    create_model_parser.add_argument("--project-name", required=True)
-    create_model_parser.add_argument("--model-name", required=True)
+    model_create_parser = subparsers.add_parser("model-create")
+    model_create_parser.add_argument("--workspace-root", required=True)
+    model_create_parser.add_argument("--project-name", required=True)
+    model_create_parser.add_argument("--model-name", required=True)
 
-    list_models_parser = subparsers.add_parser("list-models")
-    list_models_parser.add_argument("--workspace-root", required=True)
-    list_models_parser.add_argument("--project-name", required=True)
+    model_list_parser = subparsers.add_parser("model-list")
+    model_list_parser.add_argument("--workspace-root", required=True)
+    model_list_parser.add_argument("--project-name", required=True)
 
-    copy_model_parser = subparsers.add_parser("copy-example-model")
-    copy_model_parser.add_argument("--workspace-root", required=True)
-    copy_model_parser.add_argument("--project-name", required=True)
-    copy_model_parser.add_argument("--model-name", required=True)
-    copy_model_parser.add_argument("--example-name", required=True)
+    model_copy_example_parser = subparsers.add_parser("model-copy-example")
+    model_copy_example_parser.add_argument("--workspace-root", required=True)
+    model_copy_example_parser.add_argument("--project-name", required=True)
+    model_copy_example_parser.add_argument("--model-name", required=True)
+    model_copy_example_parser.add_argument("--example-name", required=True)
 
-    import_model_parser = subparsers.add_parser("import-model")
-    import_model_parser.add_argument("--workspace-root", required=True)
-    import_model_parser.add_argument("--project-name", required=True)
-    import_model_parser.add_argument("--model-name", required=True)
-    import_model_parser.add_argument("--source-dir", required=True)
+    model_import_parser = subparsers.add_parser("model-import")
+    model_import_parser.add_argument("--workspace-root", required=True)
+    model_import_parser.add_argument("--project-name", required=True)
+    model_import_parser.add_argument("--model-name", required=True)
+    model_import_parser.add_argument("--source-dir", required=True)
 
     set_active_model_parser = subparsers.add_parser("project-set-active-model")
     set_active_model_parser.add_argument("--workspace-root", required=True)
@@ -64,24 +64,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "setup":
         return run_setup()
-    if args.command == "bootstrap":
+    if args.command == "workspace-init":
         bootstrap_workspace(args.workspace_root)
         return 0
-    if args.command == "create-project":
+    if args.command == "project-create":
         create_project(args.workspace_root, args.project_name)
         return 0
-    if args.command == "list-projects":
+    if args.command == "project-list":
         for project in get_projects(args.workspace_root):
             print(project.name)
         return 0
-    if args.command == "create-model":
+    if args.command == "model-create":
         create_model(args.workspace_root, args.project_name, args.model_name)
         return 0
-    if args.command == "list-models":
+    if args.command == "model-list":
         for model in get_models(args.workspace_root, args.project_name):
             print(model.name)
         return 0
-    if args.command == "copy-example-model":
+    if args.command == "model-copy-example":
         copy_example_model(
             args.workspace_root,
             args.project_name,
@@ -89,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
             args.example_name,
         )
         return 0
-    if args.command == "import-model":
+    if args.command == "model-import":
         import_model(
             args.workspace_root,
             args.project_name,
