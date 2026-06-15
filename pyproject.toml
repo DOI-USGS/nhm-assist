@@ -38,6 +38,13 @@ plotly = "==5.24.1"
 pywatershed = ">=2.0.1"
 tobler = "==0.12.0"
 
+[tool.pixi.feature.nhm.pypi-dependencies]
+dotenv = "*"
+hydroeval = "==0.1"
+jupyter-black = "*"
+gdptools = "*"
+pyprms = "*"
+
 [tool.pixi.environments]
 default = { features = ["nhm"], solve-group = "default" }
 nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
@@ -54,6 +61,3 @@ model-create = { cmd = "python -m assist.workspace.cli model-create --workspace-
 model-list = { cmd = "python -m assist.workspace.cli model-list --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
 model-copy-example = { cmd = "python -m assist.workspace.cli model-copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "model_name", "example_name"], default-environment = "default" }
 model-import = { cmd = "python -m assist.workspace.cli model-import --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "model_name", "source_dir"], default-environment = "default" }
-
-[dependency-groups]
-nhm = ["dotenv", "hydroeval==0.1", "jupyter-black", "gdptools", "pyprms"]
