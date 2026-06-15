@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
+import shlex
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -360,10 +363,14 @@ def action_generate_nhm_notebooks(
     return created
 
 
+JUPYTER_STARTUP_PROBE_SECONDS = 0.75
+
+
 def action_launch_jupyter(
     state: SetupState,
     *,
     print_func=print,
+    startup_probe_seconds: float = JUPYTER_STARTUP_PROBE_SECONDS,
 ) -> Path | None:
     if not require_current_project(state, print_func=print_func):
         return None
@@ -373,11 +380,33 @@ def action_launch_jupyter(
         workspace_root,
         state.current_project,
     )
-    subprocess.Popen(
-        [sys.executable, "-m", "jupyter", "lab", str(project_root)],
-        cwd=project_root,
-    )
-    print_func(f"Launching Jupyter for {project_root}")
+    command = [sys.executable, "-m", "jupyter", "lab", str(project_root)]
+    pretty_command = " ".join(shlex.quote(part) for part in command)
+
+    if importlib.util.find_spec("jupyterlab") is None:
+        print_func("Error: JupyterLab is not installed in the current environment.")
+        print_func(f"Command attempted: {pretty_command}")
+        print_func("Install JupyterLab in this Pixi environment, then try again.")
+        return None
+
+    print_func(f"Launching: {pretty_command}")
+    try:
+        proc = subprocess.Popen(command, cwd=project_root)
+    except (OSError, FileNotFoundError) as exc:
+        print_func(f"Error: failed to start Jupyter: {exc}")
+        print_func(f"Command attempted: {pretty_command}")
+        return None
+
+    time.sleep(startup_probe_seconds)
+    return_code = proc.poll()
+    if return_code is not None:
+        print_func(f"Error: Jupyter exited immediately with code {return_code}.")
+        print_func(f"Command attempted: {pretty_command}")
+        print_func("Check the output above for the underlying error.")
+        return None
+
+    print_func(f"Jupyter started for {project_root} (PID {proc.pid}).")
+    print_func("The Jupyter URL will print in this terminal shortly.")
     return project_root
 
 
