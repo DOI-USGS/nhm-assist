@@ -202,7 +202,13 @@ class WorkspaceSetupTests(unittest.TestCase):
         )
 
         with patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            setup.action_launch_jupyter(state, print_func=lambda *_: None)
+            mock_popen.return_value.poll.return_value = None
+            mock_popen.return_value.pid = 12345
+            setup.action_launch_jupyter(
+                state,
+                print_func=lambda *_: None,
+                startup_probe_seconds=0,
+            )
 
         command = mock_popen.call_args.args[0]
         self.assertEqual(
@@ -216,11 +222,189 @@ class WorkspaceSetupTests(unittest.TestCase):
             ],
         )
 
+    def test_action_launch_jupyter_reports_when_jupyterlab_missing(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        printed: list[str] = []
+
+        with patch(
+            "assist.workspace.setup.importlib.util.find_spec",
+            return_value=None,
+        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+            result = setup.action_launch_jupyter(
+                state,
+                print_func=printed.append,
+                startup_probe_seconds=0,
+            )
+
+        self.assertIsNone(result)
+        mock_popen.assert_not_called()
+        self.assertTrue(
+            any("JupyterLab is not installed" in line for line in printed),
+            f"expected missing-jupyterlab message, got: {printed}",
+        )
+
+    def test_action_launch_jupyter_reports_when_process_exits_immediately(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        printed: list[str] = []
+
+        with patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.poll.return_value = 1
+            mock_popen.return_value.returncode = 1
+            mock_popen.return_value.pid = 12345
+            result = setup.action_launch_jupyter(
+                state,
+                print_func=printed.append,
+                startup_probe_seconds=0,
+            )
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            any("exited immediately with code 1" in line for line in printed),
+            f"expected immediate-exit message, got: {printed}",
+        )
+
+    def test_action_launch_jupyter_reports_when_popen_raises(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        printed: list[str] = []
+
+        with patch(
+            "assist.workspace.setup.subprocess.Popen",
+            side_effect=FileNotFoundError("python not found"),
+        ):
+            result = setup.action_launch_jupyter(
+                state,
+                print_func=printed.append,
+                startup_probe_seconds=0,
+            )
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            any("failed to start Jupyter" in line for line in printed),
+            f"expected popen-failure message, got: {printed}",
+        )
+
     def test_build_parser_supports_setup_command(self):
         parser = cli.build_parser()
         args = parser.parse_args(["setup"])
 
         self.assertEqual(args.command, "setup")
+
+    def test_prompt_workspace_root_uses_default_on_blank_input(self):
+        printed: list[str] = []
+        default_target = self.tmp_path / "default_workspace"
+
+        with patch.object(
+            setup,
+            "DEFAULT_WORKSPACE_ROOT",
+            default_target,
+        ):
+            result = setup.prompt_workspace_root(
+                self.repo_root,
+                print_func=printed.append,
+                input_func=lambda *_: "",
+            )
+
+        self.assertEqual(result, default_target.expanduser().resolve())
+        self.assertTrue(result.is_dir())
+        self.assertTrue(
+            any(str(default_target.expanduser().resolve()) in line for line in printed),
+            f"expected default path in guidance lines, got: {printed}",
+        )
+
+    def test_prompt_workspace_root_warns_when_inside_repo_and_re_prompts_on_no(self):
+        printed: list[str] = []
+        inside_repo = self.repo_root / "ws_inside"
+        outside_repo = self.tmp_path / "ws_outside"
+        answers = iter([str(inside_repo), "n", str(outside_repo), "y"])
+
+        result = setup.prompt_workspace_root(
+            self.repo_root,
+            print_func=printed.append,
+            input_func=lambda *_: next(answers),
+        )
+
+        self.assertEqual(result, outside_repo.resolve())
+        self.assertTrue(result.is_dir())
+        self.assertTrue(
+            any("inside the repository" in line for line in printed),
+            f"expected an inside-repo warning, got: {printed}",
+        )
+
+    def test_action_set_workspace_root_clears_current_project_when_absent_in_new_workspace(self):
+        old_workspace = self.tmp_path / "ws_old"
+        new_workspace = self.tmp_path / "ws_new"
+        from assist.workspace import service
+        service.create_project(old_workspace, "Columbia_Study")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=old_workspace,
+            current_project="Columbia_Study",
+        )
+        printed: list[str] = []
+
+        with patch.object(setup, "prompt_workspace_root", return_value=new_workspace):
+            setup.action_set_workspace_root(
+                state,
+                print_func=printed.append,
+                input_func=lambda *_: "",
+            )
+
+        self.assertIsNone(state.current_project)
+        self.assertTrue(
+            any("Cleared current project 'Columbia_Study'" in line for line in printed),
+            f"expected clear notice, got: {printed}",
+        )
+
+    def test_action_set_workspace_root_keeps_current_project_when_present_in_new_workspace(self):
+        old_workspace = self.tmp_path / "ws_old"
+        new_workspace = self.tmp_path / "ws_new"
+        from assist.workspace import service
+        service.create_project(old_workspace, "Columbia_Study")
+        service.create_project(new_workspace, "Columbia_Study")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=old_workspace,
+            current_project="Columbia_Study",
+        )
+
+        with patch.object(setup, "prompt_workspace_root", return_value=new_workspace):
+            setup.action_set_workspace_root(
+                state,
+                print_func=lambda *_: None,
+                input_func=lambda *_: "",
+            )
+
+        self.assertEqual(state.current_project, "Columbia_Study")
+
+    def test_action_set_workspace_root_no_change_keeps_current_project(self):
+        from assist.workspace import service
+        service.create_project(self.workspace_root, "Columbia_Study")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Columbia_Study",
+        )
+
+        with patch.object(setup, "prompt_workspace_root", return_value=self.workspace_root):
+            setup.action_set_workspace_root(
+                state,
+                print_func=lambda *_: None,
+                input_func=lambda *_: "",
+            )
+
+        self.assertEqual(state.current_project, "Columbia_Study")
 
 
 if __name__ == "__main__":
