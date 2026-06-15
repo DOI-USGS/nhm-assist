@@ -170,12 +170,27 @@ def action_set_workspace_root(
     print_func=print,
     input_func=input,
 ) -> Path:
+    previous_workspace_root = state.workspace_root
+    previous_project = state.current_project
     workspace_root = prompt_workspace_root(
         state.repo_root,
         print_func=print_func,
         input_func=input_func,
     )
     state.workspace_root = workspace_root
+
+    if (
+        previous_project is not None
+        and previous_workspace_root != workspace_root
+    ):
+        candidate = bridge.get_project_dir(workspace_root, previous_project)
+        if not bridge.is_project_dir(candidate):
+            state.current_project = None
+            print_func(
+                f"Cleared current project '{previous_project}': "
+                f"not present in new workspace."
+            )
+
     print_func(f"Workspace root set to {workspace_root}")
     return workspace_root
 
