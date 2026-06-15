@@ -46,14 +46,14 @@ nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
 setup = { cmd = "python -m assist.workspace.cli setup", default-environment = "default" }
 notebooks = { cmd = "python make_notebooks.py --workflow {{ workflow }}", args = [{ arg = "workflow", default = "all" }], default-environment = "default" }
 notebooks-project = { cmd = "python make_notebooks.py --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name", { arg = "workflow", default = "all" }], default-environment = "default" }
-workspace-init = { cmd = "python -m assist.workspace.cli bootstrap --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
-project-create = { cmd = "python -m assist.workspace.cli create-project --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
-project-list = { cmd = "python -m assist.workspace.cli list-projects --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
+workspace-init = { cmd = "python -m assist.workspace.cli workspace-init --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
+project-create = { cmd = "python -m assist.workspace.cli project-create --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
+project-list = { cmd = "python -m assist.workspace.cli project-list --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default" }
 project-set-active-model = { cmd = "python -m assist.workspace.cli project-set-active-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}", args = ["workspace_root", "project_name", "model_name"], default-environment = "default" }
-model-create = { cmd = "python -m assist.workspace.cli create-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}", args = ["workspace_root", "project_name", "model_name"], default-environment = "default" }
-model-list = { cmd = "python -m assist.workspace.cli list-models --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
-model-copy-example = { cmd = "python -m assist.workspace.cli copy-example-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "model_name", "example_name"], default-environment = "default" }
-model-import = { cmd = "python -m assist.workspace.cli import-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "model_name", "source_dir"], default-environment = "default" }
+model-create = { cmd = "python -m assist.workspace.cli model-create --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}", args = ["workspace_root", "project_name", "model_name"], default-environment = "default" }
+model-list = { cmd = "python -m assist.workspace.cli model-list --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default" }
+model-copy-example = { cmd = "python -m assist.workspace.cli model-copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "model_name", "example_name"], default-environment = "default" }
+model-import = { cmd = "python -m assist.workspace.cli model-import --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "model_name", "source_dir"], default-environment = "default" }
 
 [dependency-groups]
 nhm = ["dotenv", "hydroeval==0.1", "jupyter-black", "gdptools", "pyprms"]

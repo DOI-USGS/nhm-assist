@@ -320,12 +320,12 @@ class ProjectSharedNotebookCliTests(unittest.TestCase):
         self.assertEqual(args.project_name, "Project_A")
         self.assertEqual(args.model_name, "Walla_Walla")
 
-    def test_build_parser_supports_list_models(self):
+    def test_build_parser_supports_model_list(self):
         parser = cli.build_parser()
 
         args = parser.parse_args(
             [
-                "list-models",
+                "model-list",
                 "--workspace-root",
                 "/tmp/workspace",
                 "--project-name",
@@ -333,7 +333,7 @@ class ProjectSharedNotebookCliTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(args.command, "list-models")
+        self.assertEqual(args.command, "model-list")
         self.assertEqual(args.project_name, "Project_A")
 
     def test_main_lists_models_for_project(self):
@@ -346,7 +346,7 @@ class ProjectSharedNotebookCliTests(unittest.TestCase):
             with redirect_stdout(stdout):
                 exit_code = cli.main(
                     [
-                        "list-models",
+                        "model-list",
                         "--workspace-root",
                         str(workspace_root),
                         "--project-name",
