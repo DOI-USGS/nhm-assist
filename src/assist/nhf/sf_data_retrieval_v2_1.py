@@ -26,7 +26,7 @@ from typing import Iterable, List, Tuple
 from rich import pretty
 from rich.progress import Progress
 from assist.nhm.efc import efc
-from assist.nhm.nhm_assist_utilities import fetch_nwis_gage_info
+from assist.nhf.nhm_assist_utilities_v2 import fetch_waterdata_gage_info
 
 
 
@@ -132,7 +132,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
         
     Returns
     -------
@@ -164,7 +164,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
     model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
 
@@ -366,7 +366,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
 
     Returns
     -------
@@ -391,7 +391,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
     model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
     ecy_df = pd.DataFrame()
@@ -660,18 +660,18 @@ def create_waterdata_sf_df(
     _ensure_usgs_pat_stripped()
 
     waterdata_cache_file = (
-        model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
+        model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
     )
     control = pws.Control.load_prms(
         pl.Path(model_dir / control_file_name), warn_unused_options=False
     )
-    waterdata_gages_file = model_dir / "WaterDataGages.csv"
+    waterdata_gages_file = model_dir / "metadata/WaterDataGages.csv"
 
-    waterdata_gage_info_aoi = fetch_nwis_gage_info(
+    waterdata_gage_info_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=waterdata_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -690,7 +690,7 @@ def create_waterdata_sf_df(
     waterdata_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
     # Build Water Data API monitoring_location_ids
-    site_ids = waterdata_gage_info_aoi["poi_id"].tolist()
+    site_ids = waterdata_gage_info_aoi["poi_gage_id"].tolist()
     monitoring_ids = _as_monitoring_location_ids(site_ids)
 
     # Download in batches
@@ -841,7 +841,7 @@ def create_waterdata_sf_df(
 
     # Write gage list CSV (exclude too_few)
     out_gage_info = waterdata_gage_info_aoi[
-        ~waterdata_gage_info_aoi["poi_id"].astype(str).isin(too_few)
+        ~waterdata_gage_info_aoi["poi_gage_id"].astype(str).isin(too_few)
     ]
     out_gage_info.to_csv(waterdata_gages_file, index=False)
 
@@ -853,16 +853,16 @@ def create_sf_efc_df(
     output_netcdf_filename,
     owrd_df,
     ecy_df,
-    NWIS_df,
+    waterdata_df,
     gages_df,
 ):
     """
-    Combines daily streamflow dataframes from various database retrievals, currently NWIS, OWRD, and ECY into
+    Combines daily streamflow dataframes from various database retrievals, currently WaterData, OWRD, and ECY into
     one xarray dataset.
 
-    Note: all NWIS data is mirrored the OWRD database without any primary source tag/flag, so
-    this section will also determine the original source agency of each daily observation, OWRD vs. NWIS.
-    ECY does not republish NWIS data as not USGS gages are in the ECY database.
+    Note: all WaterData data is mirrored the OWRD database without any primary source tag/flag, so
+    this section will also determine the original source agency of each daily observation, OWRD vs. WaterData.
+    ECY does not republish WaterData data as not USGS gages are in the ECY database.
 
     The function will will also add to the xarray station information from the gages.csv file.
     The function will also add efc flow classifications to each daily streamflow (Ref from Parker).
@@ -878,10 +878,10 @@ def create_sf_efc_df(
         Dataframe containing OWRD mean daily streamflow data for the specified gage and date range.        
     ecy_df : pandas DataFrame
         Dataframe containing ECY mean daily streamflow data for the specified gage and date range.        
-    NWIS_df : pandas DataFrame
-        Dataframe of NWIS gages.        
+    waterdata_df : pandas DataFrame
+        Dataframe of WaterData gages.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
     
     Returns
     -------
@@ -898,12 +898,12 @@ def create_sf_efc_df(
             "All available streamflow observations were previously retrieved and included in the sf_efc.nc file. [bold]To update delete sf_efc.nc[/bold] and rerun 1_Create_Streamflow_Observations.ipynb."
         )
     else:
-        streamflow_df = NWIS_df.copy()  # Sets streamflow file to default, NWIS_df
+        streamflow_df = waterdata_df.copy()  # Sets streamflow file to default, waterdata_df
 
         if (
             not owrd_df.empty
         ):  # If there is an owrd_df, it will be combined with streamflow_df and rewrite the streamflow_df
-            # Merge NWIS and OWRD
+            # Merge WaterData and OWRD
             streamflow_df = pd.concat([streamflow_df, owrd_df])  # Join the two datasets
             # Drop duplicated indexes, keeping the first occurence (USGS occurs first)
             # try following this thing: https://saturncloud.io/blog/how-to-drop-duplicated-index-in-a-pandas-dataframe-a-complete-guide/#:~:text=Pandas%20provides%20the%20drop_duplicates(),names%20to%20the%20subset%20parameter.
