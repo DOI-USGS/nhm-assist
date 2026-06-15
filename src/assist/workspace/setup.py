@@ -108,22 +108,57 @@ def list_available_example_names(repo_root: Path) -> list[str]:
     return sorted(names)
 
 
+DEFAULT_WORKSPACE_ROOT = Path("~/nhm-workspace")
+
+
+def _is_under_repo(workspace_root: Path, repo_root: Path) -> bool:
+    try:
+        workspace_root.relative_to(repo_root)
+    except ValueError:
+        return False
+    return True
+
+
 def prompt_workspace_root(
     repo_root: Path,
     *,
     print_func=print,
     input_func=input,
 ) -> Path:
+    default_root = DEFAULT_WORKSPACE_ROOT.expanduser().resolve()
+    print_func(
+        "Your workspace folder holds projects, models, generated notebooks, and outputs."
+    )
+    print_func(
+        "Pick a location outside the cloned repository so generated files stay out of git."
+    )
+    print_func(f"Press Enter to accept the default ({default_root}).")
+
     while True:
-        raw_path = prompt_required_text(
-            "Type workspace root path:",
-            input_func=input_func,
-        )
-        workspace_root = Path(raw_path).expanduser().resolve()
+        raw_path = input_func("Workspace root path: ").strip()
+        if not raw_path:
+            workspace_root = default_root
+        else:
+            workspace_root = Path(raw_path).expanduser().resolve()
 
         if workspace_root.exists() and not workspace_root.is_dir():
             print_func(f"Path is not a directory: {workspace_root}")
             continue
+
+        if _is_under_repo(workspace_root, repo_root):
+            print_func(
+                f"Warning: {workspace_root} is inside the repository at {repo_root}."
+            )
+            print_func(
+                "Workspace files will be mixed into your git checkout; "
+                "this is strongly discouraged."
+            )
+            if not prompt_yes_no(
+                "Use this path anyway?",
+                default=False,
+                input_func=input_func,
+            ):
+                continue
 
         if not workspace_root.exists():
             create_dir = prompt_yes_no(
