@@ -356,6 +356,91 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertTrue((runtime_a["model_dir"] / "control.default.bandit").exists())
             self.assertTrue((runtime_b["model_dir"] / "control.default.bandit").exists())
 
+    def test_import_model_mirrors_structured_source_and_drops_runtime(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve() / "workspace"
+            source = Path(tmpdir).resolve() / "shared_model"
+            (source / "config").mkdir(parents=True)
+            (source / "config" / "site_overrides.yaml").write_text(
+                "scale: 2\n", encoding="utf-8"
+            )
+            (source / "inputs" / "source_data").mkdir(parents=True)
+            (source / "inputs" / "source_data" / "control.default.bandit").write_text(
+                "control\n", encoding="utf-8"
+            )
+            (source / "inputs" / "forcings").mkdir(parents=True)
+            (source / "inputs" / "forcings" / "cbh.nc").write_text(
+                "cbh\n", encoding="utf-8"
+            )
+            (source / "outputs" / "notebook_output_files" / "html_maps").mkdir(parents=True)
+            (
+                source
+                / "outputs"
+                / "notebook_output_files"
+                / "html_maps"
+                / "summary.html"
+            ).write_text("<html></html>\n", encoding="utf-8")
+            (source / "outputs" / "runtime").mkdir(parents=True)
+            (source / "outputs" / "runtime" / "huge_regen.nc").write_text(
+                "skip me\n", encoding="utf-8"
+            )
+            (source / "README.md").write_text("notes\n", encoding="utf-8")
+
+            service.import_model(workspace_root, "Project_A", "Model_A", source)
+
+            model_root = workspace_root / "Project_A" / "models" / "Model_A"
+            self.assertTrue(
+                (model_root / "config" / "site_overrides.yaml").is_file(),
+                "config/ should be mirrored verbatim",
+            )
+            self.assertTrue(
+                (
+                    model_root / "inputs" / "source_data" / "control.default.bandit"
+                ).is_file(),
+                "inputs/source_data/ should be mirrored",
+            )
+            self.assertTrue(
+                (model_root / "inputs" / "forcings" / "cbh.nc").is_file(),
+                "non-source_data subdirs under inputs/ should be mirrored",
+            )
+            self.assertTrue(
+                (
+                    model_root
+                    / "outputs"
+                    / "notebook_output_files"
+                    / "html_maps"
+                    / "summary.html"
+                ).is_file(),
+                "outputs/notebook_output_files/ should be mirrored",
+            )
+            self.assertFalse(
+                (model_root / "outputs" / "runtime").exists(),
+                "outputs/runtime/ should be dropped on import",
+            )
+            self.assertTrue(
+                (model_root / "inputs" / "source_data" / "README.md").is_file(),
+                "loose top-level files should still normalize into source_data/",
+            )
+
+    def test_import_model_normalizes_raw_source_into_source_data(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve() / "workspace"
+            source = Path(tmpdir).resolve() / "raw_model"
+            source.mkdir(parents=True)
+            (source / "control.default.bandit").write_text("c\n", encoding="utf-8")
+            (source / "myparam.param").write_text("p\n", encoding="utf-8")
+            (source / "GIS").mkdir()
+            (source / "GIS" / "model_nhru.shp").write_text("shp\n", encoding="utf-8")
+
+            service.import_model(workspace_root, "Project_A", "Model_A", source)
+
+            source_data = (
+                workspace_root / "Project_A" / "models" / "Model_A" / "inputs" / "source_data"
+            )
+            self.assertTrue((source_data / "control.default.bandit").is_file())
+            self.assertTrue((source_data / "myparam.param").is_file())
+            self.assertTrue((source_data / "GIS" / "model_nhru.shp").is_file())
+
 
 class ProjectSharedNotebookCliTests(unittest.TestCase):
     def test_build_parser_supports_project_set_active_model(self):
