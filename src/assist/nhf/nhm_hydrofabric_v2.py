@@ -6,7 +6,7 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_nwis_gage_info
+from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_waterdata_gage_info
 
 import sys
 import pathlib as pl
@@ -39,7 +39,7 @@ def create_hru_gdf(
     
     Note: Layer npoigages includes the poi gages that were included in the model and are limited.
     Since poi gages will be added to the model parameter file, we provide another method to retrieve poi metadata, such as
-    latitude (lat) and longitude (lon), for poi gages listed in the parameter file that uses NWIS and a supplemental gage ref
+    latitude (lat) and longitude (lon), for poi gages listed in the parameter file that uses WaterData and a supplemental gage ref
     table for gages that do not occur in NWIS. Locations may NOT be located exactly on the NHM segment. The gages' assigned
     segment is displayed in the popup window when the gage icon is clicked.
 
@@ -327,8 +327,9 @@ def create_poi_df(
     control_file_name,
     hru_gdf,
     gages_file,
+    resource_gages_file,
     default_gages_file,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     seg_gdf,
 ):
     """
@@ -344,12 +345,12 @@ def create_poi_df(
         Path object to the control file.
     hru_gdf : geopandas GeoDataFrame
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
-    gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file and user modified information.
+    resource_gages_file : pathlib Path class
+        Path to file containing gage information from WaterData for the gages in the parameter file and user modified information.
     default_gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file.
-    nwis_gage_nobs_min : int
-        Minimum number of days for NWIS gage to be considered as potential poi.
+        Path to file containing gage information from WaterData for the gages in the parameter file.
+    waterdata_gage_nobs_min : int
+        Minimum number of days for WaterData gage to be considered as potential poi.
 
     Returns
     -------
@@ -376,21 +377,13 @@ def create_poi_df(
     poi = poi.merge(pdb["poi_type"].as_dataframe, left_index=True, right_index=True)
     
     """
-    Create a dataframe for poi_gages from the parameter file with NWIS gage information data.
+    Create a dataframe for poi_gages from the parameter file with WaterData gage information data.
 
     """
-    # nwis_gage_info_aoi = fetch_nwis_gage_info(
-    #     root_dir=root_dir,
-    #     model_dir=model_dir,
-    #     control_file_name=control_file_name,
-    #     nwis_gage_nobs_min=nwis_gage_nobs_min,
-    #     hru_gdf=hru_gdf,
-    #     seg_gdf=seg_gdf,
-    # )
     npoigages_info = find_missing_gage_info(root_dir=root_dir,
                                                 dest_dir= model_dir / "metadata",
                                                 gages_list=poi["poi_gage_id"].to_list(),
-                                                resource_file_path= model_dir / "gages.csv")
+                                                resource_file_path= resource_gages_file)
 
     poi = poi.merge(npoigages_info, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
@@ -398,54 +391,54 @@ def create_poi_df(
     """
     """
 
-    """
-    Updates the poi_df with user altered metadata in the gages.csv file, if present, or the default_gages.csv file
-    """
+    # """
+    # Updates the poi_df with user altered metadata in the gages.csv file, if present, or the default_gages.csv file
+    # """
 
-    if gages_file.exists():
-        gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
-            model_dir=model_dir,
-            poi_df=poi_df,
-            gages_file=gages_file,
-        )
+    # if gages_file.exists():
+    #     gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
+    #         model_dir=model_dir,
+    #         poi_df=poi_df,
+    #         gages_file=gages_file,
+    #     )
         
-        for idx, row in poi_df.iterrows():
-            """
-            Checks the gages_df for missing meta data and replace.
-            """
-            columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-            for item in columns:
-                if pd.isnull(row[item]):
-                    new_poi_gage_id = row["poi_gage_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_gage_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+    #     for idx, row in poi_df.iterrows():
+    #         """
+    #         Checks the gages_df for missing meta data and replace.
+    #         """
+    #         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+    #         for item in columns:
+    #             if pd.isnull(row[item]):
+    #                 new_poi_gage_id = row["poi_gage_id"]
+    #                 new_item = gages_df.loc[
+    #                     gages_df.index == row["poi_gage_id"], item
+    #                 ].values[0]
+    #                 poi_df.loc[idx, item] = new_item
 
-    else:
-        pass
-    if default_gages_file.exists():
-        gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
-            model_dir=model_dir,
-            poi_df=poi_df,
-            gages_file=gages_file,
-        )
+    # else:
+    #     pass
+    # if default_gages_file.exists():
+    #     gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
+    #         model_dir=model_dir,
+    #         poi_df=poi_df,
+    #         gages_file=gages_file,
+    #     )
         
-        for idx, row in poi_df.iterrows():
-            """
-            Checks the poi_df for missing meta data and replace.
-            """
-            columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-            for item in columns:
-                if pd.isnull(row[item]):
-                    new_poi_gage_id = row["poi_gage_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_gage_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+    #     for idx, row in poi_df.iterrows():
+    #         """
+    #         Checks the poi_df for missing meta data and replace.
+    #         """
+    #         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+    #         for item in columns:
+    #             if pd.isnull(row[item]):
+    #                 new_poi_gage_id = row["poi_gage_id"]
+    #                 new_item = gages_df.loc[
+    #                     gages_df.index == row["poi_gage_id"], item
+    #                 ].values[0]
+    #                 poi_df.loc[idx, item] = new_item
 
-    else:
-        pass
+    # else:
+    #     pass
 
     return poi_df
 
@@ -455,20 +448,11 @@ def create_default_gages_file(
     root_dir,
     model_dir,
     control_file_name,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     hru_gdf,
     poi_df,
     seg_gdf,
 ):
-
-    nwis_gages_aoi = fetch_nwis_gage_info(
-        root_dir=root_dir,
-        model_dir=model_dir,
-        control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
-        hru_gdf=hru_gdf,
-        seg_gdf=seg_gdf,
-    )
 
     """
     Create default_gages.csv for your subdomain model.
@@ -476,11 +460,11 @@ def create_default_gages_file(
     By default, this file will be composed of:
 
         1) the gages listed in the parameter file (poi_gages), and
-        2) all streamflow gages from NWIS in the subdomain model that have at least user-specified minimum number of obervations.
+        2) all streamflow gages from WaterData in the subdomain model that have at least user-specified minimum number of obervations
+           through use of the nwis_cache.nc. Metadata for gages will be fetched from NLDI and WaterData databases.
+        3) if a resource_gages.csv file exists, these gages will be included as well, and this will be the source of metadata for the file.
 
-    Note: all metadata in the default gages file is from NWIS if the gage is found NWIS.
-    Note: Time-series data for streamflow observations will be collected using this gage list and the time range in the control file.
-    Note: Initially, all gages listed in the parameter file exist in NWIS.
+    Note: Provided extractions from NHM version 1.1 have only USGS gages in the parameter file but may have no data after 1979.
 
     Parameters
     ----------
@@ -488,8 +472,8 @@ def create_default_gages_file(
         Path object to the subdomain directory.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gage_nobs_min : int
-        Minimum number of days for NWIS gage to be considered as potential poi.
+    waterdata_gage_nobs_min : int
+        Minimum number of days for WaterData gage to be considered as potential poi.
     hru_gdf : geopandas GeoDataFrame
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
     poi_df : pandas DataFrame
@@ -498,37 +482,26 @@ def create_default_gages_file(
     Returns
     -------
     default_gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file.
+        Path to file containing gage information from WaterData for the gages in the parameter file.
         
     """
-    """ Remove NWIS gages with no daily streamflow data after the st_date in the control file """
-    nwis_cache_file = model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
-    with xr.open_dataset(nwis_cache_file) as NWIS_ds:
-        NWIS_df = NWIS_ds.to_dataframe()
-        NWIS_obs_list = list(NWIS_df.index.get_level_values(0).unique())
-        # print(NWIS_obs_list)
-        del NWIS_ds
-    """ But we need to add gages without obs back in to the list, if they are in the param file """
-    keep_list = list(set(NWIS_obs_list + poi_df.poi_gage_id.to_list()))
-    #print(keep_list)
-    
-    #_nwis_gages_aoi = nwis_gages_aoi.loc[nwis_gages_aoi["poi_Gage_id"].isin(keep_list)]
-
-    
-    """Read in additional non-nwis gages from the resource gage file. These are a list of user requested gages that may or may not be in the parameter file or the nwis gage file, and likely include non NWIS gages.
+    """ Remove WaterData gages with no daily streamflow data after the st_date in the control file
+        *** 6/10/2026 - maybe we don't use the start date in the control file but hardwire to 1/1/1979
     """
-    resource_gages_file = model_dir / "gages.csv"
-
-    #if len(drop_list) > 0:
-    nan_list = [np.nan] * len(keep_list)
-    default_gages_df = pd.DataFrame({'poi_gage_id': keep_list,
-                                     'poi_agency': nan_list,
-                                     'poi_name': nan_list,
-                                     'latitude': nan_list, 
-                                     'longitude': nan_list,
-                                     'drainage_area': nan_list,
-                                     'drainage_area_contrib': nan_list}
-                                                  )
+    waterdata_cache_file = model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
+    resource_gages_file = model_dir / "metadata/resource_gages.csv" #(may want to add as funct arg)
+    default_gages_file = model_dir / "default_gages.csv"
+    
+    with xr.open_dataset(waterdata_cache_file) as ds:
+        df = ds.to_dataframe()
+        obs_list = list(df.index.get_level_values(0).unique())
+        # print(waterdata_obs_list)
+        del ds
+        
+    """ But we need to add gages without obs back in to the list, if they are in the param file.
+        Read in additional non-WaterData gages from the resource gage file. These are a list of user requested gages 
+        that may or may not be in the parameter file or the sf_efc.nc file, and likely include non WaterData gages.
+    """
     
     if resource_gages_file.exists():
         col_names = [
@@ -545,35 +518,24 @@ def create_default_gages_file(
             zip(col_names, col_types)
         )
         resource_gages_file_df = pd.read_csv(resource_gages_file, dtype=cols)
+        resource_list = list(set(resource_gages_file_df['poi_gage_id']))
+        keep_list = list(set(obs_list + poi_df.poi_gage_id.to_list() + resource_list))
 
-    else:    
-        resource_gages_file_df = pd.DataFrame({'poi_gage_id': [np.nan],
-                                               'poi_agency': [np.nan],
-                                               'poi_name': [np.nan],
-                                               'latitude': [np.nan], 
-                                               'longitude': [np.nan],
-                                               'drainage_area': [np.nan],
-                                               'drainage_area_contrib': [np.nan]}
-                                                    )
-        #print(resource_gages_file_df)
-    
-    for idx, row in default_gages_df.iterrows():
-        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = nwis_gages_aoi["poi_gage_id"].to_list()
-        for item in columns:
-            if pd.isnull(row[item]):
-                new_poi_gage_id = row["poi_gage_id"]
-                if new_poi_gage_id in check_list:
-                    new_item = nwis_gages_aoi.loc[
-                        nwis_gages_aoi.poi_gage_id == new_poi_gage_id, item].values[0]
-                    default_gages_df.loc[idx, item] = new_item
-       
-    for idx, row in default_gages_df.iterrows():
-        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = resource_gages_file_df["poi_gage_id"].to_list()
-        #print(check_list)
-        for item in columns:
-            if pd.isnull(row[item]):
+        default_gages_df = find_missing_gage_info(root_dir=root_dir,
+                                                  dest_dir= model_dir,
+                                                  gages_list=keep_list,
+                                                  resource_file_path= model_dir / "metadata/resource_gages.csv")
+
+        """Changed this not to fill if null, but to overwrite the value (allows for corrections/mods)
+            May want to build a check in here to see if the values are the same, and if different, give feedback.
+        """
+                
+        for idx, row in default_gages_df.iterrows():
+            columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+            check_list = resource_gages_file_df["poi_gage_id"].to_list()
+            #print(check_list)
+            for item in columns:
+                #if pd.isnull(row[item]):
                 new_poi_gage_id = row["poi_gage_id"]
                 if new_poi_gage_id in check_list:
                     new_item = resource_gages_file_df.loc[
@@ -581,29 +543,26 @@ def create_default_gages_file(
                     ].values[0]
                     default_gages_df.loc[idx, item] = new_item
                 else:
-                    pass #print(f"Gage {new_poi_gage_id} is not in the resource_gages.csv.")
+                    #print(f"Gage {new_poi_gage_id} is not in the gages.csv. Add gage and meta data to the gages.csv and rerun this code block.")
+                    pass
+        print("default_gages.csv metadata transferred from resource_gages.csv.")
+        default_gages_df.to_csv(default_gages_file, index=False)
 
-    #drop from defualt missing data
-    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
-    mask_missing = default_gages_df[cols].isnull().any(axis=1)
-    
-    for poi_gage_id in default_gages_df.loc[mask_missing, "poi_gage_id"]:
-        print(
-            f"Gage {poi_gage_id} was dropped from the default_gages.csv "
-            "due to missing metadata. Add to resource_gages_file.csv and rerun notebook."
-        )
-    
-    missing_meta_df = default_gages_df.loc[mask_missing]
-    default_gages_df = default_gages_df.loc[~mask_missing]
+    else:    
+        keep_list = list(set(obs_list + poi_df.poi_gage_id.to_list()))
         
-    resource_gages_file_df = pd.concat([resource_gages_file_df, missing_meta_df])
-                
-    #resource_gages_file_df.loc[resource_gages_file_df.index[: len(missing_meta_poi_gage_ids)], "poi_gage_id"] = missing_meta_poi_gage_ids            
-                    
-    default_gages_file = model_dir / "default_gages.csv"
-    default_gages_df.to_csv(default_gages_file, index=False)
-    resource_gages_file_df.to_csv(resource_gages_file, index=False)
+        default_gages_df = find_missing_gage_info(root_dir=root_dir,
+                                                  dest_dir= model_dir,
+                                                  gages_list=keep_list,
+                                                  resource_file_path= model_dir / "metadata/resource_gages.csv")
 
+        print("default_gages.csv metadata fetched from NLDI and WaterData databases.",
+              "resource_gages_file.csv with all parameter file and domain gages.")
+        resource_gages_file_df = default_gages_df.copy()
+        resource_gages_file_df.to_csv(resource_gages_file, index=False)
+    
+        default_gages_df.to_csv(default_gages_file, index=False)
+    
     return default_gages_file
 
 
@@ -615,7 +574,7 @@ def read_gages_file(
 ):
     """
     Read modified gages file.
-    If there are gages in the parameter file that are not in NWIS (USGS gages), then latitude, longitude, and poi_name must be provided from another source,
+    If there are gages in the parameter file that are not in WaterData (USGS gages), then latitude, longitude, and poi_name must be provided from another source,
     and appended to the "default_gages.csv" file. Once editing is complete, that file can be renamed "gages.csv"and will be used as the gages file.
     If NO gages.csv is made, the default_gages.csv will be used.
 
@@ -626,7 +585,7 @@ def read_gages_file(
     poi_df : pandas DataFrame
         Dataframe containing gages from the parameter file.
     gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file.
+        Path to file containing gage information from WaterData for the gages in the parameter file.
         
     Returns
     -------
@@ -725,12 +684,13 @@ def make_hf_map_elements(
     GIS_format,
     param_filename,
     control_file_name,
-    nwis_gages_file,
+    waterdata_gages_file,
     gages_file,
+    resource_gages_file,
     default_gages_file,
     nhru_params,
     nhru_nmonths_params,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
 ):
     """
     Packages all elements required for the hydrofabric map.
@@ -747,18 +707,18 @@ def make_hf_map_elements(
         Path to parameter file.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gages_file : pathlib Path class
-        Path to NWIS data, e.g., model_dir / "NWISgages.csv"
+    waterdata_gages_file : pathlib Path class
+        Path to WaterData data, e.g., model_dir / "NWISgages.csv"
     gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file.
+        Path to file containing gage information from WaterData for the gages in the parameter file.
     default_gages_file : pathlib Path class
-        Path to file containing gage information from NWIS for the gages in the parameter file.
+        Path to file containing gage information from WaterData for the gages in the parameter file.
     nhru_params : list
         Parameters dimensioned by HRU only.   
     nhru_nmonths_params : list
         Parameters dimensioned by HRU and month.
-    nwis_gage_nobs_min : int
-        Minimum number of days for NWIS gage to be considered as potential poi.
+    waterdata_gage_nobs_min : int
+        Minimum number of days for WaterData gage to be considered as potential poi.
     
     Returns
     -------
@@ -772,8 +732,8 @@ def make_hf_map_elements(
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
     seg_txt : str
         Informational feedback printed in notebooks.
-    nwis_gages_aoi : Pandas DataFrame()
-        Pandas DataFrame() containing gages from NWIS in the subdomain.
+    waterdata_gages_aoi : Pandas DataFrame()
+        Pandas DataFrame() containing gages from WaterData in the subdomain.
     poi_df : pandas DataFrame
         Dataframe containing gages from the parameter file.
     gages_df : pandas DataFrame
@@ -810,15 +770,16 @@ def make_hf_map_elements(
         control_file_name=control_file_name,
         hru_gdf=hru_gdf,
         gages_file=gages_file,
+        resource_gages_file=resource_gages_file,
         default_gages_file=default_gages_file,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         seg_gdf=seg_gdf,
     )
-    nwis_gages_aoi = fetch_nwis_gage_info(
+    waterdata_gages_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -837,7 +798,7 @@ def make_hf_map_elements(
         #hru_cal_level_txt,
         seg_gdf,
         seg_txt,
-        nwis_gages_aoi,
+        waterdata_gages_aoi,
         poi_df,
         gages_df,
         gages_txt,
