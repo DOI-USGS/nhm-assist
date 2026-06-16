@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -33,7 +33,7 @@ con = Console()
 
 import sys
 import os
-root_folder = "nhm-assist"
+root_folder = "patch-1.1.0"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 print(root_dir)
 #pppo
@@ -315,5 +315,3 @@ dict_file = {
 
 with open(root_dir / "subdomain_config.yaml", "w") as file:
     documents = yaml.dump(dict_file, file)
-
-# %%
