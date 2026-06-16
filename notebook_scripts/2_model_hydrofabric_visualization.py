@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -29,7 +29,8 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
+root_folder = "patch-1.1.0"
+root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir))
 from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
 from nhm_helpers.map_template import make_hf_map
@@ -101,5 +102,3 @@ map_file = make_hf_map(
 
 # %% [markdown]
 # # Want to Add a potential gage to the parameter file? [Click here!](./add_pois_to_parameters.ipynb)
-
-# %%
