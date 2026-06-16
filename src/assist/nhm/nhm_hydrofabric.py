@@ -370,10 +370,13 @@ def create_poi_df(
             for item in columns:
                 if pd.isnull(row[item]):
                     new_poi_id = row["poi_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+                    matches = gages_df.loc[
+                        gages_df.index == new_poi_id, item
+                    ]
+                    if len(matches) > 0:
+                        poi_df.loc[idx, item] = matches.values[0]
+                    # else: gage not in NWIS (e.g., Canadian) — leave null;
+                    # mask_missing in create_default_gages_file drops it.
 
     else:
         pass
@@ -392,10 +395,13 @@ def create_poi_df(
             for item in columns:
                 if pd.isnull(row[item]):
                     new_poi_id = row["poi_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+                    matches = gages_df.loc[
+                        gages_df.index == new_poi_id, item
+                    ]
+                    if len(matches) > 0:
+                        poi_df.loc[idx, item] = matches.values[0]
+                    # else: gage not in NWIS (e.g., Canadian) — leave null;
+                    # mask_missing in create_default_gages_file drops it.
 
     else:
         pass
