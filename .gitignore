@@ -246,6 +246,8 @@ nhf_assist/.env
 pestpp_ies_calibration/data_dependencies/
 pestpp_ies_calibration/notebooks/
 
+data_dependencies/usgs_nldi_gages.gpkg
+
 CLAUDE.md
 .worktrees/
 doc/*.md
