@@ -240,7 +240,7 @@ xr_streamflow
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_gage_id.values[0]  # "08049300" "130875049"
+cpoi_id = xr_streamflow.poi_gage_id.values[1]  # "08049300" "130875049"
 # cpoi_id = "14053000"
 print(
     f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
@@ -273,3 +273,5 @@ make_obs_plot_files(
     xr_streamflow=xr_streamflow,
     Folium_maps_dir=config["Folium_maps_dir"],
 )
+
+# %%
