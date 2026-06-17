@@ -975,9 +975,9 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         check_list = resource_df["poi_gage_id"].to_list()
 
         if len(check_list) > 0:
-            print(
-                f"Searching {resource_file_path} for meta data."
-            )
+            # print(
+            #     f"Searching {resource_file_path} for meta data."
+            # )
             for idx, row in gages_df.iterrows():
                 columns = ["latitude", "longitude", "poi_name", "poi_agency"]
                 item_lacking_list = []
@@ -1005,28 +1005,28 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
 
             print(
                 f"{len(gages_found_info_list)} of {len(gages_list)} gages found metadata in {resource_file_path}",
-                "Searching NLDI and WaterData for missing gage metadata..."
             )
         else:
             pass
 
     else:
         print(f"No gage meta data resource file provided at {resource_file_path}.",
-             "Searching NLDI and WaterData for missing gage metadata...",
              )
 
     ''' 
-    create a bypass so if all the metadata is found, time is not wasted pelling it again
+    Mask for items still missing metadata
     '''
     
     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
     mask_missing = gages_df[cols].isnull().any(axis=1)
     missing_meta_df = gages_df.loc[mask_missing]
 
-    if len(missing_meta_df) == 0:
-        print(f"All gages found metadata in {resource_file_path}. Aborting NLDI and WaterData database search.")
-    else:
-
+    if not missing_meta_df.empty:
+        """
+        First, Check the NLDI json for missing data in the dependencies folder.
+        These data are said to have the most acurate location information, so stop there first.
+        """
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching NLDI database.")
         ##### Check NLDI database for missing gage info
         file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
         nldi_gdf = gpd.read_file(file_path)  # or .geojson
@@ -1072,7 +1072,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         gages_found_info_list = []
         check_list = nldi_gdf["poi_gage_id"].to_list()
     
-        for idx, row in gages_df.iterrows():
+        for idx, row in gages_df.loc[mask_missing].iterrows():
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             item_lacking_list = []
             item_found_list = []
@@ -1102,13 +1102,22 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
         )
     
+    ''' 
+    Mask for items still missing metadata
+    '''
+    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    mask_missing = gages_df[cols].isnull().any(axis=1)
+    missing_meta_df = gages_df.loc[mask_missing]
+
+    if not missing_meta_df.empty:
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching USGS WaterData database.")
         # Get monitoring location information from USGS WaterData
         """Now, get the site infomation for the new list
                 used the chunk format from the example: 
                 https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
         """
         chunk_size = 100
-        site_list = gages_df["poi_gage_id"].unique().tolist()
+        site_list = gages_df.loc[mask_missing]["poi_gage_id"].unique().tolist()
     
         chunks = [
             site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
@@ -1177,7 +1186,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             gages_found_info_list = []
             check_list = waterdata_gage_info["poi_gage_id"].to_list()
     
-            for idx, row in gages_df.iterrows():
+            for idx, row in gages_df.loc[mask_missing].iterrows():
                 columns = [
                     "latitude",
                     "longitude",
@@ -1210,7 +1219,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             ]
     
             print(
-                f"{len(gages_found_info_list)} gages of {len(gages_df)}found metadata in USGS WaterData database.",
+                f"{len(gages_found_info_list)} gages of {len(gages_df.loc[mask_missing])}found metadata in USGS WaterData database.",
                 # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
             )
         else:
@@ -1222,19 +1231,21 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
     #drop from defualt missing data
     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
     mask_missing = gages_df[cols].isnull().any(axis=1)
-    
-    for poi_gage_id in gages_df.loc[mask_missing, "poi_gage_id"]:
-        print(
-            f"Gage {poi_gage_id} lacks metadata. Add metadata to metadata/resource_gages.csv and rerun notebook."
-        )
-    
     missing_meta_df = gages_df.loc[mask_missing]
 
+    if not missing_meta_df.empty:
+        _list = list(set(gages_df.loc[mask_missing]["poi_gage_id"]))
+        print(
+            f"Gage(s) {_list} lacks metadata. Add metadata to metadata/resource_gages.csv and rerun notebook."
+        )
+    else:
+        print("All gages have required metadata.")
+        
     if resource_file_path.exists():
         if not missing_meta_df.empty:
             resource_df = pd.concat([resource_df, missing_meta_df])
         else:
-            print("All gages in gages_list have required metadata.")
+            pass
     else:
         resource_df = gages_df
         resource_df.to_csv(resource_file_path, index=False)
