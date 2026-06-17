@@ -1118,41 +1118,42 @@ def create_waterdata_sf_df(
     err_batches = []
     missing_ids_all = []
 
-    with Progress() as progress:
-        task = progress.add_task(
-            "[red]Downloading (Water Data API)...", total=len(monitoring_ids)
-        )
+    from tqdm.notebook import tqdm
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {}
-            for batch in _chunked(monitoring_ids, batch_size):
-                fut = executor.submit(
-                    fetch_daily_discharge_batch,
-                    batch,
-                    start_date=waterdata_start,
-                    end_date=waterdata_end,
-                    parameter_code="00060",
-                    statistic_id="00003",
-                    skip_geometry=True,
-                    limit=50000,
-                )
-                future_map[fut] = len(batch)
+    pbar = tqdm(total=len(monitoring_ids), desc="Downloading (Water Data API)")
 
-            for fut in as_completed(future_map):
-                batch_len = future_map[fut]
-                res = fut.result()
-                progress.update(task, advance=batch_len)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {}
+        for batch in _chunked(monitoring_ids, batch_size):
+            fut = executor.submit(
+                fetch_daily_discharge_batch,
+                batch,
+                start_date=waterdata_start,
+                end_date=waterdata_end,
+                parameter_code="00060",
+                statistic_id="00003",
+                skip_geometry=True,
+                limit=50000,
+            )
+            future_map[fut] = len(batch)
 
-                if res.error is not None:
-                    err_batches.append(res.error)
-                    missing_ids_all.extend(res.missing_ids)
-                    continue
+        for fut in as_completed(future_map):
+            batch_len = future_map[fut]
+            res = fut.result()
+            pbar.update(batch_len)
 
-                if len(res.missing_ids) > 0:
-                    missing_ids_all.extend(res.missing_ids)
+            if res.error is not None:
+                err_batches.append(res.error)
+                missing_ids_all.extend(res.missing_ids)
+                continue
 
-                if res.df is not None and len(res.df) > 0:
-                    all_parts.append(res.df)
+            if len(res.missing_ids) > 0:
+                missing_ids_all.extend(res.missing_ids)
+
+            if res.df is not None and len(res.df) > 0:
+                all_parts.append(res.df)
+
+    pbar.close()
 
     if not all_parts:
         raise RuntimeError(

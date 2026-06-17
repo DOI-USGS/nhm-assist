@@ -599,83 +599,82 @@ def make_plots_par_vals(
                     with open(Folium_maps_dir / f"{par}_{poi_gage_id}.txt", "w") as f:
                         f.write(text_div)
 
-def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir):
+def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir, max_workers=8):
     """This function makes plots and saved with as html.txt files to be embedded in the hf_map
     by notebook 2_model_hydrofabric_visualization.ipynb used to evaluate ti gages shown in the
     map have desirable lengths of record to include the gage as a poi in the parameter file.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from tqdm.auto import tqdm
 
-    # start_date = pd.to_datetime(str(control.start_time)).strftime("%m/%d/%Y")
-    # end_date = pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
-
-    for cpoi in gages_df.index:
+    def _make_single_plot(cpoi):
         obs_plot_file = Folium_maps_dir / f"{cpoi}_streamflow_obs.txt"
         if obs_plot_file.exists():
-            con.print(
-                f"{cpoi}_streamflow_obs.txt file exists. To make a new plot, delete the existing plot and rerun this cell."
-            )
-        else:
-            ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
-            ds_sub_df = ds_sub.to_dataframe()
-            # ds_sub_df.dropna(subset=["discharge"], inplace=True)
-            ds_sub_df.reset_index(inplace=True, drop=False)
-            # print(ds_sub_df)
+            return f"{cpoi}_streamflow_obs.txt file exists."
 
-            fig = px.line(
-                ds_sub_df,
-                x="time",
-                y="discharge",
-                markers=False,
-                # custom_data=nhru_params_nmonths_sel_plot_df[["nhm_id"]],
-                # color="nhm_id",
-                labels={
-                    "discharge": "Discharge",
-                    "time": "Date",
-                },
-            )
+        ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
+        ds_sub_df = ds_sub.to_dataframe()
+        ds_sub_df.reset_index(inplace=True, drop=False)
 
-            fig.update_layout(
-                title_text=f"{cpoi} daily streamflow observations",
-                width=500,
-                height=300,
-                showlegend=True,
-                # legend=dict(orientation="h",yanchor="bottom",y=1.02, xanchor="right", x=1),
-                font=dict(family="Arial", size=10, color="#7f7f7f"),  # font color
-                paper_bgcolor="linen",
-                plot_bgcolor="white",
-            )
+        fig = px.line(
+            ds_sub_df,
+            x="time",
+            y="discharge",
+            markers=False,
+            labels={
+                "discharge": "Discharge",
+                "time": "Date",
+            },
+        )
 
-            fig.update_yaxes(title_text="Discharge, cfs")
-            fig.update_xaxes(title_text="Date")
+        fig.update_layout(
+            title_text=f"{cpoi} daily streamflow observations",
+            width=500,
+            height=300,
+            showlegend=True,
+            font=dict(family="Arial", size=10, color="#7f7f7f"),
+            paper_bgcolor="linen",
+            plot_bgcolor="white",
+        )
 
-            fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
-            fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(title_text="Discharge, cfs")
+        fig.update_xaxes(title_text="Date")
 
-            fig.update_xaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
-            fig.update_yaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
+        fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
 
-            fig.update_xaxes(autorange=True)
+        fig.update_xaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
+        fig.update_yaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
 
-            # fig.show()
+        fig.update_xaxes(autorange=True)
 
-            # Creating the html code for the plotly plot
-            text_div = plotly.offline.plot(
-                fig, include_plotlyjs=False, output_type="div"
-            )
+        text_div = plotly.offline.plot(
+            fig, include_plotlyjs=False, output_type="div"
+        )
 
-            # Saving the plot as txt file with the html code
-            with open(obs_plot_file, "w") as f:
-                f.write(text_div)
+        with open(obs_plot_file, "w") as f:
+            f.write(text_div)
+
+        return f"{cpoi} plot created."
+
+    poi_list = gages_df.index.tolist()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_make_single_plot, cpoi): cpoi for cpoi in poi_list}
+        with tqdm(total=len(poi_list), desc="Generating obs plots") as pbar:
+            for future in as_completed(futures):
+                future.result()
+                pbar.update(1)
 
 def create_append_gages_to_param_file(
     *,
