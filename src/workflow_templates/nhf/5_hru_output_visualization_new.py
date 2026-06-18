@@ -70,7 +70,7 @@ poi_id_sel = None
     # hru_cal_level_txt,
     seg_gdf,
     seg_txt,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     poi_df,
     gages_df,
     gages_txt,
