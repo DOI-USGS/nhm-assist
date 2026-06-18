@@ -57,22 +57,31 @@ In the miniforge prompt, navigate to the nhm-assist folder, and run
 
 In the miniforge prompt, run
 
-`python make_notebooks.py`
+`python make_notebooks.py --workflow nhm`
 
-To generate notebooks for the `nhf_assist` directory, run
+To generate notebooks for a different workflow, use the `--workflow` flag.
 
-`python make_notebooks.py nhf_assist`
+## Notebook Workflow Cheat Sheet
+
+Use the commands below from the repository root.
+
+| Workflow | Run from | Generate notebooks | Open in Jupyter |
+| --- | --- | --- | --- |
+| NHM | `nhm-assist/` | `python make_notebooks.py --workflow nhm` | `jupyter lab notebooks` |
+| NHF | `nhm-assist/` | `python make_notebooks.py --workflow nhf` | `cd nhf_assist && jupyter lab notebooks` |
+| PEST | `nhm-assist/` | `python make_notebooks.py --workflow pest` | `cd pestpp_ies_calibration && jupyter lab notebooks` |
+| All workflows | `nhm-assist/` | `python make_notebooks.py --workflow all` | Open the workflow-specific notebook directory you want |
+
+**Common issue:** if you see `ModuleNotFoundError` for `nhm_helpers` or `helpers`, the notebook was likely launched from the wrong working directory or you opened an older generated notebook copy.
 
 If target notebooks already exist, the script will prompt once per run so you can either archive the old notebooks into `archive/` or delete them before writing fresh copies.
 Archived notebooks from one run are grouped under a timestamped folder such as `notebooks/archive/20260602_104512/`.
 
 ## Launch Jupyter
 
-In the miniforge prompt, navigate to the nhm-assist folder, and run
+For NHM notebooks, in the miniforge prompt, navigate to the nhm-assist folder, and run
 
-`cd notebooks`
-
-`jupyter lab`
+`jupyter lab notebooks`
 
 Ready to go! :+1:
 

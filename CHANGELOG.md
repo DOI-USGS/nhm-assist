@@ -33,6 +33,14 @@ _Changes on the `nhf_dev` branch since the 1.1.0 release._
 - Removed user-specific `kernelspec` metadata from notebooks for cleaner, reproducible diffs.
 - Removed an extraneous file and applied small corrections in `03_set_up_PEST++.py` and the `utilities_v2` / `2_FMI` notebook.
 
+## [1.1.1] — 2026-06-16
+
+### Fixed
+
+- **`IndexError` in `create_poi_df` for non-NWIS gauges (#34):** Notebooks 2 and 3 previously aborted with `IndexError: index 0 is out of bounds for axis 0 with size 0` when a subdomain's parameter file referenced gauges absent from NWIS (e.g., Canadian Water Survey IDs `01AK004`, `02OE018`). `create_poi_df` now guards the metadata lookup with a `len(matches) > 0` check and emits a single user-facing warning at the end of the function listing each affected gauge, the columns it needs, and the path to `<model_dir>/resource_gages.csv` where the user can fill in `poi_agency`, `poi_name`, `latitude`, `longitude`. Notebooks complete; missing-metadata gauges flow into the existing `mask_missing` drop logic as before. Affects users running the Maine and New England v1.1 subdomains.
+- **`GEOSException` in `create_OR_sf_df` and `create_ecy_sf_df` (#36):** Notebook 1 aborted with `shapely.errors.GEOSException` for Pacific Northwest subdomains (and any domain extending beyond the HUC2 shapefile coverage, e.g., into Canada) because `huc2_gdf.clip(hru_gdf)` choked on invalid HRU polygons during its internal `unary_union`. A new `_safe_clip_mask()` helper repairs HRU geometries via `shapely.make_valid` before the clip.
+- **Silent missing observations on large WaterData batch fetches (#35):** `fetch_daily_discharge_batch` previously swallowed any error from `dataretrieval.waterdata.get_daily` into a `WaterDataBatchResult(error=…)` and silently dropped every site in that batch. Rate-limit responses (HTTP 429, 503) and transient connection drops caused missing observations in `sf_efc.nc` on large subdomain runs — invisible unless the user counted observations. Now retries on `429 / 502 / 503 / 504`, `ConnectionError`, and `Timeout` with exponential backoff (1s, 2s, 4s) up to 3 retries; non-transient errors still return immediately. Additionally, batch submissions are staggered by 250 ms in the `ThreadPoolExecutor.submit` loop so the WaterData edge does not see a 4-wide burst of large multi-site queries all at once. Concurrency unchanged (`max_workers=4`).
+
 ## [1.1.0] — 2026-06-01
 
 ### Added
