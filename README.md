@@ -157,8 +157,8 @@ The `notebooks/*.ipynb` outputs are gitignored (`*.ipynb` rule in `.gitignore`);
 `pixi run dev` defaults to the `nhm` workflow + `notebooks/` directory. To work on a different workflow:
 
 ```bash
-pixi run dev workflow=nhf notebook_dir=nhf_assist/notebooks
-pixi run dev workflow=pest notebook_dir=pestpp_ies_calibration/notebooks
+pixi run dev nhf nhf_assist/notebooks
+pixi run dev pest pestpp_ies_calibration/notebooks
 ```
 
 ### Editing without launching Jupyter
@@ -166,7 +166,7 @@ pixi run dev workflow=pest notebook_dir=pestpp_ies_calibration/notebooks
 If you just want to regenerate notebooks (e.g. after pulling new `.py` changes) without opening a browser:
 
 ```bash
-pixi run notebooks workflow=nhm
+pixi run notebooks nhm
 ```
 
 ### Why this is separate from `pixi run setup`
