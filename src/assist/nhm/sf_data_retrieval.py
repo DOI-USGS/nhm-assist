@@ -19,9 +19,28 @@ from rich.console import Console
 from dataretrieval import waterdata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import requests
+import time
+
+from shapely import make_valid
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
+
+
+def _safe_clip_mask(hru_gdf):
+    """Return hru_gdf with geometries repaired via make_valid.
+
+    geopandas.clip() internally unions the mask geometry; that union raises
+    GEOSException when any source polygon is invalid (self-intersecting,
+    NaN coords, unclosed ring, etc.). Repair upstream so .clip() can't trip.
+    """
+    safe = hru_gdf.copy()
+    safe["geometry"] = safe.geometry.apply(
+        lambda g: make_valid(g) if g is not None and not g.is_empty else g
+    )
+    return safe
 
 from rich import pretty
 from rich.progress import Progress
@@ -166,7 +185,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 
     # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
+    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
 
     if any(item in owrd_regions for item in model_domain_regions):
         owrd_domain_txt = "The model domain intersects the Oregon state boundary. "
@@ -393,7 +412,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
 
     # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
+    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
     ecy_df = pd.DataFrame()
 
     if any(item in ecy_regions for item in model_domain_regions):
@@ -562,6 +581,24 @@ def _as_monitoring_location_ids(site_ids: Iterable) -> List[str]:
     return out
 
 
+WATERDATA_RETRY_MAX = 3
+WATERDATA_RETRY_BASE_SECONDS = 1.0
+WATERDATA_BATCH_STAGGER_SECONDS = 0.25
+_WATERDATA_RETRYABLE_STATUSES = {429, 502, 503, 504}
+
+
+def _should_retry_waterdata(exc: Exception) -> bool:
+    """Return True for transient API errors worth retrying."""
+    if isinstance(exc, requests.exceptions.HTTPError):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return status in _WATERDATA_RETRYABLE_STATUSES
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return True
+    # Heuristic fallback for wrapped errors that lose the original type.
+    msg = str(exc)
+    return any(code in msg for code in ("429", "502", "503", "504"))
+
+
 @dataclass
 class WaterDataBatchResult:
     df: pd.DataFrame
@@ -578,33 +615,52 @@ def fetch_daily_discharge_batch(
     statistic_id: str = "00003",
     skip_geometry: bool = True,
     limit: int = 50000,
+    max_retries: int = WATERDATA_RETRY_MAX,
+    retry_base_seconds: float = WATERDATA_RETRY_BASE_SECONDS,
 ) -> WaterDataBatchResult:
     """
     Pull daily mean discharge for a batch of sites using the modern Water Data APIs.
-    - get_daily supports multiple monitoring_location_id values per call. :contentReference[oaicite:4]{index=4}
-    - Responses may be paged; dataretrieval stitches pages together; limit controls page size. :contentReference[oaicite:5]{index=5}
+    - get_daily supports multiple monitoring_location_id values per call.
+    - Responses may be paged; dataretrieval stitches pages together; limit controls page size.
+    - Retries up to max_retries on HTTP 429/502/503/504 + connection/timeout
+      errors with exponential backoff; non-transient errors return immediately.
     """
-    try:
-        time_range = f"{start_date}/{end_date}"
+    time_range = f"{start_date}/{end_date}"
+    last_error_msg: str | None = None
 
-        df, md = waterdata.get_daily(
-            monitoring_location_id=monitoring_location_ids,
-            parameter_code=parameter_code,
-            statistic_id=statistic_id,
-            time=time_range,
-            skip_geometry=skip_geometry,
-            limit=limit,
-        )
+    for attempt in range(max_retries + 1):
+        try:
+            df, md = waterdata.get_daily(
+                monitoring_location_id=monitoring_location_ids,
+                parameter_code=parameter_code,
+                statistic_id=statistic_id,
+                time=time_range,
+                skip_geometry=skip_geometry,
+                limit=limit,
+            )
 
-        if df is None or len(df) == 0:
-            return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
+            if df is None or len(df) == 0:
+                return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
 
-        found = set(df["monitoring_location_id"].astype(str).unique())
-        missing = [mid for mid in monitoring_location_ids if mid not in found]
-        return WaterDataBatchResult(df=df, missing_ids=missing)
+            found = set(df["monitoring_location_id"].astype(str).unique())
+            missing = [mid for mid in monitoring_location_ids if mid not in found]
+            return WaterDataBatchResult(df=df, missing_ids=missing)
 
-    except Exception as e:
-        return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids), error=str(e))
+        except Exception as e:
+            last_error_msg = str(e)
+            if attempt >= max_retries or not _should_retry_waterdata(e):
+                return WaterDataBatchResult(
+                    df=pd.DataFrame(),
+                    missing_ids=list(monitoring_location_ids),
+                    error=last_error_msg,
+                )
+            time.sleep(retry_base_seconds * (2 ** attempt))
+
+    return WaterDataBatchResult(
+        df=pd.DataFrame(),
+        missing_ids=list(monitoring_location_ids),
+        error=last_error_msg,
+    )
 import pathlib as pl
 import xarray as xr
 import netCDF4
@@ -705,7 +761,11 @@ def create_waterdata_sf_df(
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
-            for batch in _chunked(monitoring_ids, batch_size):
+            for batch_index, batch in enumerate(_chunked(monitoring_ids, batch_size)):
+                if batch_index > 0:
+                    # Stagger submissions so the WaterData edge does not see
+                    # a max_workers-wide burst of large multi-site queries.
+                    time.sleep(WATERDATA_BATCH_STAGGER_SECONDS)
                 fut = executor.submit(
                     fetch_daily_discharge_batch,
                     batch,

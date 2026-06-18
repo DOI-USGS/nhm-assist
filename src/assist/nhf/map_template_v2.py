@@ -1837,7 +1837,7 @@ def make_hf_map(
     huc12_layer = folium.GeoJson(
         huc12_pp_map,
         name="HUC12 points",
-        show=True,
+        show=False,
         marker=folium.CircleMarker(radius=2, color="yellow", fill=True, fill_color = "yellow", fill_opacity=1,),
         #tooltip=folium.GeoJsonTooltip(fields=["hl_link", "segment_id"]),
         #popup=folium.GeoJsonPopup(fields=["hl_link", "segment_id"]),
@@ -2568,28 +2568,37 @@ def create_poi_obs_marker_cluster(
             ),
         ).add_to(poi_marker_cluster_label)
 
-        marker = folium.CircleMarker(
-            location=[row["latitude"], row["longitude"]],
-            name=row["poi_gage_id"],
-            popup=folium.Popup(
-                iframe,
-                # max_width=500,
-                # max_height=300,
-                parse_html=True,
-            ),
-            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
-            # popup=folium.Popup(
-            #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
-            #     max_width=280,
-            #     max_height=2000,
-            # ),
-            radius=4,
-            weight=1,
-            color="black",
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
-        ).add_to(poi_marker_cluster)
+        # marker = folium.CircleMarker(
+        #     location=[row["latitude"], row["longitude"]],
+        #     name=row["poi_gage_id"],
+        #     popup=folium.Popup(
+        #         iframe,
+        #         # max_width=500,
+        #         # max_height=300,
+        #         parse_html=True,
+        #     ),
+        #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+        #     # popup=folium.Popup(
+        #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
+        #     #     max_width=280,
+        #     #     max_height=2000,
+        #     # ),
+        #     radius=4,
+        #     weight=1,
+        #     color="black",
+        #     fill=True,
+        #     fill_color="Black",
+        #     fill_opacity=1.0,
+        # ).add_to(poi_marker_cluster)
+        marker = folium.Marker(
+        location=[row["latitude"], row["longitude"]],
+        icon=make_polygon_icon(num_sides=3, radius=6, color="black", fill_opacity=1.0),
+        popup=folium.Popup(
+            iframe,
+            parse_html=True,
+        ),
+        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+    ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
 
@@ -2692,28 +2701,37 @@ def create_non_poi_obs_marker_cluster(
                 ),
             ).add_to(non_poi_marker_cluster_label)
 
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
+            # marker = folium.CircleMarker(
+            #     location=[row["latitude"], row["longitude"]],
+            #     name=row["poi_gage_id"],
+            #     popup=folium.Popup(
+            #     iframe,
+            #     # max_width=500,
+            #     # max_height=300,
+            #     parse_html=True,
+            #     ),
+            #     # popup=folium.Popup(
+            #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
+            #     #     max_width=280,
+            #     #     max_height=2000,
+            #     # ),
+            #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+            #     radius=4,
+            #     weight=1,
+            #     color="gray",
+            #     fill=True,
+            #     fill_color="Gray",
+            #     fill_opacity=1.0,
+            # ).add_to(non_poi_marker_cluster)
+            marker = folium.Marker(
+            location=[row["latitude"], row["longitude"]],
+            icon=make_polygon_icon(num_sides=3, radius=6, color="white", fill_opacity=1.0),
+            popup=folium.Popup(
                 iframe,
-                # max_width=500,
-                # max_height=300,
                 parse_html=True,
-                ),
-                # popup=folium.Popup(
-                #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
-                #     max_width=280,
-                #     max_height=2000,
-                # ),
-                tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
-                radius=4,
-                weight=1,
-                color="gray",
-                fill=True,
-                fill_color="Gray",
-                fill_opacity=1.0,
-            ).add_to(non_poi_marker_cluster)
+            ),
+            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+        ).add_to(non_poi_marker_cluster)
         else:
             pass
 
@@ -2894,6 +2912,37 @@ def create_FMI_poi_markers(
     marker_cluster_label_poi : a folium MarkerCluster() object
         Gage id as labels.
     """
+    # import math
+
+    # def make_polygon_icon(num_sides=4, radius=6, color="black", fill_opacity=1.0):
+    #     size = radius * 2 + 4
+    #     center = size / 2
+    #     points = []
+    #     for i in range(num_sides):
+    #         angle = (2 * math.pi * i / num_sides) - math.pi / 2
+    #         x = center + radius * math.cos(angle)
+    #         y = center + radius * math.sin(angle)
+    #         points.append(f"{x},{y}")
+    #     points_str = " ".join(points)
+    #     svg = (
+    #         f'<svg width="{size}" height="{size}" xmlns="http://www.w3.org/2000/svg">'
+    #         f'<polygon points="{points_str}" fill="{color}" fill-opacity="{fill_opacity}" '
+    #         f'stroke="black" stroke-width="1"/></svg>'
+    #     )
+    #     return folium.DivIcon(
+    #         html=svg,
+    #         icon_size=(size, size),
+    #         icon_anchor=(size / 2, size / 2),
+    #     )
+
+    # FMI value -> (color, num_sides)
+    fmi_style = {
+        0: ("Green", 3),      # triangle
+        1: ("Blue", 3),       # triangle
+        2: ("Orange", 3),     # triangle
+        3: ("Red", 3),        # triangle
+    }
+
     print(model_dir)
     marker_cluster = folium.FeatureGroup(
         name="FMI gages",
@@ -2907,208 +2956,47 @@ def create_FMI_poi_markers(
         name="FMI labels",
         overlay=True,
         control=True,
-        show=False,  # False will not draw the child upon opening the map, but have it to draw in the Layer control.
+        show=False,
         icon_create_function=None,
         z_index_offset=4004,
     )
    
     fmi_gages_child = fetch_FMI_npoigages_info(root_dir, model_dir, gages_df)
-    
-    # fmi_gages_child = fmi_gages_child[[
-    #         "poi_gage_id",
-    #         "flow_management_index",
-    #     ]]
-    # fmi_gages_child = fmi_gages_child.merge(
-    #     gages_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
-    # )
-    
+
     for idx, row in fmi_gages_child.iterrows():
-        poi_gage_id = row["poi_gage_id"]
+        fmi_val = row["flow_management_index"]
 
-        if row["flow_management_index"] == 0:
+        if pd.isna(fmi_val):
+            pass
+            # color = "Black"
+            # num_sides = 3
+            # popup_extra = " Gage has no FMI value."
+        else:
+            fmi_val = int(fmi_val)
+            color, num_sides = fmi_style.get(fmi_val, ("Gray", 4))
+            popup_extra = ""
 
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
-                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
-                    max_width=150,
-                    max_height=70,
-                ),
-                radius=4,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Green",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
-                z_index_offset=4006,
-            ).add_to(marker_cluster)
+        marker = folium.Marker(
+            location=[row["latitude"], row["longitude"]],
+            icon=make_polygon_icon(num_sides=num_sides, radius=6, color=color, fill_opacity=1.0),
+            popup=folium.Popup(
+                f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>{popup_extra}',
+                max_width=150,
+                max_height=70,
+            ),
+        ).add_to(marker_cluster)
 
-            # marker_cluster.add_child(marker)
-            text = f'{row["poi_gage_id"]}'
-            label_lat = row["latitude"]  # -0.005
-            label_lon = row["longitude"]
-
-            marker_label = folium.map.Marker(
-                [label_lat, label_lon],
-                z_index_offset=4007,
-                icon=DivIcon(
-                    icon_size=(150, 36),
-                    icon_anchor=(0, 0),
-                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
-                    % text,
-                ),
-            ).add_to(marker_cluster_label_poi)
-        if (row["flow_management_index"] == 1):
-
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
-                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
-                    max_width=150,
-                    max_height=70,
-                ),
-                radius=4,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Blue",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
-                z_index_offset=4006,
-            ).add_to(marker_cluster)
-
-            # marker_cluster.add_child(marker)
-            text = f'{row["poi_gage_id"]}'
-            label_lat = row["latitude"]  # -0.005
-            label_lon = row["longitude"]
-
-            marker_label = folium.map.Marker(
-                [label_lat, label_lon],
-                z_index_offset=4007,
-                icon=DivIcon(
-                    icon_size=(150, 36),
-                    icon_anchor=(0, 0),
-                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
-                    % text,
-                ),
-            ).add_to(marker_cluster_label_poi)
-            
-        if row["flow_management_index"] == 3:
-
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
-                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
-                    max_width=150,
-                    max_height=70,
-                ),
-                radius=4,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Red",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
-                z_index_offset=4006,
-            ).add_to(marker_cluster)
-
-            # marker_cluster.add_child(marker)
-            text = f'{row["poi_gage_id"]}'
-            label_lat = row["latitude"]  # -0.005
-            label_lon = row["longitude"]
-
-            marker_label = folium.map.Marker(
-                [label_lat, label_lon],
-                z_index_offset=4007,
-                icon=DivIcon(
-                    icon_size=(150, 36),
-                    icon_anchor=(0, 0),
-                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
-                    % text,
-                ),
-            ).add_to(marker_cluster_label_poi)
-        if row["flow_management_index"] == 2:
-
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
-                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
-                    max_width=150,
-                    max_height=70,
-                ),
-                radius=4,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Orange",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
-                z_index_offset=4006,
-            ).add_to(marker_cluster)
-    
-            # marker_cluster.add_child(marker)
-            text = f'{row["poi_gage_id"]}'
-            label_lat = row["latitude"]  # -0.005
-            label_lon = row["longitude"]
-    
-            marker_label = folium.map.Marker(
-                [label_lat, label_lon],
-                z_index_offset=4007,
-                icon=DivIcon(
-                    icon_size=(150, 36),
-                    icon_anchor=(0, 0),
-                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
-                    % text,
-                ),
-            ).add_to(marker_cluster_label_poi)
-        
-        if np.isnan(row["flow_management_index"]):
-
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
-                    f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br> Gage has no FMI value.',
-                    max_width=150,
-                    max_height=70,
-                ),
-                radius=2,
-                weight=2,
-                color="Black",
-                fill=True,
-                fill_color="Black",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
-                z_index_offset=4006,
-            ).add_to(marker_cluster)
-
-            # marker_cluster.add_child(marker)
-            text = f'{row["poi_gage_id"]}'
-            label_lat = row["latitude"]  # -0.005
-            label_lon = row["longitude"]
-
-            marker_label = folium.map.Marker(
-                [label_lat, label_lon],
-                z_index_offset=4007,
-                icon=DivIcon(
-                    icon_size=(150, 36),
-                    icon_anchor=(0, 0),
-                    html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
-                    % text,
-                ),
-            ).add_to(marker_cluster_label_poi)
-
-            # print fmi_gages_child here, maybe merge it with a meta data file or something
+        text = f'{row["poi_gage_id"]}'
+        folium.map.Marker(
+            [row["latitude"], row["longitude"]],
+            z_index_offset=4007,
+            icon=DivIcon(
+                icon_size=(150, 36),
+                icon_anchor=(0, 0),
+                html='<div style="font-size: 12pt; font-weight: bold">%s</div>'
+                % text,
+            ),
+        ).add_to(marker_cluster_label_poi)
 
     return marker_cluster, marker_cluster_label_poi
 
@@ -3126,6 +3014,7 @@ def create_ref_gages_markers(
         name="reference gages",
         overlay=True,
         control=True,
+        show=True,
         icon_create_function=None,
         z_index_offset=5000,
     )
@@ -3231,6 +3120,7 @@ def create_non_ref_gages_markers(
         name="non-reference gages",
         overlay=True,
         control=True,
+        show=True,
         icon_create_function=None,
         z_index_offset=5000,
     )
@@ -3344,3 +3234,26 @@ def create_geology_map():
         popup=popup_hru,
     )
     return hru_map
+
+import math
+
+def make_polygon_icon(num_sides, radius, color, fill_opacity):
+    size = radius * 2 + 4
+    center = size / 2
+    points = []
+    for i in range(num_sides):
+        angle = (2 * math.pi * i / num_sides) - math.pi / 2
+        x = center + radius * math.cos(angle)
+        y = center + radius * math.sin(angle)
+        points.append(f"{x},{y}")
+    points_str = " ".join(points)
+    svg = (
+        f'<svg width="{size}" height="{size}" xmlns="http://www.w3.org/2000/svg">'
+        f'<polygon points="{points_str}" fill="{color}" fill-opacity="{fill_opacity}" '
+        f'stroke="black" stroke-width="1"/></svg>'
+    )
+    return folium.DivIcon(
+        html=svg,
+        icon_size=(size, size),
+        icon_anchor=(size / 2, size / 2),
+    )
