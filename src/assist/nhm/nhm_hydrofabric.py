@@ -355,6 +355,8 @@ def create_poi_df(
     Updates the poi_df with user altered metadata in the gages.csv file, if present, or the default_gages.csv file
     """
 
+    missing_metadata_gages: dict[str, set[str]] = {}
+
     if gages_file.exists():
         gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
             model_dir=model_dir,
@@ -370,10 +372,15 @@ def create_poi_df(
             for item in columns:
                 if pd.isnull(row[item]):
                     new_poi_id = row["poi_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+                    matches = gages_df.loc[
+                        gages_df.index == new_poi_id, item
+                    ]
+                    if len(matches) > 0:
+                        poi_df.loc[idx, item] = matches.values[0]
+                    else:
+                        # Gage not in NWIS (e.g., Canadian) — track it for the
+                        # user warning below; mask_missing drops it later.
+                        missing_metadata_gages.setdefault(new_poi_id, set()).add(item)
 
     else:
         pass
@@ -392,13 +399,32 @@ def create_poi_df(
             for item in columns:
                 if pd.isnull(row[item]):
                     new_poi_id = row["poi_id"]
-                    new_item = gages_df.loc[
-                        gages_df.index == row["poi_id"], item
-                    ].values[0]
-                    poi_df.loc[idx, item] = new_item
+                    matches = gages_df.loc[
+                        gages_df.index == new_poi_id, item
+                    ]
+                    if len(matches) > 0:
+                        poi_df.loc[idx, item] = matches.values[0]
+                    else:
+                        # Gage not in NWIS (e.g., Canadian) — track it for the
+                        # user warning below; mask_missing drops it later.
+                        missing_metadata_gages.setdefault(new_poi_id, set()).add(item)
 
     else:
         pass
+
+    if missing_metadata_gages:
+        resource_gages_file = model_dir / "resource_gages.csv"
+        print(
+            f"WARNING: {len(missing_metadata_gages)} gage(s) are missing "
+            f"required metadata and will be dropped from default_gages.csv."
+        )
+        for poi_id in sorted(missing_metadata_gages):
+            missing_cols = ", ".join(sorted(missing_metadata_gages[poi_id]))
+            print(f"  {poi_id}: needs {missing_cols}")
+        print(
+            f"Add poi_agency, poi_name, latitude, and longitude for these "
+            f"gages in:\n  {resource_gages_file}\nthen re-run this notebook."
+        )
 
     return poi_df
 
