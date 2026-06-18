@@ -1009,6 +1009,18 @@ def create_poi_paramplot_marker_cluster(
         z_index_offset=4004,
     )
 
+    # Drop gauges with no location data — folium.CircleMarker rejects NaN coords.
+    # The drop logic in create_default_gages_file moves them out of default_gages.csv,
+    # but poi_df from the parameter file can still contain them.
+    location_complete = poi_df[["latitude", "longitude"]].notna().all(axis=1)
+    if (~location_complete).any():
+        dropped = poi_df.loc[~location_complete, "poi_gage_id"].tolist()
+        print(
+            f"Skipping {len(dropped)} gage(s) without latitude/longitude on the "
+            f"parameter map: {', '.join(map(str, dropped))}"
+        )
+    poi_df = poi_df.loc[location_complete]
+
     for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
         # Read ploty plot of each poi
@@ -1312,6 +1324,16 @@ def create_streamflow_poi_markers(
         icon_create_function=None,
         z_index_offset=4004,
     )
+
+    # Drop gauges with no location data — folium.CircleMarker rejects NaN coords.
+    location_complete = poi_df[["latitude", "longitude"]].notna().all(axis=1)
+    if (~location_complete).any():
+        dropped = poi_df.loc[~location_complete, "poi_gage_id"].tolist()
+        print(
+            f"Skipping {len(dropped)} gage(s) without latitude/longitude on the "
+            f"streamflow map: {', '.join(map(str, dropped))}"
+        )
+    poi_df = poi_df.loc[location_complete]
 
     for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
