@@ -1,0 +1,3 @@
+[formats]
+"pestpp_ies_calibration/notebooks/" = "ipynb"
+"src/workflow_templates/pest/" = "py:percent"

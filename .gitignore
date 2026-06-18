@@ -240,11 +240,11 @@ nhf_assist/hydrofabric_domain_data/
 nhf_assist/domain_data/
 nhf_assist/make_pws_model/
 nhf_assist/modify_hydrofabric/
-nhf_assist/notebooks/
+# nhf_assist/notebooks/
 nhf_assist/.env
 
 pestpp_ies_calibration/data_dependencies/
-pestpp_ies_calibration/notebooks/
+# pestpp_ies_calibration/notebooks/
 
 data_dependencies/usgs_nldi_gages.gpkg
 

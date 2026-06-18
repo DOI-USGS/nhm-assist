@@ -599,83 +599,82 @@ def make_plots_par_vals(
                     with open(Folium_maps_dir / f"{par}_{poi_gage_id}.txt", "w") as f:
                         f.write(text_div)
 
-def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir):
+def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir, max_workers=8):
     """This function makes plots and saved with as html.txt files to be embedded in the hf_map
     by notebook 2_model_hydrofabric_visualization.ipynb used to evaluate ti gages shown in the
     map have desirable lengths of record to include the gage as a poi in the parameter file.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from tqdm.auto import tqdm
 
-    # start_date = pd.to_datetime(str(control.start_time)).strftime("%m/%d/%Y")
-    # end_date = pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
-
-    for cpoi in gages_df.index:
+    def _make_single_plot(cpoi):
         obs_plot_file = Folium_maps_dir / f"{cpoi}_streamflow_obs.txt"
         if obs_plot_file.exists():
-            con.print(
-                f"{cpoi}_streamflow_obs.txt file exists. To make a new plot, delete the existing plot and rerun this cell."
-            )
-        else:
-            ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
-            ds_sub_df = ds_sub.to_dataframe()
-            # ds_sub_df.dropna(subset=["discharge"], inplace=True)
-            ds_sub_df.reset_index(inplace=True, drop=False)
-            # print(ds_sub_df)
+            return f"{cpoi}_streamflow_obs.txt file exists."
 
-            fig = px.line(
-                ds_sub_df,
-                x="time",
-                y="discharge",
-                markers=False,
-                # custom_data=nhru_params_nmonths_sel_plot_df[["nhm_id"]],
-                # color="nhm_id",
-                labels={
-                    "discharge": "Discharge",
-                    "time": "Date",
-                },
-            )
+        ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
+        ds_sub_df = ds_sub.to_dataframe()
+        ds_sub_df.reset_index(inplace=True, drop=False)
 
-            fig.update_layout(
-                title_text=f"{cpoi} daily streamflow observations",
-                width=500,
-                height=300,
-                showlegend=True,
-                # legend=dict(orientation="h",yanchor="bottom",y=1.02, xanchor="right", x=1),
-                font=dict(family="Arial", size=10, color="#7f7f7f"),  # font color
-                paper_bgcolor="linen",
-                plot_bgcolor="white",
-            )
+        fig = px.line(
+            ds_sub_df,
+            x="time",
+            y="discharge",
+            markers=False,
+            labels={
+                "discharge": "Discharge",
+                "time": "Date",
+            },
+        )
 
-            fig.update_yaxes(title_text="Discharge, cfs")
-            fig.update_xaxes(title_text="Date")
+        fig.update_layout(
+            title_text=f"{cpoi} daily streamflow observations",
+            width=500,
+            height=300,
+            showlegend=True,
+            font=dict(family="Arial", size=10, color="#7f7f7f"),
+            paper_bgcolor="linen",
+            plot_bgcolor="white",
+        )
 
-            fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
-            fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(title_text="Discharge, cfs")
+        fig.update_xaxes(title_text="Date")
 
-            fig.update_xaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
-            fig.update_yaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
+        fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
 
-            fig.update_xaxes(autorange=True)
+        fig.update_xaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
+        fig.update_yaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
 
-            # fig.show()
+        fig.update_xaxes(autorange=True)
 
-            # Creating the html code for the plotly plot
-            text_div = plotly.offline.plot(
-                fig, include_plotlyjs=False, output_type="div"
-            )
+        text_div = plotly.offline.plot(
+            fig, include_plotlyjs=False, output_type="div"
+        )
 
-            # Saving the plot as txt file with the html code
-            with open(obs_plot_file, "w") as f:
-                f.write(text_div)
+        with open(obs_plot_file, "w") as f:
+            f.write(text_div)
+
+        return f"{cpoi} plot created."
+
+    poi_list = gages_df.index.tolist()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_make_single_plot, cpoi): cpoi for cpoi in poi_list}
+        with tqdm(total=len(poi_list), desc="Generating obs plots") as pbar:
+            for future in as_completed(futures):
+                future.result()
+                pbar.update(1)
 
 def create_append_gages_to_param_file(
     *,
@@ -975,9 +974,9 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         check_list = resource_df["poi_gage_id"].to_list()
 
         if len(check_list) > 0:
-            print(
-                f"Searching {resource_file_path} for meta data."
-            )
+            # print(
+            #     f"Searching {resource_file_path} for meta data."
+            # )
             for idx, row in gages_df.iterrows():
                 columns = ["latitude", "longitude", "poi_name", "poi_agency"]
                 item_lacking_list = []
@@ -1005,28 +1004,28 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
 
             print(
                 f"{len(gages_found_info_list)} of {len(gages_list)} gages found metadata in {resource_file_path}",
-                "Searching NLDI and WaterData for missing gage metadata..."
             )
         else:
             pass
 
     else:
         print(f"No gage meta data resource file provided at {resource_file_path}.",
-             "Searching NLDI and WaterData for missing gage metadata...",
              )
 
     ''' 
-    create a bypass so if all the metadata is found, time is not wasted pelling it again
+    Mask for items still missing metadata
     '''
     
     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
     mask_missing = gages_df[cols].isnull().any(axis=1)
     missing_meta_df = gages_df.loc[mask_missing]
 
-    if len(missing_meta_df) == 0:
-        print(f"All gages found metadata in {resource_file_path}. Aborting NLDI and WaterData database search.")
-    else:
-
+    if not missing_meta_df.empty:
+        """
+        First, Check the NLDI json for missing data in the dependencies folder.
+        These data are said to have the most acurate location information, so stop there first.
+        """
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching NLDI database.")
         ##### Check NLDI database for missing gage info
         file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
         nldi_gdf = gpd.read_file(file_path)  # or .geojson
@@ -1072,7 +1071,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         gages_found_info_list = []
         check_list = nldi_gdf["poi_gage_id"].to_list()
     
-        for idx, row in gages_df.iterrows():
+        for idx, row in gages_df.loc[mask_missing].iterrows():
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             item_lacking_list = []
             item_found_list = []
@@ -1102,13 +1101,22 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
         )
     
+    ''' 
+    Mask for items still missing metadata
+    '''
+    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    mask_missing = gages_df[cols].isnull().any(axis=1)
+    missing_meta_df = gages_df.loc[mask_missing]
+
+    if not missing_meta_df.empty:
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching USGS WaterData database.")
         # Get monitoring location information from USGS WaterData
         """Now, get the site infomation for the new list
                 used the chunk format from the example: 
                 https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
         """
         chunk_size = 100
-        site_list = gages_df["poi_gage_id"].unique().tolist()
+        site_list = gages_df.loc[mask_missing]["poi_gage_id"].unique().tolist()
     
         chunks = [
             site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
@@ -1177,7 +1185,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             gages_found_info_list = []
             check_list = waterdata_gage_info["poi_gage_id"].to_list()
     
-            for idx, row in gages_df.iterrows():
+            for idx, row in gages_df.loc[mask_missing].iterrows():
                 columns = [
                     "latitude",
                     "longitude",
@@ -1210,7 +1218,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             ]
     
             print(
-                f"{len(gages_found_info_list)} gages of {len(gages_df)}found metadata in USGS WaterData database.",
+                f"{len(gages_found_info_list)} gages of {len(gages_df.loc[mask_missing])}found metadata in USGS WaterData database.",
                 # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
             )
         else:
@@ -1222,19 +1230,21 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
     #drop from defualt missing data
     cols = ["latitude", "longitude", "poi_name", "poi_agency"]
     mask_missing = gages_df[cols].isnull().any(axis=1)
-    
-    for poi_gage_id in gages_df.loc[mask_missing, "poi_gage_id"]:
-        print(
-            f"Gage {poi_gage_id} lacks metadata. Add metadata to metadata/resource_gages.csv and rerun notebook."
-        )
-    
     missing_meta_df = gages_df.loc[mask_missing]
 
+    if not missing_meta_df.empty:
+        _list = list(set(gages_df.loc[mask_missing]["poi_gage_id"]))
+        print(
+            f"Gage(s) {_list} lacks metadata. Add metadata to metadata/resource_gages.csv and rerun notebook."
+        )
+    else:
+        print("All gages have required metadata.")
+        
     if resource_file_path.exists():
         if not missing_meta_df.empty:
             resource_df = pd.concat([resource_df, missing_meta_df])
         else:
-            print("All gages in gages_list have required metadata.")
+            pass
     else:
         resource_df = gages_df
         resource_df.to_csv(resource_file_path, index=False)
@@ -1269,8 +1279,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
 def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
     #Consider (Eddie) instead of using hru_gdf, just using a merge with the npoi_gages
 
-    #ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
-    ref_npoigages_info_file_path = root_dir / "data_dependencies/ref_gages/ref_npoigages_info.csv"
+    ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
 
     if ref_npoigages_info_file_path.exists():
         col_names = [
@@ -1381,8 +1390,7 @@ def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
 
 def fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf):
 
-    #non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
-    non_ref_npoigages_info_file_path = root_dir / "data_dependencies/ref_gages/non_ref_npoigages_info.csv"
+    non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
 
     if non_ref_npoigages_info_file_path.exists():
         col_names = [
