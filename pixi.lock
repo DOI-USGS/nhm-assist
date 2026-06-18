@@ -14957,7 +14957,7 @@ packages:
 - pypi: ./
   name: nhm-assist
   version: 0.0.0
-  sha256: 09d617e771bdda4497eec81b1ab57fb8a60761ba7a823e9fb9958f3268a407f1
+  sha256: 76ff45d8178f50cc7a494570094ac18a3c10c4e990b01f3dc5475cf18d8f6bae
   requires_python: '>=3.11'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/nlohmann_json-3.12.0-h54a6638_1.conda
   sha256: fd2cbd8dfc006c72f45843672664a8e4b99b2f8137654eaae8c3d46dca776f63

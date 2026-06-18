@@ -136,6 +136,43 @@ The shared project notebooks resolve the active model from `project_config/activ
 Detailed NHM workspace instructions are in [doc/pixi.md](./doc/pixi.md).
 Contributor onboarding for the new structure is in [doc/pixi-developer-guide.md](./doc/pixi-developer-guide.md).
 
+## Developing nhm-assist notebooks
+
+The workspace flow above is for **using** nhm-assist against your own models. If you are a **contributor** working on the notebook templates themselves (`src/workflow_templates/<workflow>/*.py`), use the dev task instead:
+
+```bash
+pixi run dev
+```
+
+That command:
+
+1. Regenerates the NHM notebooks from `src/workflow_templates/nhm/*.py` into `notebooks/` via `make_notebooks.py`.
+2. Launches `jupyter lab` against `notebooks/`, NOT against a workspace.
+3. The repo-root `jupytext.toml` keeps the `.ipynb` files paired with the `.py` source — when you save a notebook in JupyterLab, the corresponding `.py` template updates so your edits land in git.
+
+The `notebooks/*.ipynb` outputs are gitignored (`*.ipynb` rule in `.gitignore`); only the `.py` templates get committed.
+
+### Targeting NHF or PEST templates
+
+`pixi run dev` defaults to the `nhm` workflow + `notebooks/` directory. To work on a different workflow:
+
+```bash
+pixi run dev workflow=nhf notebook_dir=nhf_assist/notebooks
+pixi run dev workflow=pest notebook_dir=pestpp_ies_calibration/notebooks
+```
+
+### Editing without launching Jupyter
+
+If you just want to regenerate notebooks (e.g. after pulling new `.py` changes) without opening a browser:
+
+```bash
+pixi run notebooks workflow=nhm
+```
+
+### Why this is separate from `pixi run setup`
+
+`pixi run setup` is for end users — it prompts for a workspace location outside the repo, manages projects and active models, and writes generated notebooks into the workspace. `pixi run dev` is for contributors — it skips all of that and works directly against the repo's `notebooks/` directory so edits land in source control.
+
 ## nhm-assist plots and maps
 
 nhm-assist interactive plots are created using [plotly](https://plotly.com/python-api-reference/). These figures facilitate evaluation of NHM subdomain model parameters and output. Interactive plots will open in new browser tabs and are exported to `./domain_data/subdomain/notebook_output_files/html_plots`.
