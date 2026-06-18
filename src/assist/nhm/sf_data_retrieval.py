@@ -587,8 +587,18 @@ WATERDATA_BATCH_STAGGER_SECONDS = 0.25
 _WATERDATA_RETRYABLE_STATUSES = {429, 502, 503, 504}
 
 
+try:
+    # dataretrieval exposes ChunkInterrupted for resumable mid-stream failures
+    # on large multi-site WaterData queries (.call.resume() picks up surviving chunks).
+    from dataretrieval.waterdata.chunking import ChunkInterrupted
+except Exception:  # pragma: no cover - older dataretrieval without chunking
+    ChunkInterrupted = None  # type: ignore[assignment,misc]
+
+
 def _should_retry_waterdata(exc: Exception) -> bool:
     """Return True for transient API errors worth retrying."""
+    if ChunkInterrupted is not None and isinstance(exc, ChunkInterrupted):
+        return True
     if isinstance(exc, requests.exceptions.HTTPError):
         status = getattr(getattr(exc, "response", None), "status_code", None)
         return status in _WATERDATA_RETRYABLE_STATUSES
@@ -624,20 +634,27 @@ def fetch_daily_discharge_batch(
     - Responses may be paged; dataretrieval stitches pages together; limit controls page size.
     - Retries up to max_retries on HTTP 429/502/503/504 + connection/timeout
       errors with exponential backoff; non-transient errors return immediately.
+    - For dataretrieval ChunkInterrupted / ServiceInterrupted (mid-stream failure
+      on a large multi-site request), resumes from `.call.resume()` so completed
+      sub-requests are not re-issued.
     """
     time_range = f"{start_date}/{end_date}"
     last_error_msg: str | None = None
+    resumable_call = None  # set by ChunkInterrupted; resumed on next attempt
 
     for attempt in range(max_retries + 1):
         try:
-            df, md = waterdata.get_daily(
-                monitoring_location_id=monitoring_location_ids,
-                parameter_code=parameter_code,
-                statistic_id=statistic_id,
-                time=time_range,
-                skip_geometry=skip_geometry,
-                limit=limit,
-            )
+            if resumable_call is not None:
+                df, md = resumable_call.resume()
+            else:
+                df, md = waterdata.get_daily(
+                    monitoring_location_id=monitoring_location_ids,
+                    parameter_code=parameter_code,
+                    statistic_id=statistic_id,
+                    time=time_range,
+                    skip_geometry=skip_geometry,
+                    limit=limit,
+                )
 
             if df is None or len(df) == 0:
                 return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
@@ -648,13 +665,20 @@ def fetch_daily_discharge_batch(
 
         except Exception as e:
             last_error_msg = str(e)
+            if ChunkInterrupted is not None and isinstance(e, ChunkInterrupted):
+                resumable_call = getattr(e, "call", None)
+                wait = getattr(e, "retry_after", None)
+                if wait is None:
+                    wait = retry_base_seconds * (2 ** attempt)
+            else:
+                wait = retry_base_seconds * (2 ** attempt)
             if attempt >= max_retries or not _should_retry_waterdata(e):
                 return WaterDataBatchResult(
                     df=pd.DataFrame(),
                     missing_ids=list(monitoring_location_ids),
                     error=last_error_msg,
                 )
-            time.sleep(retry_base_seconds * (2 ** attempt))
+            time.sleep(wait)
 
     return WaterDataBatchResult(
         df=pd.DataFrame(),
