@@ -45,21 +45,21 @@ with redirect_stdout(f):
 root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
 sys.path.append(str(root_dir))
 
-from nhf_assist.helpers.sf_data_retrieval_v2 import (
+from assist.nhf.sf_data_retrieval_v2_1 import (
     create_nwis_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from nhf_assist.helpers.nhm_hydrofabric_v2 import (
+from assist.nhf.nhm_hydrofabric_v2 import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from nhf_assist.helpers.efc import plot_efc
-from nhf_assist.helpers.nhm_assist_utilities_v2 import (
+from assist.nhf.efc import plot_efc
+from assist.nhf.nhm_assist_utilities_v2 import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,

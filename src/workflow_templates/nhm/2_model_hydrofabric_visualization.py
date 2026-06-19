@@ -29,16 +29,10 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-repo_name = "nhm-assist"
-pixi_root = os.environ.get("PIXI_PROJECT_ROOT")
-if pixi_root:
-    root_dir = pl.Path(pixi_root).expanduser().resolve()
-else:
-    root_dir = pl.Path(os.getcwd().rsplit(repo_name, 1)[0] + repo_name)
-for path in (root_dir, root_dir / "src"):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -51,9 +45,9 @@ if project_context:
     config_root = active_model_root / "config"
 else:
     config_root = root_dir
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
-from nhm_helpers.map_template import make_hf_map
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
+from assist.nhm.nhm_hydrofabric import make_hf_map_elements
+from assist.nhm.map_template import make_hf_map
+from assist.nhm.nhm_assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(config_root)
 # con.print(config)

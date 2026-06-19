@@ -35,24 +35,26 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 # %%
 from ipywidgets import widgets
 from IPython.display import display
-from helpers.map_template_v2 import make_var_map
-from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
+from assist.nhf.map_template_v2 import make_var_map
+from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements
+from assist.nhf.nhm_output_visualization_v2 import retrieve_hru_output_info
 from ipywidgets import VBox
-from helpers.output_plots_v2 import plot_colors
-from helpers.output_plots_v2 import (
+from assist.nhf.output_plots_v2 import plot_colors
+from assist.nhf.output_plots_v2 import (
     var_colors_dict,
     leg_only_dict,
     make_plot_var_for_hrus_in_poi_basin,
     oopla,
 )
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 poi_id_sel = None
@@ -139,7 +141,7 @@ plot_start_date, plot_end_date, year_list, output_var_list = retrieve_hru_output
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox, Button
 from IPython.display import display, IFrame, clear_output
-import helpers.display_controls_v2 as dc
+import assist.nhf.display_controls_v2 as dc
 
 style_var = {"description_width": "initial"}
 layout = widgets.Layout(width="25%")

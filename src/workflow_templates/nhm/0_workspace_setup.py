@@ -33,16 +33,10 @@ con = Console()
 
 import sys
 import os
-repo_name = "nhm-assist"
-pixi_root = os.environ.get("PIXI_PROJECT_ROOT")
-if pixi_root:
-    root_dir = pl.Path(pixi_root).expanduser().resolve()
-else:
-    root_dir = pl.Path(os.getcwd().rsplit(repo_name, 1)[0] + repo_name)
-for path in (root_dir, root_dir / "src"):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -198,7 +192,7 @@ nwis_gage_nobs_min = 365  # days
 # <font size = '3'> Notebook 3 visualizes parameter values from the parameter file. Type the parameters you wish to visualize in the list(s) below. To view complete lists of parameters, copy/paste the functions below into a code block. The default parameters in the list below represent parameters calibrated during calibration of the NHM version 1.1. Calibrated values from NHM v 1.1 are displayed in Notebook 3 ([Markstrom and others, 2024](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)). More information about NHM parameters can be found in [Markstrom and others, 2015](https://water.usgs.gov/water-resources/software/PRMS/PRMS_tables_5.2.1.pdf)
 # >
 # ```
-# from nhm_helpers.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
+# from assist.nhm.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
 # bynhru_parameter_list(param_filename)
 # bynmonth_bynhru_parameter_list(param_filename)
 # bynsegment_parameter_list(param_filename)
