@@ -29,12 +29,14 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
-from helpers.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
-from helpers.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
+from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
 
-from helpers.nhm_assist_utilities_v2 import (
+from assist.nhf.nhm_assist_utilities_v2 import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,

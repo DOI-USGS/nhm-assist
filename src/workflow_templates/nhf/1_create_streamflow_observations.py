@@ -42,8 +42,10 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 from dotenv import load_dotenv
 
@@ -53,22 +55,22 @@ load_dotenv(
 
 
 # Changed path here
-from helpers.sf_data_retrieval_v2 import (
+from assist.nhf.sf_data_retrieval_v2_1 import (
     # create_waterdata_sf_df,
     create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from helpers.nhm_hydrofabric_v2 import (
+from assist.nhf.nhm_hydrofabric_v2 import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from helpers.efc import plot_efc
-from helpers.nhm_assist_utilities_v2 import (
+from assist.nhf.efc import plot_efc
+from assist.nhf.nhm_assist_utilities_v2 import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,

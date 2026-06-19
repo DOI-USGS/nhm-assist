@@ -42,9 +42,9 @@ root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir))
 
-from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from helpers.map_template_v2 import make_par_map
-from helpers.nhm_assist_utilities_v2 import make_plots_par_vals, load_subdomain_config
+from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements
+from assist.nhf.map_template_v2 import make_par_map
+from assist.nhf.nhm_assist_utilities_v2 import make_plots_par_vals, load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 

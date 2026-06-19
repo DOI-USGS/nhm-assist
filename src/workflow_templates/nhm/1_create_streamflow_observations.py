@@ -42,16 +42,10 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-repo_name = "nhm-assist"
-pixi_root = os.environ.get("PIXI_PROJECT_ROOT")
-if pixi_root:
-    root_dir = pl.Path(pixi_root).expanduser().resolve()
-else:
-    root_dir = pl.Path(os.getcwd().rsplit(repo_name, 1)[0] + repo_name)
-for path in (root_dir, root_dir / "src"):
-    path_str = str(path)
-    if path_str not in sys.path:
-        sys.path.insert(0, path_str)
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -75,21 +69,21 @@ else:
 
 load_dotenv(dotenv_path=dotenv_path)
 
-from nhm_helpers.sf_data_retrieval import (
+from assist.nhm.sf_data_retrieval import (
     create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from nhm_helpers.nhm_hydrofabric import (
+from assist.nhm.nhm_hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from nhm_helpers.efc import plot_efc
-from nhm_helpers.nhm_assist_utilities import (
+from assist.nhm.efc import plot_efc
+from assist.nhm.nhm_assist_utilities import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,
