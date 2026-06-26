@@ -55,6 +55,15 @@ warnings.filterwarnings("ignore")
 
 import os
 
+# Silence dataretrieval's per-page "Retrieving: daily · 1 page · 50,000 rows"
+# stderr line. The batch-level rich Progress bar in create_waterdata_sf_df
+# already surfaces download progress, and writes to stderr from worker threads
+# collide with rich.pretty.install() in Jupyter — the patched FileProxy reroutes
+# each write through Console.print → publish_display_data → stderr.flush, which
+# is the same patched stderr, causing unbounded recursion.
+os.environ.setdefault("API_USGS_PROGRESS", "0")
+
+
 def _ensure_usgs_pat_stripped():
     # dataretrieval uses API_USGS_PAT env var for Water Data APIs auth :contentReference[oaicite:2]{index=2}
     if "API_USGS_PAT" in os.environ and os.environ["API_USGS_PAT"] is not None:
