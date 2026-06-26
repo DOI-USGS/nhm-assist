@@ -821,24 +821,36 @@ def delete_notebook_output_files(
     """ """
 
     subfolders = ['Folium_maps', 'html_maps', 'html_plots', 'nc_files']
+    deleted_by_subfolder = {}
     for subfolder in subfolders:
-        folder_path = notebook_output_dir / subfolder   
+        folder_path = notebook_output_dir / subfolder
+        if not folder_path.exists():
+            continue
+        count = 0
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):  # Ensure it's a file
+            if os.path.isfile(file_path):
                 os.remove(file_path)
-                print(f"Deleted: {file_path}")
+                count += 1
+        if count:
+            deleted_by_subfolder[subfolder] = count
 
-        
-        # path = r"{notebook_output_dir}\{subfolder}"
-        # files = glob.glob(path)
-        # for f in files:
-        #     os.remove(f)
-    
-    files =['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    files = ['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    deleted_model_files = 0
     for file in files:
         if (model_dir / file).exists():
             os.remove(model_dir / file)
+            deleted_model_files += 1
+
+    total = sum(deleted_by_subfolder.values()) + deleted_model_files
+    if total == 0:
+        print("No prior notebook output files to delete.")
+        return
+
+    summary = ", ".join(f"{count} from {name}/" for name, count in deleted_by_subfolder.items())
+    if deleted_model_files:
+        summary = (summary + ", " if summary else "") + f"{deleted_model_files} from model_dir"
+    print(f"Deleted {total} prior notebook output file(s): {summary}.")
     return
 
 # def load_subdomain_config(root_dir):
