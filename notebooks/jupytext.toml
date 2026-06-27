@@ -1,3 +1,0 @@
-[formats]
-"notebooks/" = "ipynb"
-"src/workflow_templates/nhm/" = "py:percent"

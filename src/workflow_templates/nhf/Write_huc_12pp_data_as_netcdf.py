@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -406,7 +407,7 @@ if gage_exist:
     df_stat_flow_daily = da_stat_flow_daily.to_dataframe().reset_index()
     df_stat_flow_month =  da_stat_flow_month[stat_target_list].to_dataframe().reset_index()
     df_stat_flow_annual = da_stat_flow_annual[stat_target_list].to_dataframe().reset_index()
-    
+
 
 # %%
 

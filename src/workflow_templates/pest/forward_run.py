@@ -1,3 +1,15 @@
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.3
+# ---
+
 # %%
 import dask
 import shutil

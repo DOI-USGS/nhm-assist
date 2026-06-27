@@ -28,12 +28,14 @@ def convert_workflow(
     input_folder = WORKFLOW_INPUT_DIRS[name]
     if workspace_root is None:
         output_folder = get_workflow_notebooks_dir(name)
+        in_workspace_mode = False
     else:
         if not project_name:
             raise ValueError("project_name is required when workspace_root is set")
         output_folder = get_project_workflow_notebooks_dir(
             name, workspace_root, project_name
         )
+        in_workspace_mode = True
     created_paths = []
 
     if not input_folder.exists():
@@ -52,6 +54,11 @@ def convert_workflow(
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         notebook = jupytext.read(py_file)
+        if in_workspace_mode:
+            # Workspace .ipynb files are user-owned copies; they must not pair
+            # back to the repo's source templates on save.
+            jupytext_meta = notebook.metadata.get("jupytext", {})
+            jupytext_meta.pop("formats", None)
         jupytext.write(notebook, output_path)
 
     return created_paths
