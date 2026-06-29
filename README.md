@@ -27,7 +27,7 @@ git clone https://code.usgs.gov/wma/hytest/nhm-assist.git
 cd nhm-assist
 ```
 
-**NOTE**: When you clone this repository, you will be on the `main` branch, which includes active development work. To use a tagged release, run `git checkout 1.1.0` (or the desired tag).
+**NOTE**: When you clone this repository, you will be on the `main` branch, which includes active development work. To use the latest tagged release, run `git checkout 1.1.1` (or any other tag).
 
 ## Install the environment
 
@@ -68,12 +68,12 @@ See the "Pixi Workspace for NHM" section below for the layout details.
 
 | Workflow | Generate notebooks | Open in Jupyter |
 | --- | --- | --- |
-| NHM | `pixi run notebooks nhm` | `pixi run jupyter lab notebooks` |
-| NHF | `pixi run notebooks nhf` | `cd nhf_assist && pixi run jupyter lab notebooks` |
-| PEST | `pixi run notebooks pest` | `cd pestpp_ies_calibration && pixi run jupyter lab notebooks` |
-| All workflows | `pixi run notebooks all` | Open the workflow-specific notebook directory you want |
+| NHM | `pixi run notebooks-create nhm` | `pixi run jupyter lab notebooks` |
+| NHF | `pixi run notebooks-create nhf` | `cd nhf_assist && pixi run jupyter lab notebooks` |
+| PEST | `pixi run notebooks-create pest` | `cd pestpp_ies_calibration && pixi run jupyter lab notebooks` |
+| All workflows | `pixi run notebooks-create all` | Open the workflow-specific notebook directory you want |
 
-(The pixi `notebooks` task wraps `python -m workflow_templates.make_notebooks`.)
+(The pixi `notebooks-create` task wraps `python -m workflow_templates.make_notebooks`; it generates `.ipynb` files but does not launch Jupyter.)
 
 ## Pixi Workspace for NHM
 
@@ -95,7 +95,7 @@ pixi run workspace-init <workspace-root>
 pixi run project-create <workspace-root> <project-name>
 pixi run model-copy-example <workspace-root> <project-name> <model-name> Walla_Walla
 pixi run project-set-active-model <workspace-root> <project-name> <model-name>
-pixi run notebooks-project <workspace-root> <project-name> nhm
+pixi run notebooks-create-project <workspace-root> <project-name> nhm
 pixi run jupyter lab <workspace-root>/<project-name>/notebooks/nhm
 ```
 
@@ -156,7 +156,7 @@ pixi run dev pest pestpp_ies_calibration/notebooks
 If you just want to regenerate notebooks (e.g. after pulling new `.py` changes) without opening a browser:
 
 ```bash
-pixi run notebooks nhm
+pixi run notebooks-create nhm
 ```
 
 ### Why this is separate from `pixi run setup`

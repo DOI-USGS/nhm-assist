@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import dotenv_values, set_key
+from dotenv import dotenv_values, set_key, unset_key
 
 from assist.workspace import bridge, service
 from assist.workspace.examples import list_available_example_names
@@ -53,6 +53,35 @@ def save_workspace_root_to_dotenv(
         "NHM_ASSIST_WORKSPACE_ROOT",
         str(resolved),
     )
+    return dotenv_path
+
+
+USGS_API_KEY_ENV_VAR = "API_USGS_PAT"
+USGS_API_KEY_SIGNUP_URL = "https://api.waterdata.usgs.gov/signup/"
+
+
+def load_api_key_from_dotenv(repo_root: Path) -> str | None:
+    dotenv_path = get_repo_dotenv_path(repo_root)
+    if not dotenv_path.exists():
+        return None
+    value = dotenv_values(dotenv_path).get(USGS_API_KEY_ENV_VAR)
+    if not value:
+        return None
+    return value.strip() or None
+
+
+def save_api_key_to_dotenv(repo_root: Path, api_key: str) -> Path:
+    dotenv_path = get_repo_dotenv_path(repo_root)
+    if not dotenv_path.exists():
+        dotenv_path.touch()
+    set_key(str(dotenv_path), USGS_API_KEY_ENV_VAR, api_key.strip())
+    return dotenv_path
+
+
+def clear_api_key_from_dotenv(repo_root: Path) -> Path:
+    dotenv_path = get_repo_dotenv_path(repo_root)
+    if dotenv_path.exists():
+        unset_key(str(dotenv_path), USGS_API_KEY_ENV_VAR)
     return dotenv_path
 
 
@@ -444,14 +473,52 @@ def action_show_current_setup(
     print_func(f"NHM notebooks: {notebook_dir}")
 
 
+def action_set_api_key(
+    state: SetupState,
+    *,
+    print_func=print,
+    input_func=input,
+) -> None:
+    current = load_api_key_from_dotenv(state.repo_root)
+    print_func("")
+    print_func("USGS WaterData API key (API_USGS_PAT)")
+    print_func(
+        "Used by dataretrieval for higher rate limits on Water Data queries."
+    )
+    print_func(f"Register a key at: {USGS_API_KEY_SIGNUP_URL}")
+    if current:
+        masked = current[:4] + "…" + current[-4:] if len(current) > 8 else "set"
+        print_func(f"Currently configured ({masked}).")
+        print_func("Type a new key to replace, 'clear' to remove, or Enter to keep.")
+    else:
+        print_func("No key is currently configured.")
+        print_func("Type the key to save, or press Enter to skip.")
+
+    raw = input_func("API key: ").strip()
+    if not raw:
+        print_func("API key unchanged.")
+        return
+    if raw.lower() == "clear":
+        clear_api_key_from_dotenv(state.repo_root)
+        print_func("API key cleared from .env.")
+        return
+    save_api_key_to_dotenv(state.repo_root, raw)
+    print_func(f"API key saved to {get_repo_dotenv_path(state.repo_root)}.")
+    print_func("Restart the kernel for notebooks that already loaded the .env.")
+
+
 def print_main_menu(state: SetupState, *, print_func=print) -> None:
     active_model = get_active_model_name_for_state(state) or "(not set)"
+    api_key_status = (
+        "configured" if load_api_key_from_dotenv(state.repo_root) else "not set"
+    )
     print_func("")
     print_func("NHM setup")
     print_func("")
     print_func(f"Workspace root: {state.workspace_root or '(not set)'}")
     print_func(f"Current project: {state.current_project or '(not selected)'}")
     print_func(f"Active model: {active_model}")
+    print_func(f"USGS WaterData API key: {api_key_status}")
     print_func("")
     print_func("1. Set workspace root")
     print_func("2. Create project")
@@ -462,6 +529,7 @@ def print_main_menu(state: SetupState, *, print_func=print) -> None:
     print_func("7. Generate NHM notebooks")
     print_func("8. Launch Jupyter")
     print_func("9. Show current setup")
+    print_func("10. Set USGS WaterData API key")
     print_func("0. Exit")
 
 
@@ -494,7 +562,7 @@ def run_setup(
 
         while True:
             print_main_menu(state, print_func=print_func)
-            choice = prompt_menu_choice(9, input_func=input_func, print_func=print_func)
+            choice = prompt_menu_choice(10, input_func=input_func, print_func=print_func)
 
             if choice == 0:
                 print_func("Exiting setup.")
@@ -545,6 +613,12 @@ def run_setup(
                     action_launch_jupyter(state, print_func=print_func)
                 elif choice == 9:
                     action_show_current_setup(state, print_func=print_func)
+                elif choice == 10:
+                    action_set_api_key(
+                        state,
+                        print_func=print_func,
+                        input_func=input_func,
+                    )
             except (FileNotFoundError, NotADirectoryError, ValueError, OSError) as exc:
                 print_func(f"Error: {exc}")
     except KeyboardInterrupt:
