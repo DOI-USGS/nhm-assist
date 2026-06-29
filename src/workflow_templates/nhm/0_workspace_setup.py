@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -33,8 +34,23 @@ con = Console()
 
 import sys
 import os
-root_folder = "nhm-assist"
-root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    active_model_root = None
+    config_root = root_dir
 print(root_dir)
 #pppo
 
@@ -117,7 +133,25 @@ print(root_dir)
 # %%
 subdomain = "Walla_Walla"
 
-model_dir = root_dir / "domain_data" / subdomain
+from assist.workspace.service import resolve_nhm_runtime_paths
+
+runtime_paths = resolve_nhm_runtime_paths(
+    subdomain,
+    cwd=os.getcwd(),
+    env=os.environ,
+)
+active_model_name = runtime_paths.get("active_model_name")
+if active_model_name:
+    subdomain = active_model_name
+config_root = runtime_paths["config_root"]
+workspace_root = runtime_paths["workspace_root"]
+project_dir = runtime_paths["project_dir"]
+model_root = runtime_paths["model_root"]
+model_dir = runtime_paths["model_dir"]
+if project_dir and active_model_name:
+    print(f"Active project: {project_dir.name}")
+    print(f"Active model: {active_model_name}")
+    print(f"Runtime output: {model_dir}")
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **GIS file format**. </font><br>
@@ -159,7 +193,7 @@ nwis_gage_nobs_min = 365  # days
 # <font size = '3'> Notebook 3 visualizes parameter values from the parameter file. Type the parameters you wish to visualize in the list(s) below. To view complete lists of parameters, copy/paste the functions below into a code block. The default parameters in the list below represent parameters calibrated during calibration of the NHM version 1.1. Calibrated values from NHM v 1.1 are displayed in Notebook 3 ([Markstrom and others, 2024](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)). More information about NHM parameters can be found in [Markstrom and others, 2015](https://water.usgs.gov/water-resources/software/PRMS/PRMS_tables_5.2.1.pdf)
 # >
 # ```
-# from nhm_helpers.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
+# from assist.nhm.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
 # bynhru_parameter_list(param_filename)
 # bynmonth_bynhru_parameter_list(param_filename)
 # bynsegment_parameter_list(param_filename)
@@ -313,7 +347,9 @@ dict_file = {
     "workspace_txt": f"NHM model domain: [bold black]{subdomain}[/bold black], parameter file: [bold black]{param_file}[/bold black]\nSimulation and observation data range: {pd.to_datetime(str(control.start_time)).strftime('%m/%d/%Y')} - {pd.to_datetime(str(control.end_time)).strftime('%m/%d/%Y')} (from [bold]{control_file_name}[/bold]).",
 }
 
-with open(root_dir / "subdomain_config.yaml", "w") as file:
+with open(config_root / "subdomain_config.yaml", "w") as file:
     documents = yaml.dump(dict_file, file)
+
+# %%
 
 # %%

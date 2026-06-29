@@ -3,30 +3,39 @@ from pathlib import Path
 
 import jupytext
 
+from assist.workspace.bridge import (
+    get_project_workflow_notebooks_dir,
+    get_workflow_notebooks_dir,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+
 TEMPLATES_ROOT = Path(__file__).resolve().parent
 
-WORKFLOW_DIRS = {
-    "nhm": {
-        "input": TEMPLATES_ROOT / "nhm",
-        "output": REPO_ROOT / "notebooks",
-    },
-    "nhf": {
-        "input": TEMPLATES_ROOT / "nhf",
-        "output": REPO_ROOT / "nhf_assist" / "notebooks",
-    },
-    "pest": {
-        "input": TEMPLATES_ROOT / "pest",
-        "output": REPO_ROOT / "pestpp_ies_calibration" / "notebooks",
-    },
+WORKFLOW_INPUT_DIRS = {
+    "nhm": TEMPLATES_ROOT / "nhm",
+    "nhf": TEMPLATES_ROOT / "nhf",
+    "pest": TEMPLATES_ROOT / "pest",
 }
 
 
-def convert_workflow(name: str, *, dry_run: bool = False) -> list[Path]:
-    config = WORKFLOW_DIRS[name]
-    input_folder = config["input"]
-    output_folder = config["output"]
+def convert_workflow(
+    name: str,
+    *,
+    workspace_root: str | Path | None = None,
+    project_name: str | None = None,
+    dry_run: bool = False,
+) -> list[Path]:
+    input_folder = WORKFLOW_INPUT_DIRS[name]
+    if workspace_root is None:
+        output_folder = get_workflow_notebooks_dir(name)
+        in_workspace_mode = False
+    else:
+        if not project_name:
+            raise ValueError("project_name is required when workspace_root is set")
+        output_folder = get_project_workflow_notebooks_dir(
+            name, workspace_root, project_name
+        )
+        in_workspace_mode = True
     created_paths = []
 
     if not input_folder.exists():
@@ -45,6 +54,11 @@ def convert_workflow(name: str, *, dry_run: bool = False) -> list[Path]:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         notebook = jupytext.read(py_file)
+        if in_workspace_mode:
+            # Workspace .ipynb files are user-owned copies; they must not pair
+            # back to the repo's source templates on save.
+            jupytext_meta = notebook.metadata.get("jupytext", {})
+            jupytext_meta.pop("formats", None)
         jupytext.write(notebook, output_path)
 
     return created_paths
@@ -63,15 +77,28 @@ def parse_args(argv: list[str] | None = None, *, default_workflow: str = "nhm"):
         action="store_true",
         help="Print planned conversions without writing notebooks.",
     )
+    parser.add_argument(
+        "--workspace-root",
+        help="Optional external workspace root for notebook output.",
+    )
+    parser.add_argument(
+        "--project-name",
+        help="Project name for project-shared workspace notebook output.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None, *, default_workflow: str = "nhm") -> int:
     args = parse_args(argv, default_workflow=default_workflow)
-    workflows = list(WORKFLOW_DIRS) if args.workflow == "all" else [args.workflow]
+    workflows = list(WORKFLOW_INPUT_DIRS) if args.workflow == "all" else [args.workflow]
 
     for workflow in workflows:
-        convert_workflow(workflow, dry_run=args.dry_run)
+        convert_workflow(
+            workflow,
+            workspace_root=args.workspace_root,
+            project_name=args.project_name,
+            dry_run=args.dry_run,
+        )
 
     return 0
 

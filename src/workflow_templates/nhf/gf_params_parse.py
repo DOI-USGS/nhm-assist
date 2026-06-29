@@ -1,6 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -30,12 +31,14 @@ import jupyter_black
 jupyter_black.load()
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
-#from helpers.sf_data_retrieval_v2 import fetch_single_nwis_gage
-from helpers.sf_data_retrieval import fetch_daily_discharge_batch
-from helpers.nhm_assist_utilities_v2 import find_missing_gage_info
+# from assist.nhf.sf_data_retrieval_v2_1 import fetch_single_nwis_gage
+from assist.nhf.sf_data_retrieval_v2_1 import fetch_daily_discharge_batch
+from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info
 
 
 # %%
@@ -70,7 +73,7 @@ from rich import pretty
 pretty.install()
 
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -608,7 +611,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Hood_River"  # Powder_River, John_Day_River
+child_name = "Rogue_River"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -1015,9 +1018,6 @@ gage_poi_flow_list = [
 # gage_poi_flow_list = [x for x in list(poi_gdf_child.hl_link) if x not in result_1.missing_ids]
 # #poi_gdf_child.drop(columns=["poi_id"], inplace=True)  # Remove column to avoid confusion
 
-# %%
-npoigages_params_gdf
-
 # %% [markdown]
 # #### Now, some reshaping an cleaning of the gage poi information prior to parameter csv file creation
 # This involves reshaping the dataframe to these column names:
@@ -1065,9 +1065,15 @@ else:
 # npoigages_params_df.drop_duplicates(subset=["segment_id"], inplace=True, keep="last")
 
 # %%
+parent_dir
+
+# %%
 # Create npoigages_info_df and .csv file
 npoigages_info_df = find_missing_gage_info(
-    root_dir, child_pws_dir, list(npoigages_params_df.poi_gage_id), "npoigages_info"
+    root_dir,
+    child_pws_dir,
+    list(npoigages_params_df.poi_gage_id),
+    parent_dir / "npoigages_data/resource_gages.csv",
 )
 
 # %%
@@ -1075,7 +1081,7 @@ npoigages_info_df = find_missing_gage_info(
 
 # %%
 # make the npoigages_info_df file in the child hf domain folser as well for backup
-npoigages_file = child_hf_dir / "npoigages_info.csv"
+npoigages_file = child_hf_dir / "resource_gages.csv"
 npoigages_info_df.to_csv(npoigages_file, index=False)
 
 # %%
@@ -1502,7 +1508,10 @@ if len(new_gages_list) != 0:
 
     # root_dir, dest_dir, gages_list, info_file_name
     new_gages_df = find_missing_gage_info(
-        root_dir, FMI_GagedWatersheds_dir, new_gages_list, "fmi_npoigages_info"
+        root_dir,
+        FMI_GagedWatersheds_dir,
+        new_gages_list,
+        parent_dir / "npoigages_data/resource_gages.csv",
     )
     new_gages_df["poi_type"] = 1
 
@@ -1624,15 +1633,18 @@ with open(
 
 # %%
 # make the npoigages_info_df file here to match
-npoigages_file = parent_dir / "npoigages_data/npoigages_info2.csv"
-npoigages_info_df.to_csv(npoigages_file, index=False)
+# npoigages_file = parent_dir / "npoigages_data/npoigages_info2.csv"
+# npoigages_info_df.to_csv(npoigages_file, index=False)
 
 #
 child_npoigages_list = list(npoigages_params_df["poi_gage_id"])
 child_npoigages_info_df = npoigages_info_df[
     npoigages_info_df["poi_gage_id"].isin(child_npoigages_list)
 ]
-child_npoigages_info_df.to_csv(child_pws_dir / "resource_gages.csv", index=False)
+child_model_meta_dir = child_pws_dir / "metadata"
+child_model_meta_dir.mkdir(parents=True, exist_ok=True)
+child_npoigages_info_df.to_csv(child_model_meta_dir / "resource_gages.csv", index=False)
+child_npoigages_info_df.to_csv(child_hf_dir / "resource_gages.csv", index=False)
 
 # %%
 # gages_gf = list(set(poi_gdf.hl_link))

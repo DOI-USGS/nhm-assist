@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.1
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -42,8 +43,22 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
 
 from dotenv import load_dotenv
 
@@ -55,27 +70,27 @@ else:
 
 load_dotenv(dotenv_path=dotenv_path)
 
-from nhm_helpers.sf_data_retrieval import (
+from assist.nhm.sf_data_retrieval import (
     create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from nhm_helpers.nhm_hydrofabric import (
+from assist.nhm.nhm_hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from nhm_helpers.efc import plot_efc
-from nhm_helpers.nhm_assist_utilities import (
+from assist.nhm.efc import plot_efc
+from assist.nhm.nhm_assist_utilities import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,
 )
 
-config = load_subdomain_config(root_dir)
+config = load_subdomain_config(config_root)
 
 # %%
 delete_notebook_output_files(

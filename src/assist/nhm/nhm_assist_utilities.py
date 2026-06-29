@@ -821,24 +821,36 @@ def delete_notebook_output_files(
     """ """
 
     subfolders = ['Folium_maps', 'html_maps', 'html_plots', 'nc_files']
+    deleted_by_subfolder = {}
     for subfolder in subfolders:
-        folder_path = notebook_output_dir / subfolder   
+        folder_path = notebook_output_dir / subfolder
+        if not folder_path.exists():
+            continue
+        count = 0
         for file_name in os.listdir(folder_path):
             file_path = os.path.join(folder_path, file_name)
-            if os.path.isfile(file_path):  # Ensure it's a file
+            if os.path.isfile(file_path):
                 os.remove(file_path)
-                print(f"Deleted: {file_path}")
+                count += 1
+        if count:
+            deleted_by_subfolder[subfolder] = count
 
-        
-        # path = r"{notebook_output_dir}\{subfolder}"
-        # files = glob.glob(path)
-        # for f in files:
-        #     os.remove(f)
-    
-    files =['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    files = ['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    deleted_model_files = 0
     for file in files:
         if (model_dir / file).exists():
             os.remove(model_dir / file)
+            deleted_model_files += 1
+
+    total = sum(deleted_by_subfolder.values()) + deleted_model_files
+    if total == 0:
+        print("No prior notebook output files to delete.")
+        return
+
+    summary = ", ".join(f"{count} from {name}/" for name, count in deleted_by_subfolder.items())
+    if deleted_model_files:
+        summary = (summary + ", " if summary else "") + f"{deleted_model_files} from model_dir"
+    print(f"Deleted {total} prior notebook output file(s): {summary}.")
     return
 
 # def load_subdomain_config(root_dir):
@@ -900,7 +912,16 @@ def delete_notebook_output_files(
 
 def load_subdomain_config(root_dir):
     """Loads subdomain config and returns a dictionary of processed keys/values."""
-    with open(root_dir / "subdomain_config.yaml") as file:
+    config_path = root_dir / "subdomain_config.yaml"
+    if not config_path.exists():
+        raise FileNotFoundError(
+            "Missing subdomain config at "
+            f"{config_path}. Set the active model for the project, then run "
+            "0_workspace_setup.ipynb first from the same project notebook "
+            "directory before running later notebooks."
+        )
+
+    with open(config_path) as file:
         pp = yaml.load(file, Loader=yaml.FullLoader)
 
     # Map YAML keys to their processed Python values
@@ -932,3 +953,152 @@ def load_subdomain_config(root_dir):
         "workspace_txt": pp["workspace_txt"],
     }
     return config
+
+
+def _load_nldi_cached(
+    geojson_path: pl.Path,
+    gpkg_path: pl.Path,
+) -> "gpd.GeoDataFrame":
+    """Load the NLDI gage table, regenerating the .gpkg cache when stale."""
+    use_cache = (
+        gpkg_path.exists()
+        and geojson_path.exists()
+        and gpkg_path.stat().st_mtime >= geojson_path.stat().st_mtime
+    )
+
+    if use_cache:
+        gdf = gpd.read_file(gpkg_path)
+        return gdf
+
+    gdf = gpd.read_file(geojson_path)
+    gdf[["poi_agency", "poi_id"]] = (
+        gdf["id"]
+        .astype("string")
+        .str.strip()
+        .str.split("-", n=1, expand=True)
+    )
+    gdf["poi_name"] = gdf.get("name")
+    gdf["latitude"] = gdf.geometry.y
+    gdf["longitude"] = gdf.geometry.x
+
+    try:
+        gdf.to_file(gpkg_path, driver="GPKG")
+    except OSError:
+        # data_dependencies/ may be read-only on shared filesystems.
+        # Fall through to in-memory result.
+        pass
+
+    return gdf
+
+
+def _translate_waterdata_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Map WaterData response columns to NHM's POI schema."""
+    rename = {
+        "monitoring_location_id": "poi_id",
+        "monitoring_location_name": "poi_name",
+        "agency_code": "poi_agency",
+    }
+    translated = df.rename(columns=rename).copy()
+    if "poi_id" in translated.columns:
+        translated["poi_id"] = (
+            translated["poi_id"].astype(str).str.replace("USGS-", "", regex=False)
+        )
+        translated = translated.set_index("poi_id")
+    for col in ["latitude", "longitude", "poi_name", "poi_agency"]:
+        if col not in translated.columns:
+            translated[col] = pd.NA
+    return translated[["latitude", "longitude", "poi_name", "poi_agency"]]
+
+
+def find_missing_gage_info(
+    *,
+    gage_ids: list[str],
+    poi_df: pd.DataFrame,
+    resource_file_path: pl.Path,
+    root_dir: pl.Path,
+    nldi_geojson_path: pl.Path | None = None,
+) -> pd.DataFrame:
+    """Look up metadata for gages missing from the resource file.
+
+    Returns a DataFrame indexed by poi_id with columns latitude, longitude,
+    poi_name, poi_agency. Queries NLDI (local geojson) and WaterData
+    (network) only for gages not already covered.
+
+    Network failures log a warning and return whatever was successfully
+    fetched; the caller is responsible for any rows still missing metadata.
+    """
+    METADATA_COLS = ["latitude", "longitude", "poi_name", "poi_agency"]
+    empty = pd.DataFrame(columns=METADATA_COLS)
+    empty.index.name = "poi_id"
+    if not gage_ids:
+        return empty
+
+    pending = list(dict.fromkeys(gage_ids))
+
+    if resource_file_path.exists():
+        try:
+            resource_df = pd.read_csv(
+                resource_file_path,
+                dtype={"poi_id": str},
+            )
+        except (FileNotFoundError, pd.errors.EmptyDataError):
+            resource_df = None
+        if resource_df is not None and "poi_id" in resource_df.columns:
+            covered = set(resource_df["poi_id"].astype(str).tolist())
+            pending = [g for g in pending if g not in covered]
+
+    if not pending:
+        return empty
+
+    if nldi_geojson_path is None:
+        nldi_geojson_path = (
+            root_dir / "data_dependencies" / "usgs_nldi_gages.geojson"
+        )
+    nldi_gpkg_path = nldi_geojson_path.with_suffix(".gpkg")
+
+    found_frames: list[pd.DataFrame] = []
+
+    try:
+        nldi_gdf = _load_nldi_cached(nldi_geojson_path, nldi_gpkg_path)
+        nldi_lookup = (
+            nldi_gdf.set_index("poi_id")[METADATA_COLS]
+            if "poi_id" in nldi_gdf.columns
+            else pd.DataFrame(columns=METADATA_COLS)
+        )
+        hits = [g for g in pending if g in nldi_lookup.index]
+        if hits:
+            found_frames.append(nldi_lookup.loc[hits])
+            pending = [g for g in pending if g not in nldi_lookup.index]
+    except Exception as exc:
+        # non-fatal: NLDI may be unavailable on air-gapped deployments
+        print(
+            f"WARNING: could not reach NLDI ({exc}); "
+            f"{len(pending)} gages may lack metadata."
+        )
+
+    if pending:
+        try:
+            chunk_size = 100
+            wd_frames = []
+            for i in range(0, len(pending), chunk_size):
+                chunk_ids = pending[i : i + chunk_size]
+                location_ids = [f"USGS-{g}" for g in chunk_ids]
+                wd_df, _ = waterdata.get_monitoring_locations(
+                    monitoring_location_id=location_ids,
+                )
+                if wd_df is not None and not wd_df.empty:
+                    wd_frames.append(wd_df)
+            if wd_frames:
+                combined = pd.concat(wd_frames, ignore_index=True)
+                translated = _translate_waterdata_columns(combined)
+                hits = [g for g in pending if g in translated.index]
+                if hits:
+                    found_frames.append(translated.loc[hits])
+        except Exception as exc:
+            # non-fatal: WaterData may be unavailable
+            print(
+                f"WARNING: could not reach WaterData ({exc}); "
+                f"{len(pending)} gages may lack metadata."
+            )
+
+    return pd.concat(found_frames) if found_frames else empty

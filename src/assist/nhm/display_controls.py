@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from ipywidgets import widgets
-from IPython.display import HTML, IFrame, clear_output, display
+from IPython.display import HTML, clear_output, display
 from assist.nhm.map_template import make_var_map
 from assist.nhm.nhm_hydrofabric import make_hf_map_elements
 from assist.nhm.nhm_output_visualization import retrieve_hru_output_info
@@ -59,6 +59,19 @@ def warn(msg: str):
     display(HTML(f"<div style='color:#b00020; font-weight:600'>{msg}</div>"))
 
 
+def _report_external_artifact(kind: str, artifact) -> None:
+    """Report the generated external artifact without embedding a preview."""
+    path = None if artifact is None else Path(artifact).resolve()
+    if path is None:
+        msg = f"Generated the {kind} and requested it open in an external browser."
+    else:
+        msg = (
+            f"Generated the {kind} and requested it open in an external browser."
+            f"<br><code>{path}</code>"
+        )
+    display(HTML(f"<div style='color:#1f2937'>{msg}</div>"))
+
+
 def _require_state(*names: str) -> bool:
     missing = [name for name in names if globals().get(name) is None]
     if missing:
@@ -114,7 +127,7 @@ def generate_map() -> None:
     poi_id = _get_valid_poi()
     if poi_id is None:
         return
-    fmap = make_var_map(
+    map_file = make_var_map(
         root_dir=root_dir,
         out_dir=out_dir,
         output_var_sel=v.value,
@@ -132,7 +145,7 @@ def generate_map() -> None:
         HW_basins=HW_basins,
         subdomain=subdomain,
     )
-    display(fmap)
+    _report_external_artifact("map", map_file)
 
 
 def generate_summary() -> None:
@@ -157,7 +170,7 @@ def generate_summary() -> None:
     poi_id = _get_valid_poi()
     if poi_id is None:
         return
-    make_plot_var_for_hrus_in_poi_basin(
+    plot_file = make_plot_var_for_hrus_in_poi_basin(
         out_dir=out_dir,
         param_filename=param_filename,
         water_years=water_years,
@@ -171,6 +184,7 @@ def generate_summary() -> None:
         subdomain=subdomain,
         html_plots_dir=html_plots_dir,
     )
+    _report_external_artifact("plot", plot_file)
 
 
 def generate_flux() -> None:
@@ -196,7 +210,7 @@ def generate_flux() -> None:
     poi_id = _get_valid_poi()
     if poi_id is None:
         return
-    oopla(
+    plot_file = oopla(
         out_dir=out_dir,
         param_filename=param_filename,
         water_years=water_years,
@@ -213,6 +227,7 @@ def generate_flux() -> None:
         subdomain=subdomain,
         html_plots_dir=html_plots_dir,
     )
+    _report_external_artifact("plot", plot_file)
 
 
 def on_generate_clicked(b: widgets.Button) -> None:
@@ -316,12 +331,7 @@ def on_map_clicked(b: widgets.Button) -> None:
                 HW_basins=HW_basins,
                 output_netcdf_filename=output_netcdf_filename,
             )
-
-            # Display the result
-            if isinstance(map_file, str):
-                display(IFrame(src=map_file, width="100%", height="500px"))
-            else:
-                display(map_file)
+            _report_external_artifact("map", map_file)
 
         except (KeyError, IndexError):
             warn(
@@ -367,10 +377,7 @@ def on_plot_clicked(b: widgets.Button) -> None:
                 out_dir=out_dir,
                 subdomain=subdomain,
             )
-            if isinstance(fplot, str):
-                display(IFrame(src=fplot, width="100%", height="500px"))
-            else:
-                display(fplot)
+            _report_external_artifact("plot", fplot)
 
         except (KeyError, IndexError):
             warn(

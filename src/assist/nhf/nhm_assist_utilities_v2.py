@@ -1,6 +1,6 @@
 import pathlib as pl
 import warnings
-import dataretrieval.nwis as nwis
+#import dataretrieval.nwis as nwis
 from dataretrieval import waterdata
 
 import geopandas as gpd
@@ -113,13 +113,13 @@ def bynsegment_parameter_list(param_filename):
     return bynsegment_params
 
 
-# Reads/Creates NWIS stations file if not already created
-def fetch_nwis_gage_info(
+# Reads/Creates waterdata stations file if not already created
+def fetch_waterdata_gage_info(
     *,
     root_dir,
     model_dir,
     control_file_name,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     hru_gdf,
     seg_gdf,
 ):
@@ -134,8 +134,8 @@ def fetch_nwis_gage_info(
         Path object to the subdomain directory.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gage_nobs_min : int
-        Minimum number of days for NWIS gage to be considered as potential poi.
+    waterdata_gage_nobs_min : int
+        Minimum number of days for waterdata gage to be considered as potential poi.
     hru_gdf : geopandas GeoDataFrame()
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
     seg_gdf : geopandas GeoDataFrame()
@@ -143,11 +143,11 @@ def fetch_nwis_gage_info(
 
     Returns
     -------
-    nwis_gage_info_aoi : pandas DataFrame()
-        DataFrame containing gage information for gages found in NWIS.
+    waterdata_gage_info_aoi : pandas DataFrame()
+        DataFrame containing gage information for gages found in waterdata.
     """
 
-    nwis_gages_file = model_dir / "NWISgages.csv"
+    waterdata_gages_file = model_dir / "metadata/WaterDataGages.csv"
     control = pws.Control.load_prms(
         pl.Path(model_dir / control_file_name, warn_unused_options=False)
     )
@@ -164,7 +164,7 @@ def fetch_nwis_gage_info(
     """
     crs = 4326
 
-    # Make a list of the state abbreviations the subdomain intersects for NWIS queries
+    # Make a list of the state abbreviations the subdomain intersects for waterdata queries
     aoi_bb = hru_gdf.total_bounds.tolist()
 
     """
@@ -175,7 +175,7 @@ def fetch_nwis_gage_info(
     st_date = "1900-01-01"# pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
     en_date = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
-    if nwis_gages_file.exists():
+    if waterdata_gages_file.exists():
         col_names = [
             "poi_agency",
             "poi_gage_id",
@@ -198,8 +198,8 @@ def fetch_nwis_gage_info(
             zip(col_names, col_types)
         )  # Creates a dictionary of column header and datatype called below.
 
-        nwis_gage_info_aoi = pd.read_csv(
-            nwis_gages_file,
+        waterdata_gage_info_aoi = pd.read_csv(
+            waterdata_gages_file,
             dtype=cols,
             usecols=[
                 "poi_agency",
@@ -284,7 +284,7 @@ def fetch_nwis_gage_info(
             domain_locations.geometry.x
         )  # need this for the notebooks
 
-        nwis_gage_info_aoi = (
+        waterdata_gage_info_aoi = (
             domain_locations.set_index("monitoring_location_number", drop=False)
             .set_crs("EPSG:4326")
             .to_crs(crs)
@@ -301,15 +301,15 @@ def fetch_nwis_gage_info(
         }
         include_cols = list(field_map.keys())
 
-        nwis_gage_info_aoi = nwis_gage_info_aoi.loc[:, include_cols]
-        nwis_gage_info_aoi.rename(columns=field_map, inplace=True)
-        nwis_gage_info_aoi.set_index("poi_gage_id", inplace=True)
-        nwis_gage_info_aoi = nwis_gage_info_aoi.sort_index()
-        nwis_gage_info_aoi.reset_index(inplace=True)
+        waterdata_gage_info_aoi = waterdata_gage_info_aoi.loc[:, include_cols]
+        waterdata_gage_info_aoi.rename(columns=field_map, inplace=True)
+        waterdata_gage_info_aoi.set_index("poi_gage_id", inplace=True)
+        waterdata_gage_info_aoi = waterdata_gage_info_aoi.sort_index()
+        waterdata_gage_info_aoi.reset_index(inplace=True)
 
 
 
-    return nwis_gage_info_aoi
+    return waterdata_gage_info_aoi
 
 
 def make_plots_par_vals(
@@ -599,83 +599,82 @@ def make_plots_par_vals(
                     with open(Folium_maps_dir / f"{par}_{poi_gage_id}.txt", "w") as f:
                         f.write(text_div)
 
-def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir):
+def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium_maps_dir, max_workers=8):
     """This function makes plots and saved with as html.txt files to be embedded in the hf_map
     by notebook 2_model_hydrofabric_visualization.ipynb used to evaluate ti gages shown in the
     map have desirable lengths of record to include the gage as a poi in the parameter file.
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from tqdm.auto import tqdm
 
-    # start_date = pd.to_datetime(str(control.start_time)).strftime("%m/%d/%Y")
-    # end_date = pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
-
-    for cpoi in gages_df.index:
+    def _make_single_plot(cpoi):
         obs_plot_file = Folium_maps_dir / f"{cpoi}_streamflow_obs.txt"
         if obs_plot_file.exists():
-            con.print(
-                f"{cpoi}_streamflow_obs.txt file exists. To make a new plot, delete the existing plot and rerun this cell."
-            )
-        else:
-            ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
-            ds_sub_df = ds_sub.to_dataframe()
-            # ds_sub_df.dropna(subset=["discharge"], inplace=True)
-            ds_sub_df.reset_index(inplace=True, drop=False)
-            # print(ds_sub_df)
+            return f"{cpoi}_streamflow_obs.txt file exists."
 
-            fig = px.line(
-                ds_sub_df,
-                x="time",
-                y="discharge",
-                markers=False,
-                # custom_data=nhru_params_nmonths_sel_plot_df[["nhm_id"]],
-                # color="nhm_id",
-                labels={
-                    "discharge": "Discharge",
-                    "time": "Date",
-                },
-            )
+        ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
+        ds_sub_df = ds_sub.to_dataframe()
+        ds_sub_df.reset_index(inplace=True, drop=False)
 
-            fig.update_layout(
-                title_text=f"{cpoi} daily streamflow observations",
-                width=500,
-                height=300,
-                showlegend=True,
-                # legend=dict(orientation="h",yanchor="bottom",y=1.02, xanchor="right", x=1),
-                font=dict(family="Arial", size=10, color="#7f7f7f"),  # font color
-                paper_bgcolor="linen",
-                plot_bgcolor="white",
-            )
+        fig = px.line(
+            ds_sub_df,
+            x="time",
+            y="discharge",
+            markers=False,
+            labels={
+                "discharge": "Discharge",
+                "time": "Date",
+            },
+        )
 
-            fig.update_yaxes(title_text="Discharge, cfs")
-            fig.update_xaxes(title_text="Date")
+        fig.update_layout(
+            title_text=f"{cpoi} daily streamflow observations",
+            width=500,
+            height=300,
+            showlegend=True,
+            font=dict(family="Arial", size=10, color="#7f7f7f"),
+            paper_bgcolor="linen",
+            plot_bgcolor="white",
+        )
 
-            fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
-            fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(title_text="Discharge, cfs")
+        fig.update_xaxes(title_text="Date")
 
-            fig.update_xaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
-            fig.update_yaxes(
-                showline=True,
-                linewidth=2,
-                linecolor="black",
-                gridcolor="lightgrey",
-            )
+        fig.update_xaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
+        fig.update_yaxes(ticks="inside", tickwidth=2, tickcolor="black", ticklen=10)
 
-            fig.update_xaxes(autorange=True)
+        fig.update_xaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
+        fig.update_yaxes(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            gridcolor="lightgrey",
+        )
 
-            # fig.show()
+        fig.update_xaxes(autorange=True)
 
-            # Creating the html code for the plotly plot
-            text_div = plotly.offline.plot(
-                fig, include_plotlyjs=False, output_type="div"
-            )
+        text_div = plotly.offline.plot(
+            fig, include_plotlyjs=False, output_type="div"
+        )
 
-            # Saving the plot as txt file with the html code
-            with open(obs_plot_file, "w") as f:
-                f.write(text_div)
+        with open(obs_plot_file, "w") as f:
+            f.write(text_div)
+
+        return f"{cpoi} plot created."
+
+    poi_list = gages_df.index.tolist()
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_make_single_plot, cpoi): cpoi for cpoi in poi_list}
+        with tqdm(total=len(poi_list), desc="Generating obs plots") as pbar:
+            for future in as_completed(futures):
+                future.result()
+                pbar.update(1)
 
 def create_append_gages_to_param_file(
     *,
@@ -688,7 +687,7 @@ def create_append_gages_to_param_file(
     Make an editable .csv file from the gages_df, so that users can append new poigage (dimensioned) parameters to
     the myparam.param file, and returns a pandas DataFrame of the written .csv.
 
-    First, a geopandas GeoDataFrame is made for the gages_df using the lat/lon from the gages_df (NWIS or user supplied).
+    First, a geopandas GeoDataFrame is made for the gages_df using the lat/lon from the gages_df (WaterData or user supplied).
     Projection is set to crs=4326 and may introduce some spatial innaccuracy for older gages.
     """
     gages_gdf = gpd.GeoDataFrame(
@@ -815,10 +814,15 @@ def delete_notebook_output_files(
         # for f in files:
         #     os.remove(f)
     
-    files =['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    files =['default_gages.csv', 'append_gages_to_param_file.csv']
     for file in files:
         if (model_dir / file).exists():
             os.remove(model_dir / file)
+
+    files =['fmi_gages_info.csv', 'WaterDataGages.csv']
+    for file in files:
+        if (model_dir / "metadata" / file).exists():
+            os.remove(model_dir / "metadata" / file)
     return
 
 
@@ -832,9 +836,10 @@ def load_subdomain_config(root_dir):
         "Folium_maps_dir": pl.Path(pp["Folium_maps_dir"]),
         "model_dir": pl.Path(pp["model_dir"]),
         "param_filename": pl.Path(pp["param_filename"]),
+        "resource_gages_file": pl.Path(pp["resource_gages_file"]),
         "gages_file": pl.Path(pp["gages_file"]),
         "default_gages_file": pl.Path(pp["default_gages_file"]),
-        "nwis_gages_file": pl.Path(pp["nwis_gages_file"]),
+        "waterdata_gages_file": pl.Path(pp["waterdata_gages_file"]),
         "output_netcdf_filename": pl.Path(pp["output_netcdf_filename"]),
         "NHM_dir": pl.Path(pp["NHM_dir"]),
         "out_dir": pl.Path(pp["out_dir"]),
@@ -846,7 +851,7 @@ def load_subdomain_config(root_dir):
         "GIS_format": pp["GIS_format"],
         "param_file": pp["param_file"],
         "control_file_name": pp["control_file_name"],
-        "nwis_gage_nobs_min": pp["nwis_gage_nobs_min"],
+        "waterdata_gage_nobs_min": pp["waterdata_gage_nobs_min"],
         "nhru_nmonths_params": pp["nhru_nmonths_params"],
         "nhru_params": pp["nhru_params"],
         "selected_output_variables": pp["selected_output_variables"],
@@ -868,7 +873,7 @@ def create_append_gages_to_param_file_v2(
     Make an editable .csv file from the gages_df, so that users can append new poigage (dimensioned) parameters to
     the myparam.param file, and returns a pandas DataFrame of the written .csv.
 
-    First, a geopandas GeoDataFrame is made for the gages_df using the lat/lon from the gages_df (NWIS or user supplied).
+    First, a geopandas GeoDataFrame is made for the gages_df using the lat/lon from the gages_df (WaterData or user supplied).
     Projection is set to crs=4326 and may introduce some spatial innaccuracy for older gages.
     """
     gages_gdf = gpd.GeoDataFrame(
@@ -922,11 +927,12 @@ def create_append_gages_to_param_file_v2(
         model_dir / "append_gages_to_param_file.csv", index=False
     )
 
-def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
+def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
     """
+     
     This is used to find metadata needed for gages in the list provided.
 
-    First, metadata is sought for in the resource (suuplemental) gages file (if one exists).
+    First, metadata is sought for in the resource (supplemental) gages file (if one exists).
     Second, location data specifically is sought for in the usgs_nldi_gages database,
     Third, metadata is sought for in USGS WaterData database.
 
@@ -934,12 +940,23 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
     npoigages_data_dir = root_dir / "data_dependencies/"
 
     dest_dir.mkdir(parents=True, exist_ok=True)
+        
+    nan_list = [np.nan] * len(gages_list)  # Initialize empty list
+    gages_df = pd.DataFrame(
+        {
+            "poi_gage_id": gages_list,
+            "poi_agency": nan_list,
+            "poi_name": nan_list,
+            "latitude": nan_list,
+            "longitude": nan_list,
+            "drainage_area": nan_list,
+            "drainage_area_contrib": nan_list,
+        }
+    )  # Initialize empty datafame
 
-    info_file_path = dest_dir / f"{info_file_name}.csv"
-    info_supplement_path = dest_dir / f"{info_file_name}_supplemental.csv"
-    
-    if info_file_path.exists():
-        col_names = [
+    # Check for resource (supplemental) file, if present, append information to gages_df
+    if resource_file_path.exists():
+        col_names_1 = [
             "poi_gage_id",
             "poi_agency",
             "poi_name",
@@ -948,84 +965,67 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             "drainage_area",
             "drainage_area_contrib",
         ]
-        col_types = [np.str_, np.str_, np.str_, float, float, float, float]
-        cols = dict(
-            zip(col_names, col_types)
-        )
-        gages_df = pd.read_csv(info_file_path, dtype=cols)
+        col_types_1 = [np.str_, np.str_, np.str_, float, float, float, float]
+        cols = dict(zip(col_names_1, col_types_1))
+        resource_df = pd.read_csv(resource_file_path, dtype=cols)
 
-    else:
-    
-        nan_list = [np.nan] * len(gages_list)  # Initialize empty list
-        gages_df = pd.DataFrame(
-            {
-                "poi_gage_id": gages_list,
-                "poi_agency": nan_list,
-                "poi_name": nan_list,
-                "latitude": nan_list,
-                "longitude": nan_list,
-                "drainage_area": nan_list,
-                "drainage_area_contrib": nan_list,
-            }
-        )  # Initialize empty datafame
-    
-        # Check for resource (supplemental) file, if present, append information to gages_df
-        if info_supplement_path.exists():
-            col_names_1 = [
-                "poi_gage_id",
-                "poi_agency",
-                "poi_name",
-                "latitude",
-                "longitude",
-                "drainage_area",
-                "drainage_area_contrib",
+        gages_lacking_info_list = []
+        gages_found_info_list = []
+        check_list = resource_df["poi_gage_id"].to_list()
+
+        if len(check_list) > 0:
+            # print(
+            #     f"Searching {resource_file_path} for meta data."
+            # )
+            for idx, row in gages_df.iterrows():
+                columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+                item_lacking_list = []
+                item_found_list = []
+                for item in columns:
+                    if pd.isnull(row[item]):
+                        item_lacking_list.append(item)
+                        gages_lacking_info_list.append(row["poi_gage_id"])
+                        new_poi_id = row["poi_gage_id"]
+                        if new_poi_id in check_list:
+                            gages_found_info_list.append(row["poi_gage_id"])
+                            item_found_list.append(item)
+                            new_item = resource_df.loc[
+                                resource_df.poi_gage_id == new_poi_id, item
+                            ].values[0]
+                            gages_df.loc[idx, item] = new_item
+                        else:
+                            pass
+
+            lacking_info_list = list(set(gages_lacking_info_list))
+            gages_found_info_list = list(set(gages_found_info_list))
+            still_lacking_info_list = [
+                x for x in lacking_info_list if x not in gages_found_info_list
             ]
-            col_types_1 = [np.str_, np.str_, np.str_, float, float, float, float]
-            cols = dict(zip(col_names_1, col_types_1))
-            info_supplement_df = pd.read_csv(info_supplement_path, dtype=cols)
-    
-            gages_lacking_info_list = []
-            gages_found_info_list = []
-            check_list = info_supplement_df["poi_gage_id"].to_list()
-    
-            if len(check_list) > 0:
-                print(
-                    f"The {info_file_name}_supplemental.csv exists and has {len(check_list)} gages."
-                )
-                for idx, row in gages_df.iterrows():
-                    columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-                    item_lacking_list = []
-                    item_found_list = []
-                    for item in columns:
-                        if pd.isnull(row[item]):
-                            item_lacking_list.append(item)
-                            gages_lacking_info_list.append(row["poi_gage_id"])
-                            new_poi_id = row["poi_gage_id"]
-                            if new_poi_id in check_list:
-                                gages_found_info_list.append(row["poi_gage_id"])
-                                item_found_list.append(item)
-                                new_item = info_supplement_df.loc[
-                                    info_supplement_df.poi_gage_id == new_poi_id, item
-                                ].values[0]
-                                gages_df.loc[idx, item] = new_item
-                            else:
-                                pass
-    
-                lacking_info_list = list(set(gages_lacking_info_list))
-                gages_found_info_list = list(set(gages_found_info_list))
-                still_lacking_info_list = [
-                    x for x in lacking_info_list if x not in gages_found_info_list
-                ]
-    
-                print(
-                    f"{len(gages_found_info_list)} gages found needed metadata in {info_file_name}_supplemental.csv"
-                )
-            else:
-                print(f"The {info_file_name}_supplemental.csv exists but is empty.")
-    
+
+            print(
+                f"{len(gages_found_info_list)} of {len(gages_list)} gages found metadata in {resource_file_path}",
+            )
         else:
             pass
+
+    else:
+        print(f"No gage meta data resource file provided at {resource_file_path}.",
+             )
+
+    ''' 
+    Mask for items still missing metadata
+    '''
     
+    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    mask_missing = gages_df[cols].isnull().any(axis=1)
+    missing_meta_df = gages_df.loc[mask_missing]
+
+    if not missing_meta_df.empty:
+        """
+        First, Check the NLDI json for missing data in the dependencies folder.
+        These data are said to have the most acurate location information, so stop there first.
+        """
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching NLDI database.")
         ##### Check NLDI database for missing gage info
         file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
         nldi_gdf = gpd.read_file(file_path)  # or .geojson
@@ -1071,7 +1071,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
         gages_found_info_list = []
         check_list = nldi_gdf["poi_gage_id"].to_list()
     
-        for idx, row in gages_df.iterrows():
+        for idx, row in gages_df.loc[mask_missing].iterrows():
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             item_lacking_list = []
             item_found_list = []
@@ -1101,13 +1101,22 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
         )
     
+    ''' 
+    Mask for items still missing metadata
+    '''
+    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    mask_missing = gages_df[cols].isnull().any(axis=1)
+    missing_meta_df = gages_df.loc[mask_missing]
+
+    if not missing_meta_df.empty:
+        print(f"{len(missing_meta_df)} gages missing metadata. Searching USGS WaterData database.")
         # Get monitoring location information from USGS WaterData
         """Now, get the site infomation for the new list
                 used the chunk format from the example: 
                 https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
         """
         chunk_size = 100
-        site_list = gages_df["poi_gage_id"].unique().tolist()
+        site_list = gages_df.loc[mask_missing]["poi_gage_id"].unique().tolist()
     
         chunks = [
             site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
@@ -1134,7 +1143,7 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
                 if not chunk_data.empty:
                     domain_locations = pd.concat([domain_locations, chunk_data])
                 else:
-                    print("No info in NWIS.")
+                    print("No info in WaterData.")
     
             except Exception as e:
                 print(f"Chunk failed: {e}")
@@ -1146,8 +1155,8 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
                 domain_locations.geometry.x
             )  # need this for the notebooks
     
-            waterdata_info = None
-            waterdata_info = (
+            waterdata_gage_info = None
+            waterdata_gage_info = (
                 domain_locations.set_index(
                     "monitoring_location_number", drop=False
                 ).set_crs("EPSG:4326")
@@ -1166,17 +1175,17 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             }
             include_cols = list(field_map.keys())
     
-            waterdata_info = waterdata_info.loc[:, include_cols]
-            waterdata_info.rename(columns=field_map, inplace=True)
-            waterdata_info.set_index("poi_gage_id", inplace=True)
-            waterdata_info = waterdata_info.sort_index()
-            waterdata_info.reset_index(inplace=True)
+            waterdata_gage_info = waterdata_gage_info.loc[:, include_cols]
+            waterdata_gage_info.rename(columns=field_map, inplace=True)
+            waterdata_gage_info.set_index("poi_gage_id", inplace=True)
+            waterdata_gage_info = waterdata_gage_info.sort_index()
+            waterdata_gage_info.reset_index(inplace=True)
     
             gages_lacking_info_list = []
             gages_found_info_list = []
-            check_list = waterdata_info["poi_gage_id"].to_list()
+            check_list = waterdata_gage_info["poi_gage_id"].to_list()
     
-            for idx, row in gages_df.iterrows():
+            for idx, row in gages_df.loc[mask_missing].iterrows():
                 columns = [
                     "latitude",
                     "longitude",
@@ -1195,8 +1204,8 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
                         if new_poi_id in check_list:
                             gages_found_info_list.append(row["poi_gage_id"])
                             item_found_list.append(item)
-                            new_item = waterdata_info.loc[
-                                waterdata_info.poi_gage_id == new_poi_id, item
+                            new_item = waterdata_gage_info.loc[
+                                waterdata_gage_info.poi_gage_id == new_poi_id, item
                             ].values[0]
                             gages_df.loc[idx, item] = new_item
                         else:
@@ -1209,211 +1218,375 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             ]
     
             print(
-                f"{len(gages_found_info_list)} gages found metadata in USGS WaterData database.",
+                f"{len(gages_found_info_list)} gages of {len(gages_df.loc[mask_missing])}found metadata in USGS WaterData database.",
                 # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
             )
         else:
-            print("Gage metadata not found in USGS WaterData database.")
+            pass
+            # print("Gage metadata not found in USGS WaterData database.")
         # Have to make code for if exists, check for, and then append so we don't overwrite
-        cols = ["latitude", "longitude", "poi_name", "poi_agency"]
-        gages_missing_info_df = gages_df.loc[gages_df[cols].isna().any(axis=1)]
+
+
+    #drop from defualt missing data
+    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    mask_missing = gages_df[cols].isnull().any(axis=1)
+    missing_meta_df = gages_df.loc[mask_missing]
+
+    if not missing_meta_df.empty:
+        _list = list(set(gages_df.loc[mask_missing]["poi_gage_id"]))
         print(
-            f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the {info_file_name}_supplemental.csv",
-            "User must complete needed information and rerun this notebook.",
+            f"Gage(s) {_list} lacks metadata. Add metadata to metadata/resource_gages.csv and rerun notebook."
         )
-    
-        if info_supplement_path.exists():
-            existing_resource_df = info_supplement_df.copy()
-            gages_missing_info_df = pd.concat(
-                [existing_resource_df, gages_missing_info_df], ignore_index=True
-            )
-            gages_missing_info_df.to_csv(info_supplement_path, index=False)
+    else:
+        print("All gages have required metadata.")
+        
+    if resource_file_path.exists():
+        if not missing_meta_df.empty:
+            resource_df = pd.concat([resource_df, missing_meta_df])
         else:
-            if not gages_missing_info_df.empty:
-                gages_missing_info_df.to_csv(info_supplement_path, index=False)
-            else:
-                print(
-                    "All gages in the gage list provided have all required metadata.",
-                    f"see gage meta data file at {dest_dir}/npoigages_info.csv",
-                )
-    
-        gages_df.to_csv(dest_dir / f"{info_file_name}.csv", index=False)
+            pass
+    else:
+        resource_df = gages_df
+        resource_df.to_csv(resource_file_path, index=False)
+        
+    # cols = ["latitude", "longitude", "poi_name", "poi_agency"]
+    # gages_missing_info_df = gages_df.loc[gages_df[cols].isna().any(axis=1)]
+    # print(
+    #     f"{len(gages_missing_info_df)} gages lacking metadata will be appended to the npoigages_info_supplemental.csv",
+    #     "User must complete needed information and rerun this notebook.",
+    # )
+
+    # if info_supplement_path.exists():
+    #     existing_resource_df = info_supplement_df.copy()
+    #     gages_missing_info_df = pd.concat(
+    #         [existing_resource_df, gages_missing_info_df], ignore_index=True
+    #     )
+    #     gages_missing_info_df.to_csv(info_supplement_path, index=False)
+    # else:
+    # if not gages_missing_info_df.empty:
+    #     gages_missing_info_df.to_csv(info_supplement_path, index=False)
+    #     print(f"Gages are missing metadata. Metadata for gages in poigages_info_supplemental.csv must be found and added to the poigages_info.csv file before continuing the workflow.")
+    # else:
+    #     print(
+    #         "All gages in the gage list provided have all required metadata.",
+    #         f"see gage meta data file at {dest_dir}/npoigages_info.csv",
+    #     )
+
+    #gages_df.to_csv(dest_dir / f"{info_file_name}.csv", index=False)
 
     return gages_df
 
 def fetch_ref_npoigages_info(root_dir, model_dir, hru_gdf):
     #Consider (Eddie) instead of using hru_gdf, just using a merge with the npoi_gages
 
-    # list your three directories here (relative or absolute)
-    dirs = [
-        root_dir / "data_dependencies" / "ref_gages" / "region17",
-        root_dir / "data_dependencies" / "ref_gages" / "region16",
-        root_dir / "data_dependencies" / "ref_gages" / "region18",
-    ]
-
-    # collect all matching files from the three directories
-    files = []
-    for d in dirs:
-        # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
-        files.extend(glob.glob(os.path.join(d, "output_*.txt")))
-
-    # extract the numeric part after "_" and before ".txt"
-    monitoring_station_number_list = []
-    for f in files:
-        base = os.path.basename(f)  # e.g. "output_10396000.txt"
-        num_str = base.split("_")[1].split(".")[0]  # "10396000"
-        monitoring_station_number_list.append(
-            (num_str)
-        )  # or keep as string if you prefer
-
-    all_ref_npoigages_info = find_missing_gage_info(
-        root_dir,
-        root_dir / "data_dependencies" / "ref_gages",
-        monitoring_station_number_list,
-        "ref_npoigages_info",
-    )
-
-    # Make a geodataframe from the info df
-    gdf = gpd.GeoDataFrame(
-        all_ref_npoigages_info,
-        geometry=gpd.points_from_xy(
-            all_ref_npoigages_info["longitude"], all_ref_npoigages_info["latitude"]
-        ),
-        crs="EPSG:4326",  # WGS84 lat/lon
-    )
-
-    # make sure CRS is projected (meters/feet) to add buffer distances in real units
-    hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
-    gdf_proj = gdf.to_crs(hru_proj.crs)
-
-    # create a buffer around hru_gdf (domain), 1000 meters, to get gages that intersect domain
-    # note: in the future, we may want to just use the seg_gdf for this to exclude gages in the domain not on the flow network
-    hru_buffered = hru_proj.buffer(1000)
-
-    # clip using the buffered mask to the model domain
-    gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
-
-    # (optional) go back to original CRS and drop the "geometry" column
-    gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
-    gdf_clipped.drop(columns={"geometry"}, inplace=True)
-
     ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
-    gdf_clipped.to_csv(ref_npoigages_info_file_path, index=False)
+
+    if ref_npoigages_info_file_path.exists():
+        col_names = [
+            "poi_agency",
+            "poi_gage_id",
+            "poi_name",
+            "latitude",
+            "longitude",
+            "drainage_area",
+            "drainage_area_contrib",
+        ]
+        col_types = [
+            np.str_,
+            np.str_,
+            np.str_,
+            float,
+            float,
+            float,
+            float,
+        ]
+        cols = dict(
+            zip(col_names, col_types)
+        )  # Creates a dictionary of column header and datatype called below.
+
+        df_clipped = pd.read_csv(
+            ref_npoigages_info_file_path,
+            dtype=cols,
+            usecols=[
+                "poi_agency",
+                "poi_gage_id",
+                "poi_name",
+                "latitude",
+                "longitude",
+                "drainage_area",
+                "drainage_area_contrib",
+            ],
+        )
+
+        # Make a geodataframe from the info df
+        gdf_clipped= gpd.GeoDataFrame(
+            df_clipped,
+            geometry=gpd.points_from_xy(
+                df_clipped["longitude"],
+                df_clipped["latitude"],
+            ),
+            crs="EPSG:4326",  # WGS84 lat/lon
+        )
+    else:
+        
+        # list your three directories here (relative or absolute)
+        dirs = [
+            root_dir / "data_dependencies" / "ref_gages" / "region17",
+            root_dir / "data_dependencies" / "ref_gages" / "region16",
+            root_dir / "data_dependencies" / "ref_gages" / "region18",
+        ]
+    
+        # collect all matching files from the three directories
+        files = []
+        for d in dirs:
+            # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
+            files.extend(glob.glob(os.path.join(d, "output_*.txt")))
+    
+        # extract the numeric part after "_" and before ".txt"
+        monitoring_station_number_list = []
+        for f in files:
+            base = os.path.basename(f)  # e.g. "output_10396000.txt"
+            num_str = base.split("_")[1].split(".")[0]  # "10396000"
+            monitoring_station_number_list.append(
+                (num_str)
+            )  # or keep as string if you prefer
+    
+        all_ref_npoigages_info = find_missing_gage_info(
+            root_dir,
+            root_dir / "data_dependencies" / "ref_gages",
+            monitoring_station_number_list,
+            root_dir / "hydrofabric_domain_data/OHM_2026_02_21/npoigages_data/resource_gages.csv",
+        )
+    
+        # Make a geodataframe from the info df
+        gdf = gpd.GeoDataFrame(
+            all_ref_npoigages_info,
+            geometry=gpd.points_from_xy(
+                all_ref_npoigages_info["longitude"], all_ref_npoigages_info["latitude"]
+            ),
+            crs="EPSG:4326",  # WGS84 lat/lon
+        )
+    
+        # make sure CRS is projected (meters/feet) to add buffer distances in real units
+        hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
+        gdf_proj = gdf.to_crs(hru_proj.crs)
+    
+        # create a buffer around hru_gdf (domain), 1000 meters, to get gages that intersect domain
+        # note: in the future, we may want to just use the seg_gdf for this to exclude gages in the domain not on the flow network
+        hru_buffered = hru_proj.buffer(1000)
+    
+        # clip using the buffered mask to the model domain
+        gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
+    
+        # (optional) go back to original CRS and drop the "geometry" column
+        gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
+        gdf_clipped.drop(columns={"geometry"}, inplace=True)
+    
+        ref_npoigages_info_file_path = model_dir / "metadata" / "ref_npoigages_info.csv"
+        gdf_clipped.to_csv(ref_npoigages_info_file_path, index=False)
 
     return gdf_clipped
 
 
 def fetch_non_ref_npoigages_info(root_dir, model_dir, hru_gdf):
 
-    # list your three directories here (relative or absolute)
-    dirs = [
-        root_dir / "data_dependencies" / "non_ref_gages" / "region17",
-        root_dir / "data_dependencies" / "non_ref_gages" / "region16",
-        root_dir / "data_dependencies" / "non_ref_gages" / "region18",
-    ]
-
-    # collect all matching files from the three directories
-    files = []
-    for d in dirs:
-        # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
-        files.extend(glob.glob(os.path.join(d, "output_*.txt")))
-
-    # extract the numeric part after "_" and before ".txt"
-    monitoring_station_number_list = []
-    for f in files:
-        base = os.path.basename(f)  # e.g. "output_10396000.txt"
-        num_str = base.split("_")[1].split(".")[0]  # "10396000"
-        monitoring_station_number_list.append(
-            (num_str)
-        )  # or keep as string if you prefer
-
-    all_non_ref_npoigages_info = find_missing_gage_info(
-        root_dir,
-        root_dir / "data_dependencies" / "non_ref_gages",
-        monitoring_station_number_list,
-        "non_ref_npoigages_info",
-    )
-
-    # Make a geodataframe from the info df
-    gdf = gpd.GeoDataFrame(
-        all_non_ref_npoigages_info,
-        geometry=gpd.points_from_xy(
-            all_non_ref_npoigages_info["longitude"],
-            all_non_ref_npoigages_info["latitude"],
-        ),
-        crs="EPSG:4326",  # WGS84 lat/lon
-    )
-
-    # make sure CRS is projected (meters/feet) to add buffer distances in real units
-    hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
-    gdf_proj = gdf.to_crs(hru_proj.crs)
-
-    # create a buffer around the mask, 1000 meters, to get gages that may be downstream from outlet segments
-    hru_buffered = hru_proj.buffer(1000)
-
-    # clip using the buffered mask to the model domain
-    gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
-
-    # (optional) go back to original CRS and drop the "geometry" column
-    gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
-    gdf_clipped.drop(columns={"geometry"}, inplace=True)
-
     non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
-    gdf_clipped.to_csv(non_ref_npoigages_info_file_path, index=False)
+
+    if non_ref_npoigages_info_file_path.exists():
+        col_names = [
+            "poi_agency",
+            "poi_gage_id",
+            "poi_name",
+            "latitude",
+            "longitude",
+            "drainage_area",
+            "drainage_area_contrib",
+        ]
+        col_types = [
+            np.str_,
+            np.str_,
+            np.str_,
+            float,
+            float,
+            float,
+            float,
+        ]
+        cols = dict(
+            zip(col_names, col_types)
+        )  # Creates a dictionary of column header and datatype called below.
+
+        df_clipped = pd.read_csv(
+            non_ref_npoigages_info_file_path,
+            dtype=cols,
+            usecols=[
+                "poi_agency",
+                "poi_gage_id",
+                "poi_name",
+                "latitude",
+                "longitude",
+                "drainage_area",
+                "drainage_area_contrib",
+            ],
+        )
+
+        # Make a geodataframe from the info df
+        gdf_clipped= gpd.GeoDataFrame(
+            df_clipped,
+            geometry=gpd.points_from_xy(
+                df_clipped["longitude"],
+                df_clipped["latitude"],
+            ),
+            crs="EPSG:4326",  # WGS84 lat/lon
+        )
+        
+    else:
+        # list your three directories here (relative or absolute)
+        dirs = [
+            root_dir / "data_dependencies" / "non_ref_gages" / "region17",
+            root_dir / "data_dependencies" / "non_ref_gages" / "region16",
+            root_dir / "data_dependencies" / "non_ref_gages" / "region18",
+        ]
+    
+        # collect all matching files from the three directories
+        files = []
+        for d in dirs:
+            # adjust pattern if needed, e.g. "*.txt" or "output_*.txt"
+            files.extend(glob.glob(os.path.join(d, "output_*.txt")))
+    
+        # extract the numeric part after "_" and before ".txt"
+        monitoring_station_number_list = []
+        for f in files:
+            base = os.path.basename(f)  # e.g. "output_10396000.txt"
+            num_str = base.split("_")[1].split(".")[0]  # "10396000"
+            monitoring_station_number_list.append(
+                (num_str)
+            )  # or keep as string if you prefer
+    
+        all_non_ref_npoigages_info = find_missing_gage_info(
+            root_dir,
+            root_dir / "data_dependencies" / "non_ref_gages",
+            monitoring_station_number_list,
+            root_dir / "hydrofabric_domain_data/OHM_2026_02_21/npoigages_data/resource_gages.csv",
+        )
+    
+        # Make a geodataframe from the info df
+        gdf = gpd.GeoDataFrame(
+            all_non_ref_npoigages_info,
+            geometry=gpd.points_from_xy(
+                all_non_ref_npoigages_info["longitude"],
+                all_non_ref_npoigages_info["latitude"],
+            ),
+            crs="EPSG:4326",  # WGS84 lat/lon
+        )
+    
+        # make sure CRS is projected (meters/feet) to add buffer distances in real units
+        hru_proj = hru_gdf.to_crs("EPSG:3857")  # example projected CRS
+        gdf_proj = gdf.to_crs(hru_proj.crs)
+    
+        # create a buffer around the mask, 1000 meters, to get gages that may be downstream from outlet segments
+        hru_buffered = hru_proj.buffer(1000)
+    
+        # clip using the buffered mask to the model domain
+        gdf_clipped = gpd.clip(gdf_proj, hru_buffered)
+    
+        # (optional) go back to original CRS and drop the "geometry" column
+        gdf_clipped = gdf_clipped.to_crs(hru_gdf.crs)
+        gdf_clipped.drop(columns={"geometry"}, inplace=True)
+    
+        non_ref_npoigages_info_file_path = model_dir / "metadata" / "non_ref_npoigages_info.csv"
+        gdf_clipped.to_csv(non_ref_npoigages_info_file_path, index=False)
 
     return gdf_clipped
 
 
-def fetch_FMI_npoigages_info(root_dir, model_dir, poi_df):
-    #### READ FMI table (.csv) for selected gages
-    fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
-    
-    cols = {"gageid": np.str_,
-            "name": np.str_,
-            "comid": np.int_,
-            "area_mi2": float,
-            "oregon": np.str_,
-            "owrd_adminbasin_nbr": np.int_,
-            "q0001_annual_cfs": float,
-            "q0001c_jun_cfs": float,
-            "q0001c_jul_cfs": float,
-            "q0001c_aug_cfs": float,
-            "unitq_cfsmi2": float,
-            "q0001c_summer_cfs": float,
-            "dams_n": np.int_,
-            "pou_acres": float,
-            "nonag_npixel": np.int_,
-            "ag_npixel": np.int_,
-            "nid_norm_storage_acft": float,
-            "sw_withdrawal_acft": float,
-            "ag_pct": float,
-            "nid_storage_annual_pct": float,
-            "sw_withdrawal_summer_pct": float,
-            "sw_withdrawal_annual_pct": float,
-            "storage_index": np.int_,
-            "use_index": np.int_,
-            "flow_management_index": np.int_,
-           }
-    
-    # Creates a dictionary of column header and datatype called below.
-    
-    fmi_df = pd.read_csv(
-        fmi_df_file,
-        dtype=cols,
-        usecols=[
-            "gageid",
+def fetch_FMI_npoigages_info(root_dir, model_dir, gages_df):
+    fmi_gages_child_info_file_path = model_dir / "metadata" / "fmi_gages_info.csv"
+
+    if fmi_gages_child_info_file_path.exists():
+        col_names = [
+            "poi_agency",
+            "poi_gage_id",
             "storage_index",
             "use_index",
             "flow_management_index",
-        ],
-    )
-    fmi_gages_child = fmi_df.merge(
-        poi_df, left_on="gageid", right_on="poi_gage_id", how="inner"
-    )
-    fmi_gages_child.drop(columns={"gageid"}, inplace=True)
-    
-    print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
-    fmi_gages_child_info_file_path = model_dir / "metadata" / "fmi_gages_info.csv"
-    fmi_gages_child.to_csv(fmi_gages_child_info_file_path, index=False)
+            "poi_name",
+            "latitude",
+            "longitude",
+            "drainage_area",
+            "drainage_area_contrib",
+        ]
+        col_types = [
+            np.str_,
+            np.str_,
+            np.int_,
+            np.int_,
+            np.int_,
+            np.str_,
+            float,
+            float,
+            float,
+            float,
+        ]
+        cols = dict(
+            zip(col_names, col_types)
+        )  # Creates a dictionary of column header and datatype called below.
+
+        fmi_gages_child = pd.read_csv(
+            fmi_gages_child_info_file_path,
+            dtype=cols,
+        )
+        
+    else:
+
+        #### READ FMI table (.csv) for selected gages
+        fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+        
+        cols = {"gageid": np.str_,
+                "name": np.str_,
+                "comid": np.int_,
+                "area_mi2": float,
+                "oregon": np.str_,
+                "owrd_adminbasin_nbr": np.int_,
+                "q0001_annual_cfs": float,
+                "q0001c_jun_cfs": float,
+                "q0001c_jul_cfs": float,
+                "q0001c_aug_cfs": float,
+                "unitq_cfsmi2": float,
+                "q0001c_summer_cfs": float,
+                "dams_n": np.int_,
+                "pou_acres": float,
+                "nonag_npixel": np.int_,
+                "ag_npixel": np.int_,
+                "nid_norm_storage_acft": float,
+                "sw_withdrawal_acft": float,
+                "ag_pct": float,
+                "nid_storage_annual_pct": float,
+                "sw_withdrawal_summer_pct": float,
+                "sw_withdrawal_annual_pct": float,
+                "storage_index": np.int_,
+                "use_index": np.int_,
+                "flow_management_index": np.int_,
+               }
+        
+        # Creates a dictionary of column header and datatype called below.
+        
+        fmi_df = pd.read_csv(
+            fmi_df_file,
+            dtype=cols,
+            usecols=[
+                "gageid",
+                "storage_index",
+                "use_index",
+                "flow_management_index",
+            ],
+        )
+        fmi_gages_child = fmi_df.merge(
+            gages_df, left_on="gageid", right_on="poi_gage_id", how="inner"
+        )
+        fmi_gages_child.drop(columns={"gageid"}, inplace=True)
+        
+        print(f"There are {len(fmi_gages_child)} Flow Management Gages in the model domain.")
+        
+        fmi_gages_child.to_csv(fmi_gages_child_info_file_path, index=False)
     
     return fmi_gages_child

@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.16.6
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -29,19 +30,33 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
-from nhm_helpers.nhm_assist_utilities import (
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
+
+from assist.nhm.nhm_assist_utilities import (
     make_plots_par_vals,
     create_append_gages_to_param_file,
     make_myparam_addl_gages_param_file,
     load_subdomain_config,
 )
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
-from nhm_helpers.map_template import make_par_map
+from assist.nhm.nhm_hydrofabric import make_hf_map_elements
+from assist.nhm.map_template import make_par_map
 
-config = load_subdomain_config(root_dir)
+config = load_subdomain_config(config_root)
 # con.print(config)
 
 

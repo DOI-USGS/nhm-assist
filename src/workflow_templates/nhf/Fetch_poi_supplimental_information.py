@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -29,11 +30,13 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
-from helpers.nhm_hydrofabric_v2 import create_poi_df
-# from helpers.map_template_v2 import make_hf_map
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+from assist.nhf.nhm_hydrofabric_v2 import create_poi_df
+# from assist.nhf.map_template_v2 import make_hf_map
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 import topojson
 
 config = load_subdomain_config(root_dir)
