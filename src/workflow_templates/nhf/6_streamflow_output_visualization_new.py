@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -29,18 +30,20 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 # %%
-from helpers.output_plots_v2 import create_streamflow_plot
-from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from helpers.map_template_v2 import make_streamflow_map
-from helpers.nhm_output_visualization_v2 import retrieve_hru_output_info
+from assist.nhf.output_plots_v2 import create_streamflow_plot
+from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements
+from assist.nhf.map_template_v2 import make_streamflow_map
+from assist.nhf.nhm_output_visualization_v2 import retrieve_hru_output_info
 from ipywidgets import widgets
 from IPython.display import display
 
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 
@@ -61,7 +64,7 @@ crs = 4326
     # hru_cal_level_txt,
     seg_gdf,
     seg_txt,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     poi_df,
     gages_df,
     gages_txt,
@@ -74,12 +77,13 @@ crs = 4326
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",
@@ -129,7 +133,7 @@ map_file = make_streamflow_map(
 # %matplotlib inline
 import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
-import helpers.display_controls_v2 as dc
+import assist.nhf.display_controls_v2 as dc
 
 gage_txt = widgets.Text(
     description="Streamgage ID:",

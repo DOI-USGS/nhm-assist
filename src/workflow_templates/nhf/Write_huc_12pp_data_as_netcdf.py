@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -28,10 +29,12 @@ import warnings
 
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 config = load_subdomain_config(root_dir)
 
 # %% jupyter={"source_hidden": true}
@@ -404,7 +407,7 @@ if gage_exist:
     df_stat_flow_daily = da_stat_flow_daily.to_dataframe().reset_index()
     df_stat_flow_month =  da_stat_flow_month[stat_target_list].to_dataframe().reset_index()
     df_stat_flow_annual = da_stat_flow_annual[stat_target_list].to_dataframe().reset_index()
-    
+
 
 # %%
 

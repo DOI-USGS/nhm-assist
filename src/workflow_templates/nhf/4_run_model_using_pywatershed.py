@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -38,12 +39,13 @@ root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir))
 
-from helpers.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 config = load_subdomain_config(root_dir)
 # con.print(config)
 
 # %%
 import xarray as xr
+from assist.nhm.streamflow_postprocess import subset_seg_outflow_to_poi_gages
 
 # %% [markdown]
 # ## Introduction
@@ -181,12 +183,14 @@ del hru_streamflow_out
 # To reduce the size of the output file, seg_outflow is only written for segments that have gages in the model, and the output is dimensioned by gage id for utility in notebook [6_streamflow_output_visualization.ipynb](./6_streamflow_output_visualization.ipynb).
 
 # %%
-# For streamflow, just keep output on the POIs.
-# - 1 is related to the indexing in fortran; made a a tuple see above
-wh_gages = (params.parameters["poi_gage_segment"] - 1,)
 for var in ["seg_outflow"]:
-    data = xr.load_dataarray(f"{config['out_dir'] / var}.nc")[:, wh_gages[0]]
-    data = data.assign_coords(npoi_gages=("nhm_seg", params.parameters["poi_gage_id"]))
+    data = xr.load_dataarray(f"{config['out_dir'] / var}.nc")
+    data = subset_seg_outflow_to_poi_gages(
+        data,
+        poi_gage_segment=params.parameters["poi_gage_segment"],
+        poi_gage_id=params.parameters["poi_gage_id"],
+        nhm_seg=params.parameters["nhm_seg"],
+    )
     out_file = f"{config['out_dir'] / var}.nc"
     data.to_netcdf(out_file)
     del data

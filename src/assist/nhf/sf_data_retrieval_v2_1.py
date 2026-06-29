@@ -19,33 +19,14 @@ from rich.console import Console
 from dataretrieval import waterdata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import requests
-import time
-
-from shapely import make_valid
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Iterable, List, Tuple
 
-
-def _safe_clip_mask(hru_gdf):
-    """Return hru_gdf with geometries repaired via make_valid.
-
-    geopandas.clip() internally unions the mask geometry; that union raises
-    GEOSException when any source polygon is invalid (self-intersecting,
-    NaN coords, unclosed ring, etc.). Repair upstream so .clip() can't trip.
-    """
-    safe = hru_gdf.copy()
-    safe["geometry"] = safe.geometry.apply(
-        lambda g: make_valid(g) if g is not None and not g.is_empty else g
-    )
-    return safe
-
 from rich import pretty
 from rich.progress import Progress
 from assist.nhm.efc import efc
-from assist.nhm.nhm_assist_utilities import fetch_nwis_gage_info
+from assist.nhf.nhm_assist_utilities_v2 import fetch_waterdata_gage_info
 
 
 
@@ -54,15 +35,6 @@ pretty.install()
 warnings.filterwarnings("ignore")
 
 import os
-
-# Silence dataretrieval's per-page "Retrieving: daily · 1 page · 50,000 rows"
-# stderr line. The batch-level rich Progress bar in create_waterdata_sf_df
-# already surfaces download progress, and writes to stderr from worker threads
-# collide with rich.pretty.install() in Jupyter — the patched FileProxy reroutes
-# each write through Console.print → publish_display_data → stderr.flush, which
-# is the same patched stderr, causing unbounded recursion.
-os.environ.setdefault("API_USGS_PROGRESS", "0")
-
 
 def _ensure_usgs_pat_stripped():
     # dataretrieval uses API_USGS_PAT env var for Water Data APIs auth :contentReference[oaicite:2]{index=2}
@@ -160,7 +132,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
         
     Returns
     -------
@@ -192,9 +164,9 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
+    model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
 
     if any(item in owrd_regions for item in model_domain_regions):
         owrd_domain_txt = "The model domain intersects the Oregon state boundary. "
@@ -234,25 +206,25 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 
                 # Rename and format
                 field_map = {
-                    "station_nbr": "poi_id",
+                    "station_nbr": "poi_gage_id",
                     "record_date": "time",
                     "mean_daily_flow_cfs": "discharge",
                     "station_name": "poi_name",
                 }
                 owrd_df.rename(columns=field_map, inplace=True)
-                dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
+                dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
                 owrd_df = owrd_df.astype(dtype_map)
                 drop_cols = ["download_date", "estimated", "revised", "published_status"]
                 owrd_df.drop(columns=[col for col in drop_cols if col in owrd_df.columns], inplace=True)
                 owrd_df["agency_id"] = "OWRD"
-                owrd_df.set_index(["poi_id", "time"], inplace=True)
+                owrd_df.set_index(["poi_gage_id", "time"], inplace=True)
 
                 # Write to NetCDF
                 owrd_ds = xr.Dataset.from_dataframe(owrd_df)
                 owrd_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-                owrd_ds["poi_id"].attrs = {"role": "timeseries_id", "long_name": "Point-of-Interest ID", "_Encoding": "ascii"}
+                owrd_ds["poi_gage_id"].attrs = {"role": "timeseries_id", "long_name": "Point-of-Interest ID", "_Encoding": "ascii"}
                 owrd_ds["agency_id"].attrs = {"_Encoding": "ascii"}
-                owrd_ds["poi_id"].encoding.update({"dtype": "S15", "char_dim_name": "poiid_nchars"})
+                owrd_ds["poi_gage_id"].encoding.update({"dtype": "S15", "char_dim_name": "poiid_nchars"})
                 owrd_ds["time"].encoding.update({
                     "_FillValue": None,
                     "standard_name": "time",
@@ -345,13 +317,13 @@ def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
                 print(f"no Quality for {station} {ecy_year}")
             df["time"] = pd.to_datetime(df["time"], errors="coerce")
             df = df.dropna(subset=["time"])
-            df["poi_id"] = station
+            df["poi_gage_id"] = station
             df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
             # specify data types
-            dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
+            dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
             df = df.astype(dtype_map)
 
-            df.set_index(["poi_id", "time"], inplace=True)
+            df.set_index(["poi_gage_id", "time"], inplace=True)
             # next two lines are new if this breaks...
             idx = pd.IndexSlice
             df = df.loc[
@@ -394,7 +366,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
 
     Returns
     -------
@@ -419,9 +391,9 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
+    model_domain_regions = list((huc2_gdf.clip(hru_gdf).loc[:]["huc2"]).values)
     ecy_df = pd.DataFrame()
 
     if any(item in ecy_regions for item in model_domain_regions):
@@ -495,7 +467,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
                     )  # Converts the list of ecy gage df's to a single df
 
                     # set the multiIndex
-                    # ecy_df.set_index(['poi_id', 'time'], inplace=True)
+                    # ecy_df.set_index(['poi_gage_id', 'time'], inplace=True)
 
                     ecy_df = ecy_df[
                         ~ecy_df.index.duplicated(keep="first")
@@ -514,7 +486,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
                         "units": "ft3 s-1",
                         "long_name": "discharge",
                     }
-                    ecy_ds["poi_id"].attrs = {
+                    ecy_ds["poi_gage_id"].attrs = {
                         "role": "timeseries_id",
                         "long_name": "Point-of-Interest ID",
                         "_Encoding": "ascii",
@@ -523,7 +495,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
 
                     # Set encoding
                     # See 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html
-                    ecy_ds["poi_id"].encoding.update(
+                    ecy_ds["poi_gage_id"].encoding.update(
                         {"dtype": "S15", "char_dim_name": "poiid_nchars"}
                     )
 
@@ -590,34 +562,6 @@ def _as_monitoring_location_ids(site_ids: Iterable) -> List[str]:
     return out
 
 
-WATERDATA_RETRY_MAX = 3
-WATERDATA_RETRY_BASE_SECONDS = 1.0
-WATERDATA_BATCH_STAGGER_SECONDS = 0.25
-_WATERDATA_RETRYABLE_STATUSES = {429, 502, 503, 504}
-
-
-try:
-    # dataretrieval exposes ChunkInterrupted for resumable mid-stream failures
-    # on large multi-site WaterData queries (.call.resume() picks up surviving chunks).
-    from dataretrieval.waterdata.chunking import ChunkInterrupted
-except Exception:  # pragma: no cover - older dataretrieval without chunking
-    ChunkInterrupted = None  # type: ignore[assignment,misc]
-
-
-def _should_retry_waterdata(exc: Exception) -> bool:
-    """Return True for transient API errors worth retrying."""
-    if ChunkInterrupted is not None and isinstance(exc, ChunkInterrupted):
-        return True
-    if isinstance(exc, requests.exceptions.HTTPError):
-        status = getattr(getattr(exc, "response", None), "status_code", None)
-        return status in _WATERDATA_RETRYABLE_STATUSES
-    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
-        return True
-    # Heuristic fallback for wrapped errors that lose the original type.
-    msg = str(exc)
-    return any(code in msg for code in ("429", "502", "503", "504"))
-
-
 @dataclass
 class WaterDataBatchResult:
     df: pd.DataFrame
@@ -634,66 +578,33 @@ def fetch_daily_discharge_batch(
     statistic_id: str = "00003",
     skip_geometry: bool = True,
     limit: int = 50000,
-    max_retries: int = WATERDATA_RETRY_MAX,
-    retry_base_seconds: float = WATERDATA_RETRY_BASE_SECONDS,
 ) -> WaterDataBatchResult:
     """
     Pull daily mean discharge for a batch of sites using the modern Water Data APIs.
-    - get_daily supports multiple monitoring_location_id values per call.
-    - Responses may be paged; dataretrieval stitches pages together; limit controls page size.
-    - Retries up to max_retries on HTTP 429/502/503/504 + connection/timeout
-      errors with exponential backoff; non-transient errors return immediately.
-    - For dataretrieval ChunkInterrupted / ServiceInterrupted (mid-stream failure
-      on a large multi-site request), resumes from `.call.resume()` so completed
-      sub-requests are not re-issued.
+    - get_daily supports multiple monitoring_location_id values per call. :contentReference[oaicite:4]{index=4}
+    - Responses may be paged; dataretrieval stitches pages together; limit controls page size. :contentReference[oaicite:5]{index=5}
     """
-    time_range = f"{start_date}/{end_date}"
-    last_error_msg: str | None = None
-    resumable_call = None  # set by ChunkInterrupted; resumed on next attempt
+    try:
+        time_range = f"{start_date}/{end_date}"
 
-    for attempt in range(max_retries + 1):
-        try:
-            if resumable_call is not None:
-                df, md = resumable_call.resume()
-            else:
-                df, md = waterdata.get_daily(
-                    monitoring_location_id=monitoring_location_ids,
-                    parameter_code=parameter_code,
-                    statistic_id=statistic_id,
-                    time=time_range,
-                    skip_geometry=skip_geometry,
-                    limit=limit,
-                )
+        df, md = waterdata.get_daily(
+            monitoring_location_id=monitoring_location_ids,
+            parameter_code=parameter_code,
+            statistic_id=statistic_id,
+            time=time_range,
+            skip_geometry=skip_geometry,
+            limit=limit,
+        )
 
-            if df is None or len(df) == 0:
-                return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
+        if df is None or len(df) == 0:
+            return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
 
-            found = set(df["monitoring_location_id"].astype(str).unique())
-            missing = [mid for mid in monitoring_location_ids if mid not in found]
-            return WaterDataBatchResult(df=df, missing_ids=missing)
+        found = set(df["monitoring_location_id"].astype(str).unique())
+        missing = [mid for mid in monitoring_location_ids if mid not in found]
+        return WaterDataBatchResult(df=df, missing_ids=missing)
 
-        except Exception as e:
-            last_error_msg = str(e)
-            if ChunkInterrupted is not None and isinstance(e, ChunkInterrupted):
-                resumable_call = getattr(e, "call", None)
-                wait = getattr(e, "retry_after", None)
-                if wait is None:
-                    wait = retry_base_seconds * (2 ** attempt)
-            else:
-                wait = retry_base_seconds * (2 ** attempt)
-            if attempt >= max_retries or not _should_retry_waterdata(e):
-                return WaterDataBatchResult(
-                    df=pd.DataFrame(),
-                    missing_ids=list(monitoring_location_ids),
-                    error=last_error_msg,
-                )
-            time.sleep(wait)
-
-    return WaterDataBatchResult(
-        df=pd.DataFrame(),
-        missing_ids=list(monitoring_location_ids),
-        error=last_error_msg,
-    )
+    except Exception as e:
+        return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids), error=str(e))
 import pathlib as pl
 import xarray as xr
 import netCDF4
@@ -749,18 +660,18 @@ def create_waterdata_sf_df(
     _ensure_usgs_pat_stripped()
 
     waterdata_cache_file = (
-        model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
+        model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
     )
     control = pws.Control.load_prms(
         pl.Path(model_dir / control_file_name), warn_unused_options=False
     )
-    waterdata_gages_file = model_dir / "WaterDataGages.csv"
+    waterdata_gages_file = model_dir / "metadata/WaterDataGages.csv"
 
-    waterdata_gage_info_aoi = fetch_nwis_gage_info(
+    waterdata_gage_info_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=waterdata_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -779,7 +690,7 @@ def create_waterdata_sf_df(
     waterdata_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
     # Build Water Data API monitoring_location_ids
-    site_ids = waterdata_gage_info_aoi["poi_id"].tolist()
+    site_ids = waterdata_gage_info_aoi["poi_gage_id"].tolist()
     monitoring_ids = _as_monitoring_location_ids(site_ids)
 
     # Download in batches
@@ -794,11 +705,7 @@ def create_waterdata_sf_df(
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
-            for batch_index, batch in enumerate(_chunked(monitoring_ids, batch_size)):
-                if batch_index > 0:
-                    # Stagger submissions so the WaterData edge does not see
-                    # a max_workers-wide burst of large multi-site queries.
-                    time.sleep(WATERDATA_BATCH_STAGGER_SECONDS)
+            for batch in _chunked(monitoring_ids, batch_size):
                 fut = executor.submit(
                     fetch_daily_discharge_batch,
                     batch,
@@ -837,7 +744,7 @@ def create_waterdata_sf_df(
     waterdata_raw_df = pd.concat(all_parts, ignore_index=True)
 
     # Normalize to expected schema
-    waterdata_raw_df["poi_id"] = (
+    waterdata_raw_df["poi_gage_id"] = (
         waterdata_raw_df["monitoring_location_id"]
         .astype(str)
         .str.split("-", n=1)
@@ -854,12 +761,12 @@ def create_waterdata_sf_df(
     # De-dupe in case multiple rows exist per site/time
     waterdata_raw_df = (
         waterdata_raw_df.sort_values(
-            ["poi_id", "time", "discharge"], ascending=[True, True, False]
-        ).drop_duplicates(subset=["poi_id", "time"], keep="first")
+            ["poi_gage_id", "time", "discharge"], ascending=[True, True, False]
+        ).drop_duplicates(subset=["poi_gage_id", "time"], keep="first")
     )
 
-    keep_always = set(poi_df["poi_id"].astype(str).unique().tolist())
-    obs_counts = waterdata_raw_df.groupby("poi_id")["discharge"].apply(
+    keep_always = set(poi_df["poi_gage_id"].astype(str).unique().tolist())
+    obs_counts = waterdata_raw_df.groupby("poi_gage_id")["discharge"].apply(
         lambda s: s.notna().sum()
     )
     too_few = obs_counts[
@@ -873,7 +780,7 @@ def create_waterdata_sf_df(
             f"and will be omitted unless they appear in the parameter file.\n{too_few}"
         )
         waterdata_raw_df = waterdata_raw_df[
-            ~waterdata_raw_df["poi_id"].isin(too_few)
+            ~waterdata_raw_df["poi_gage_id"].isin(too_few)
         ]
 
     # Report missing sites (not found / no data in range)
@@ -886,22 +793,22 @@ def create_waterdata_sf_df(
 
     # Final index + xarray write
     waterdata_df = waterdata_raw_df[
-        ["poi_id", "time", "discharge", "agency_id"]
+        ["poi_gage_id", "time", "discharge", "agency_id"]
     ].copy()
-    waterdata_df.set_index(["poi_id", "time"], inplace=True)
+    waterdata_df.set_index(["poi_gage_id", "time"], inplace=True)
 
     waterdata_ds = xr.Dataset.from_dataframe(waterdata_df)
 
     # attrs/encodings
     waterdata_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-    waterdata_ds["poi_id"].attrs = {
+    waterdata_ds["poi_gage_id"].attrs = {
         "role": "timeseries_id",
         "long_name": "Point-of-Interest ID",
         "_Encoding": "ascii",
     }
     waterdata_ds["agency_id"].attrs = {"_Encoding": "ascii"}
 
-    waterdata_ds["poi_id"].encoding.update(
+    waterdata_ds["poi_gage_id"].encoding.update(
         {"dtype": "S15", "char_dim_name": "poiid_nchars"}
     )
     waterdata_ds["time"].encoding.update(
@@ -934,7 +841,7 @@ def create_waterdata_sf_df(
 
     # Write gage list CSV (exclude too_few)
     out_gage_info = waterdata_gage_info_aoi[
-        ~waterdata_gage_info_aoi["poi_id"].astype(str).isin(too_few)
+        ~waterdata_gage_info_aoi["poi_gage_id"].astype(str).isin(too_few)
     ]
     out_gage_info.to_csv(waterdata_gages_file, index=False)
 
@@ -946,16 +853,16 @@ def create_sf_efc_df(
     output_netcdf_filename,
     owrd_df,
     ecy_df,
-    NWIS_df,
+    waterdata_df,
     gages_df,
 ):
     """
-    Combines daily streamflow dataframes from various database retrievals, currently NWIS, OWRD, and ECY into
+    Combines daily streamflow dataframes from various database retrievals, currently WaterData, OWRD, and ECY into
     one xarray dataset.
 
-    Note: all NWIS data is mirrored the OWRD database without any primary source tag/flag, so
-    this section will also determine the original source agency of each daily observation, OWRD vs. NWIS.
-    ECY does not republish NWIS data as not USGS gages are in the ECY database.
+    Note: all WaterData data is mirrored the OWRD database without any primary source tag/flag, so
+    this section will also determine the original source agency of each daily observation, OWRD vs. WaterData.
+    ECY does not republish WaterData data as not USGS gages are in the ECY database.
 
     The function will will also add to the xarray station information from the gages.csv file.
     The function will also add efc flow classifications to each daily streamflow (Ref from Parker).
@@ -971,10 +878,10 @@ def create_sf_efc_df(
         Dataframe containing OWRD mean daily streamflow data for the specified gage and date range.        
     ecy_df : pandas DataFrame
         Dataframe containing ECY mean daily streamflow data for the specified gage and date range.        
-    NWIS_df : pandas DataFrame
-        Dataframe of NWIS gages.        
+    waterdata_df : pandas DataFrame
+        Dataframe of WaterData gages.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
     
     Returns
     -------
@@ -991,12 +898,12 @@ def create_sf_efc_df(
             "All available streamflow observations were previously retrieved and included in the sf_efc.nc file. [bold]To update delete sf_efc.nc[/bold] and rerun 1_Create_Streamflow_Observations.ipynb."
         )
     else:
-        streamflow_df = NWIS_df.copy()  # Sets streamflow file to default, NWIS_df
+        streamflow_df = waterdata_df.copy()  # Sets streamflow file to default, waterdata_df
 
         if (
             not owrd_df.empty
         ):  # If there is an owrd_df, it will be combined with streamflow_df and rewrite the streamflow_df
-            # Merge NWIS and OWRD
+            # Merge WaterData and OWRD
             streamflow_df = pd.concat([streamflow_df, owrd_df])  # Join the two datasets
             # Drop duplicated indexes, keeping the first occurence (USGS occurs first)
             # try following this thing: https://saturncloud.io/blog/how-to-drop-duplicated-index-in-a-pandas-dataframe-a-complete-guide/#:~:text=Pandas%20provides%20the%20drop_duplicates(),names%20to%20the%20subset%20parameter.
@@ -1019,9 +926,9 @@ def create_sf_efc_df(
         xr_streamflow = xr.merge(
             [xr_streamflow_only, xr_station_info], combine_attrs="drop_conflicts"
         )
-        # test_poi = xr_streamflow.poi_id.values[2]
+        # test_poi = xr_streamflow.poi_gage_id.values[2]
 
-        # xr_streamflow.agency_id.sel(poi_id=test_poi).to_dataframe().agency_id.unique()
+        # xr_streamflow.agency_id.sel(poi_gage_id=test_poi).to_dataframe().agency_id.unique()
         xr_streamflow = xr_streamflow.sortby(
             "time", ascending=True
         )  # bug fix for xarray
@@ -1049,7 +956,7 @@ def create_sf_efc_df(
             "units": "degrees_east",
             "long_name": "Longitude",
         }
-        xr_streamflow["poi_id"].attrs = {
+        xr_streamflow["poi_gage_id"].attrs = {
             "role": "timeseries_id",
             "long_name": "Point-of-Interest ID",
             "_Encoding": "ascii",
@@ -1064,7 +971,7 @@ def create_sf_efc_df(
 
         # Set encoding
         # See 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html
-        xr_streamflow["poi_id"].encoding.update(
+        xr_streamflow["poi_gage_id"].encoding.update(
             {"dtype": "S15", "char_dim_name": "poiid_nchars"}
         )
 
@@ -1168,17 +1075,17 @@ def create_sf_efc_df(
         """
         flow_col = "discharge"
 
-        for pp in xr_streamflow.poi_id.data:
+        for pp in xr_streamflow.poi_gage_id.data:
             try:
                 df = efc(
-                    xr_streamflow.discharge.sel(poi_id=pp).to_dataframe(),
+                    xr_streamflow.discharge.sel(poi_gage_id=pp).to_dataframe(),
                     flow_col=flow_col,
                 )
 
                 # Add EFC values to the xarray dataset for the poi
-                xr_streamflow["efc"].sel(poi_id=pp).data[:] = df.efc.values
-                xr_streamflow["high_low"].sel(poi_id=pp).data[:] = df.high_low.values
-                xr_streamflow["ri"].sel(poi_id=pp).data[:] = df.ri.values
+                xr_streamflow["efc"].sel(poi_gage_id=pp).data[:] = df.efc.values
+                xr_streamflow["high_low"].sel(poi_gage_id=pp).data[:] = df.high_low.values
+                xr_streamflow["ri"].sel(poi_gage_id=pp).data[:] = df.ri.values
             except TypeError:
                 pass
 

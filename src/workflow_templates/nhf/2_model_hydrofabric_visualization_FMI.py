@@ -1,6 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -29,12 +30,14 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-sys.path.append(str(root_dir))
-from helpers.nhm_hydrofabric_v2 import make_hf_map_elements
-from helpers.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
+from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
 
-from helpers.nhm_assist_utilities_v2 import (
+from assist.nhf.nhm_assist_utilities_v2 import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,
@@ -49,7 +52,7 @@ config = load_subdomain_config(root_dir)
 
 # %% [markdown]
 # ## Introduction
-# The purpose of this notebook is to assist in verifying NHM subdomain model location, HRU to segment connections, segment routing order, and the locations of gages and associated streamflow segments. This notebook displays hydrofabric elements: HRUs, streamflow segments, and gages both in the parameter file and additional NWIS gages in the domain (potential streamflow gages).
+# The purpose of this notebook is to assist in verifying NHM subdomain model location, HRU to segment connections, segment routing order, and the locations of gages and associated streamflow segments. This notebook displays hydrofabric elements: HRUs, streamflow segments, and gages both in the parameter file and additional WaterData gages in the domain (potential streamflow gages).
 #
 # The cell below reads the NHM subdomain model hydrofabric elements for mapping purposes using make_hf_map_elements() and writes general NHM subdomain model run and hydrofabric information.
 
@@ -122,7 +125,7 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
 
 # %% [markdown]
 # ## Make interactive map of hydrofabric elements
-# The cell below creates a map that displays NHM subdomain model hydrofabric elements: HRUs, streamflow segments, and gages both in the parameter file and additional NWIS gages in the domain (potential streamflow gages). Gage locations are overlays in the map of NHM headwater basins (HWs) that are color coded to calibration type: yellow indicates HWs that were calibrated with statistical streamflow targets at the HW outlet; green indicates HWs that were further calibrated with streamflow observations at selected gage locations.
+# The cell below creates a map that displays NHM subdomain model hydrofabric elements: HRUs, streamflow segments, and gages both in the parameter file and additional WaterData gages in the domain (potential streamflow gages). Gage locations are overlays in the map of NHM headwater basins (HWs) that are color coded to calibration type: yellow indicates HWs that were calibrated with statistical streamflow targets at the HW outlet; green indicates HWs that were further calibrated with streamflow observations at selected gage locations.
 
 # %%
 (
@@ -131,7 +134,7 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
     # hru_cal_level_txt,
     seg_gdf,
     seg_txt,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     poi_df,
     gages_df,
     gages_txt,
@@ -144,12 +147,13 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",
@@ -170,13 +174,16 @@ map_file = make_hf_map(
     poi_df=poi_df,
     poi_gage_id_sel="",
     seg_gdf=seg_gdf,
-    nwis_gages_aoi=nwis_gages_aoi,
+    waterdata_gages_aoi=waterdata_gages_aoi,
     gages_df=gages_df,
     html_maps_dir=config["html_maps_dir"],
     Folium_maps_dir=config["Folium_maps_dir"],
     param_filename=config["param_filename"],
     subdomain=config["subdomain"],
 )
+
+# %%
+poi_df
 
 # %% [markdown]
 # # Want to Add a potential gage to the parameter file? [Click here!](./add_pois_to_parameters.ipynb)
@@ -190,7 +197,7 @@ import geopandas as gpd
 model_dir = config["model_dir"]
 
 # %%
-npoigages_df_file = model_dir / "metadata" / "npoigages_info.csv"
+npoigages_df_file = model_dir / "metadata" / "resource_gages.csv"
 ref_df_file = model_dir / "metadata" / "ref_npoigages_info.csv"
 non_ref_df_file = model_dir / "metadata" / "non_ref_npoigages_info.csv"
 
@@ -228,23 +235,31 @@ npoigages_df = pd.read_csv(
     ],
 )
 
-non_ref_df = pd.read_csv(
-    non_ref_df_file,
-    dtype=cols,
-    usecols=[
-        "poi_gage_id",
-    ],
-)
-non_ref_list = list(non_ref_df.poi_gage_id)
+try:
+    non_ref_df = pd.read_csv(
+        non_ref_df_file,
+        dtype=cols,
+        usecols=[
+            "poi_gage_id",
+        ],
+    )
+    non_ref_list = list(non_ref_df.poi_gage_id)
+except FileNotFoundError:
+    non_ref_list = []
 
-ref_df = pd.read_csv(
-    ref_df_file,
-    dtype=cols,
-    usecols=[
-        "poi_gage_id",
-    ],
-)
-ref_list = list(ref_df.poi_gage_id)
+
+try:
+    ref_df = pd.read_csv(
+        ref_df_file,
+        dtype=cols,
+        usecols=[
+            "poi_gage_id",
+        ],
+    )
+    ref_list = list(ref_df.poi_gage_id)
+except FileNotFoundError:
+    ref_list = []
+
 
 npoigages_df["gagesII"] = "nan"
 
@@ -269,9 +284,14 @@ gdf_points_with_huc = gpd.sjoin(
     gdf_points,
     huc10_map[["huc10", "geometry"]],
     how="left",
-    predicate="intersects",  # or 'within' if you prefer strict containment
+    predicate="within",  # or 'within' if you prefer strict containment
 )
+
+
 # # Clean up: keep original columns plus huc10
+gdf_points_with_huc = gdf_points_with_huc.drop_duplicates(
+    subset="poi_gage_id", keep="first"
+)
 gdf_points_with_huc = gdf_points_with_huc.drop(columns=["index_right"])
 npoigages_df = gdf_points_with_huc.copy()
 
@@ -318,7 +338,10 @@ fmi_df = pd.read_csv(
 )
 
 npoigages_df = fmi_df.merge(
-    npoigages_df, left_on="poi_gage_id", right_on="poi_gage_id", how="inner"
+    npoigages_df,
+    left_on="poi_gage_id",
+    right_on="poi_gage_id",
+    how="outer",
 )
 npoigages_df["ohm_cal"] = "no"
 cols = [
@@ -342,4 +365,8 @@ npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
 npoigages_df.to_csv(npoigages_info_file_path, index=False)
 
 # %%
+
+# %%
 npoigages_df
+
+# %%

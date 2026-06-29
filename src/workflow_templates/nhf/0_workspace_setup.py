@@ -1,11 +1,12 @@
 # ---
 # jupyter:
 #   jupytext:
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.0
+#       jupytext_version: 1.19.3
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -92,7 +93,7 @@ print(root_dir)
 # ### The nhm-assist will create additional files and folders in NHM subdomain folder. These include:
 #
 # - **default_gages.csv**
-# - **NWISgages.csv**
+# - **WaterDataGages.csv**
 #  - **tmin.nc**
 # - **tmax.nc**
 # - **prcp.nc**
@@ -115,7 +116,7 @@ print(root_dir)
 # <font size = '3'>The default is set to the example NHM subdomain model name, "willamette_river". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
-subdomain = "1_Rogue_River"
+subdomain = "Rogue_River"
 
 model_dir = root_dir / "domain_data" / subdomain
 
@@ -149,17 +150,17 @@ control = pws.Control.load_prms(
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **Minimum number of total streamflow observations (days) at a gage**.</font><br> 
-# <font size = '3'> Notebook 2 displays additional NWIS gages NOT listed the parameter file. `nwis_gage_nobs_min` is used to identify gages from NWIS that have a total number of daily stream observations >= `nwis_gage_nobs_min`.
+# <font size = '3'> Notebook 2 displays additional WaterData gages NOT listed the parameter file. `waterdata_gage_nobs_min` is used to identify gages from WaterData that have a total number of daily stream observations >= `waterdata_gage_nobs_min`.
 
 # %%
-nwis_gage_nobs_min = 365  # days
+waterdata_gage_nobs_min = 365  # days
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **List of parameters**.</font><br>
 # <font size = '3'> Notebook 3 visualizes parameter values from the parameter file. Type the parameters you wish to visualize in the list(s) below. To view complete lists of parameters, copy/paste the functions below into a code block. The default parameters in the list below represent parameters calibrated during calibration of the NHM version 1.1. Calibrated values from NHM v 1.1 are displayed in Notebook 3 ([Markstrom and others, 2024](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)). More information about NHM parameters can be found in [Markstrom and others, 2015](https://water.usgs.gov/water-resources/software/PRMS/PRMS_tables_5.2.1.pdf)
 # >
 # ```
-# from nhf_assist.helpers.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
+# from assist.nhf.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
 # bynhru_parameter_list(param_filename)
 # bynmonth_bynhru_parameter_list(param_filename)
 # bynsegment_parameter_list(param_filename)
@@ -254,7 +255,8 @@ water_years = True
 # Establish paths and file names
 gages_file = model_dir / "gages.csv"
 default_gages_file = model_dir / "default_gages.csv"
-nwis_gages_file = model_dir / "NWISgages.csv"
+resource_gages_file = model_dir / "metadata/resource_gages.csv"
+waterdata_gages_file = model_dir / "metadata/WaterDataGages.csv"
 output_netcdf_filename = model_dir / "notebook_output_files/nc_files/sf_efc.nc"
 #NHM_dir = root_dir / "data_dependencies/NHM_v1_1"
 prms_meta = MetaData().metadata
@@ -292,14 +294,15 @@ dict_file = {
     "param_file": param_file,
     "param_filename": str(param_filename),
     "control_file_name": control_file_name,
-    "nwis_gage_nobs_min": nwis_gage_nobs_min,
+    "waterdata_gage_nobs_min": waterdata_gage_nobs_min,
     "nhru_params": nhru_params,
     "nhru_nmonths_params": nhru_nmonths_params,
     "selected_output_variables": selected_output_variables,
     "water_years": water_years,
     "gages_file": str(model_dir / "gages.csv"),
     "default_gages_file": str(model_dir / "default_gages.csv"),
-    "nwis_gages_file": str(model_dir / "NWISgages.csv"),
+    "resource_gages_file": str(model_dir / "metadata/resource_gages.csv"),
+    "waterdata_gages_file": str(model_dir / "WaterDataGages.csv"),
     "output_netcdf_filename": str(
         model_dir / "notebook_output_files/nc_files/sf_efc.nc"
     ),

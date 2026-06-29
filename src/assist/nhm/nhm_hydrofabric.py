@@ -7,9 +7,12 @@ from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from assist.nhm.nhm_assist_utilities import (fetch_nwis_gage_info,
+                                              find_missing_gage_info,
                                               make_HW_cal_level_files)
 pretty.install()
 warnings.filterwarnings("ignore")
+
+REQUIRED_METADATA_COLUMNS = ("latitude", "longitude", "poi_name", "poi_agency")
 
 
 def create_hru_gdf(
@@ -562,9 +565,27 @@ def create_default_gages_file(
                 else:
                     pass #print(f"Gage {new_poi_id} is not in the resource_gages.csv.")
 
+    # Fill any still-missing metadata from NLDI/WaterData before the drop.
+    pre_fill_missing_mask = default_gages_df[list(REQUIRED_METADATA_COLUMNS)].isnull().any(axis=1)
+    if pre_fill_missing_mask.any():
+        missing_ids = (
+            default_gages_df.loc[pre_fill_missing_mask, "poi_id"].astype(str).tolist()
+        )
+        fetched = find_missing_gage_info(
+            gage_ids=missing_ids,
+            poi_df=poi_df,
+            resource_file_path=resource_gages_file,
+            root_dir=root_dir,
+        )
+        if not fetched.empty:
+            default_gages_df = (
+                default_gages_df.set_index("poi_id")
+                .combine_first(fetched)
+                .reset_index()
+            )
+
     #drop from defualt missing data
-    cols = ["latitude", "longitude", "poi_name", "poi_agency"]
-    mask_missing = default_gages_df[cols].isnull().any(axis=1)
+    mask_missing = default_gages_df[list(REQUIRED_METADATA_COLUMNS)].isnull().any(axis=1)
 
     for poi_id in default_gages_df.loc[mask_missing, "poi_id"]:
         print(
