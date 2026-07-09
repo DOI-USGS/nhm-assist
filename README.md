@@ -55,7 +55,7 @@ This creates a `domain_data/` folder and adds the example subdomain for the Will
 pixi run setup
 ```
 
-Drops you into a numeric menu that:
+Drops you into a numeric menu (because it's cool) that:
 
 1. Prompts for a workspace location (defaults to `~/nhm-workspace`, outside the repo)
 2. Lets you create a project, copy or import a model, set the active model
