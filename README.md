@@ -55,7 +55,7 @@ This creates a `domain_data/` folder and adds the example subdomain for the Will
 pixi run setup
 ```
 
-Drops you into a guided menu. Just work through the top four options in order:
+Drops you into a guided menu (this is cool!). Just work through the top four options in order:
 
 1. Set the workspace root (defaults to `~/nhm-workspace`, outside the repo)
 2. Create a project
