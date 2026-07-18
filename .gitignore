@@ -16,7 +16,7 @@ subdomain_config.yaml
 # For now ignore all data in these folders
 data_dependencies/NHM_v1_1/CONUS_baselines/*
 data_dependencies/NHM_v1_1/version1_1_params/*
-data_dependencies/NHM_v1_1/20240524_v1.1_gm_precal_williamette_river/*
+data_dependencies/20240524_v1.1_gm_precal_williamette_river/*
 data_dependencies/nhm_v1.1_workflows-master/*
 nhf_assist/data_dependencies/*
 nhf_assist/hydrofabric_domain_data/
