@@ -33,3 +33,9 @@ CLAUDE.md
 docs/
 tests/
 .DS_Store
+/nhf_assist/notebook_scripts
+/nhf_assist/src
+/notebook_scripts
+nhf_assist/notebooks/create_segment_parameters_slides.md
+/pestpp_ies_calibration/notebooks
+pestpp_ies_calibration/parameters.json
