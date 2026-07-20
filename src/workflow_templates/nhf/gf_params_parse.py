@@ -73,7 +73,7 @@ from rich import pretty
 pretty.install()
 
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
