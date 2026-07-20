@@ -548,6 +548,223 @@ def fetch_hrrr_ptype_data(start_date, end_date, cache_file):
     }
 
 
+def fetch_hrrr_ptype_data_zarr(start_date, end_date, cache_file, gpkg_path=None):
+    """Download and process HRRR hourly data from S3 Zarr archive.
+
+    Reads HRRR analysis data directly from the University of Utah HRRR Zarr
+    archive on S3 (s3://hrrrzarr/). For each hour in the date range, reads
+    2m temperature, CSNOW, and CRAIN fields. Accumulates monthly sums and
+    counts of t2m masked by snow and rain flags.
+
+    When gpkg_path is provided, only the spatial subset of the HRRR grid
+    covering the model domain is read (domain-clipped). This dramatically
+    reduces data transfer compared to reading the full CONUS grid.
+
+    This replaces the Herbie-based approach (fetch_hrrr_ptype_data) with
+    cloud-native S3 Zarr access, avoiding GRIB download/decode overhead.
+
+    Parameters
+    ----------
+    start_date : str
+        Start date in "YYYY-MM-DD" format (inclusive).
+    end_date : str
+        End date in "YYYY-MM-DD" format (inclusive).
+    cache_file : pathlib.Path
+        Path to the .npz cache file for saving/loading results.
+    gpkg_path : pathlib.Path or str, optional
+        Path to the OHM GeoPackage. If provided, only HRRR grid cells
+        overlapping the domain bounding box (plus a small buffer) are read.
+        If None, the full CONUS grid is read.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: 'hrrr_snow_sum', 'hrrr_rain_sum',
+        'hrrr_snow_count', 'hrrr_rain_count', 'hrrr_lats', 'hrrr_lons'.
+        Each value is a numpy array. Sum/count arrays have shape
+        (12, ny_sub, nx_sub) where sub is the clipped domain if gpkg_path
+        was provided, or full CONUS otherwise.
+    """
+    import calendar
+    from datetime import datetime as dt
+
+    import geopandas as _gpd
+
+    cache_file = pl.Path(cache_file)
+
+    if cache_file.exists():
+        print(f"Loading HRRR processed cache from {cache_file}")
+        cache = np.load(cache_file)
+        result = {
+            "hrrr_snow_sum": cache["hrrr_snow_sum"],
+            "hrrr_rain_sum": cache["hrrr_rain_sum"],
+            "hrrr_snow_count": cache["hrrr_snow_count"],
+            "hrrr_rain_count": cache["hrrr_rain_count"],
+            "hrrr_lats": cache["hrrr_lats"],
+            "hrrr_lons": cache["hrrr_lons"],
+        }
+        print(f"  Loaded. Shape: {result['hrrr_snow_sum'].shape}")
+        print("  To re-process, delete the cache file and re-run.")
+        return result
+
+    s3opts = dict(anon=True)
+
+    _start = dt.strptime(start_date, "%Y-%m-%d")
+    _end = dt.strptime(end_date, "%Y-%m-%d")
+
+    # Read full lat/lon grid from the static HRRR grid index
+    grid_ds = xr.open_zarr("s3://hrrrzarr/grid/HRRR_chunk_index.zarr", storage_options=s3opts)
+    full_lats = grid_ds["latitude"].values
+    full_lons = grid_ds["longitude"].values
+    grid_ds.close()
+
+    # Determine spatial subset if domain GeoPackage is provided
+    y_slice = slice(None)
+    x_slice = slice(None)
+
+    if gpkg_path is not None:
+        gpkg_path = pl.Path(gpkg_path)
+        hru_gdf = _gpd.read_file(gpkg_path, layer="nhru")
+        bounds = hru_gdf.to_crs(epsg=4326).total_bounds  # [minlon, minlat, maxlon, maxlat]
+
+        # Add a small buffer (0.5 degrees) to ensure full coverage
+        buf = 0.5
+        # HRRR longitudes are in 0-360 range; convert domain bounds if negative
+        minlon = bounds[0] + 360.0 if bounds[0] < 0 else bounds[0]
+        maxlon = bounds[2] + 360.0 if bounds[2] < 0 else bounds[2]
+        minlat = bounds[1]
+        maxlat = bounds[3]
+
+        # Check if HRRR lons are in -180 to 180 or 0 to 360
+        if full_lons.max() > 180:
+            # HRRR uses 0-360 longitude
+            lon_for_mask = full_lons
+            domain_minlon = minlon - buf
+            domain_maxlon = maxlon + buf
+        else:
+            # HRRR uses -180 to 180 longitude
+            lon_for_mask = full_lons
+            domain_minlon = bounds[0] - buf
+            domain_maxlon = bounds[2] + buf
+
+        mask = (
+            (full_lats >= minlat - buf) & (full_lats <= maxlat + buf) &
+            (lon_for_mask >= domain_minlon) & (lon_for_mask <= domain_maxlon)
+        )
+
+        rows = np.where(mask.any(axis=1))[0]
+        cols = np.where(mask.any(axis=0))[0]
+
+        if len(rows) == 0 or len(cols) == 0:
+            raise ValueError(
+                f"No HRRR grid cells found within domain bounds {bounds}. "
+                "Check CRS and longitude convention."
+            )
+
+        y_slice = slice(int(rows.min()), int(rows.max()) + 1)
+        x_slice = slice(int(cols.min()), int(cols.max()) + 1)
+
+        print(f"Domain clipping enabled:")
+        print(f"  Domain bounds (EPSG:4326): lon=[{bounds[0]:.2f}, {bounds[2]:.2f}], lat=[{bounds[1]:.2f}, {bounds[3]:.2f}]")
+        print(f"  HRRR subset: y=[{y_slice.start}:{y_slice.stop}], x=[{x_slice.start}:{x_slice.stop}]")
+        print(f"  Full grid: {full_lats.shape[0]} x {full_lats.shape[1]} → Subset: {y_slice.stop - y_slice.start} x {x_slice.stop - x_slice.start}")
+
+    # Extract the (possibly clipped) lat/lon arrays
+    hrrr_lats = full_lats[y_slice, x_slice]
+    hrrr_lons = full_lons[y_slice, x_slice]
+    ny, nx = hrrr_lats.shape
+
+    hrrr_snow_sum = np.zeros((12, ny, nx))
+    hrrr_rain_sum = np.zeros((12, ny, nx))
+    hrrr_snow_count = np.zeros((12, ny, nx))
+    hrrr_rain_count = np.zeros((12, ny, nx))
+
+    print(f"HRRR processing grid shape: {ny} x {nx}")
+    print(f"Processing {_start.date()} to {_end.date()} from s3://hrrrzarr/ ...")
+
+    for year in range(_start.year, _end.year + 1):
+        for month in range(1, 13):
+            if dt(year, month, 1) < dt(_start.year, _start.month, 1):
+                continue
+            if dt(year, month, 1) > dt(_end.year, _end.month, 1):
+                continue
+
+            days_in_month = calendar.monthrange(year, month)[1]
+            month_snow_count = 0
+            month_rain_count = 0
+
+            for day in range(1, days_in_month + 1):
+                date_str = f"{year}{month:02d}{day:02d}"
+                for hour in range(24):
+                    try:
+                        zarr_base = f"s3://hrrrzarr/sfc/{date_str}/{date_str}_{hour:02d}z_anl.zarr"
+
+                        # Read TMP (2m temperature in K) — domain subset only
+                        # Data is at: {base}/2m_above_ground/TMP/2m_above_ground/TMP
+                        ds_tmp = xr.open_zarr(
+                            f"{zarr_base}/2m_above_ground/TMP/2m_above_ground/TMP",
+                            storage_options=s3opts,
+                        )
+                        t2m = ds_tmp[list(ds_tmp.data_vars)[0]].values[y_slice, x_slice]
+                        ds_tmp.close()
+
+                        # Read CSNOW (categorical snow flag) — domain subset only
+                        ds_csnow = xr.open_zarr(
+                            f"{zarr_base}/surface/CSNOW/surface/CSNOW",
+                            storage_options=s3opts,
+                        )
+                        csnow = ds_csnow[list(ds_csnow.data_vars)[0]].values[y_slice, x_slice]
+                        ds_csnow.close()
+
+                        # Read CRAIN (categorical rain flag) — domain subset only
+                        ds_crain = xr.open_zarr(
+                            f"{zarr_base}/surface/CRAIN/surface/CRAIN",
+                            storage_options=s3opts,
+                        )
+                        crain = ds_crain[list(ds_crain.data_vars)[0]].values[y_slice, x_slice]
+                        ds_crain.close()
+
+                        # Accumulate snow-masked temperature
+                        snow_mask = csnow == 1
+                        hrrr_snow_sum[month - 1][snow_mask] += t2m[snow_mask]
+                        hrrr_snow_count[month - 1][snow_mask] += 1
+
+                        # Accumulate rain-masked temperature
+                        rain_mask = crain == 1
+                        hrrr_rain_sum[month - 1][rain_mask] += t2m[rain_mask]
+                        hrrr_rain_count[month - 1][rain_mask] += 1
+
+                        month_snow_count += snow_mask.sum()
+                        month_rain_count += rain_mask.sum()
+
+                    except Exception:
+                        pass
+
+            print(f"  {year}-{month:02d}: snow_obs={month_snow_count:,}, rain_obs={month_rain_count:,}")
+
+    print(f"\nDone processing HRRR {_start.year}-{_end.year}")
+
+    np.savez(
+        cache_file,
+        hrrr_snow_sum=hrrr_snow_sum,
+        hrrr_rain_sum=hrrr_rain_sum,
+        hrrr_snow_count=hrrr_snow_count,
+        hrrr_rain_count=hrrr_rain_count,
+        hrrr_lats=hrrr_lats,
+        hrrr_lons=hrrr_lons,
+    )
+    print(f"Saved HRRR processed cache to {cache_file}")
+
+    return {
+        "hrrr_snow_sum": hrrr_snow_sum,
+        "hrrr_rain_sum": hrrr_rain_sum,
+        "hrrr_snow_count": hrrr_snow_count,
+        "hrrr_rain_count": hrrr_rain_count,
+        "hrrr_lats": hrrr_lats,
+        "hrrr_lons": hrrr_lons,
+    }
+
+
 def process_hrrr_climatology_and_weights(cache_file, gpkg_path, hru_id_col="model_hru_idx"):
     """Compute HRRR monthly climatology and grid-to-HRU weights.
 
@@ -592,8 +809,9 @@ def process_hrrr_climatology_and_weights(cache_file, gpkg_path, hru_id_col="mode
     print(f"  Rain observations total: {hrrr_rain_count.sum():,.0f}")
 
     # Compute means (avoid division by zero)
-    hrrr_ymon_snow = np.where(hrrr_snow_count > 0, hrrr_snow_sum / hrrr_snow_count, np.nan)
-    hrrr_ymon_rain = np.where(hrrr_rain_count > 0, hrrr_rain_sum / hrrr_rain_count, np.nan)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        hrrr_ymon_snow = np.where(hrrr_snow_count > 0, hrrr_snow_sum / hrrr_snow_count, np.nan)
+        hrrr_ymon_rain = np.where(hrrr_rain_count > 0, hrrr_rain_sum / hrrr_rain_count, np.nan)
 
     # Clip to physical bounds (same as ERA5 workflow)
     hrrr_ymon_snow = np.clip(hrrr_ymon_snow, 271.04, 274.4)
@@ -656,11 +874,15 @@ def process_hrrr_climatology_and_weights(cache_file, gpkg_path, hru_id_col="mode
 
     if unmatched_hru_ids:
         unmatched_hrus = hru_4326[hru_4326[hru_id_col].isin(unmatched_hru_ids)].copy()
-        unmatched_hrus["geometry"] = unmatched_hrus.geometry.centroid
+        # Reproject to EPSG:5070 for accurate centroid and distance calculations
+        unmatched_hrus_proj = unmatched_hrus.to_crs(epsg=5070)
+        unmatched_hrus_proj["geometry"] = unmatched_hrus_proj.geometry.centroid
+
+        hrrr_points_proj = hrrr_points_clipped.to_crs(epsg=5070)
 
         nn_result = gpd.sjoin_nearest(
-            unmatched_hrus[[hru_id_col, "geometry"]],
-            hrrr_points_clipped[["grid_id", "geometry"]],
+            unmatched_hrus_proj[[hru_id_col, "geometry"]],
+            hrrr_points_proj[["grid_id", "geometry"]],
             how="left",
         ).drop(columns=["index_right", "geometry"])
 

@@ -113,7 +113,7 @@ ref_proj = ref_gdf.to_crs(crs_proj)
 # %% [markdown]
 # ## Spatial overlay: find reference flowlines that substantially overlap each v2 segment
 # We buffer v2 segments slightly and require overlap of more than just a single
-# vertex (minimum overlap length) to avoid averaging in perpendicular tributaries.
+# vertex (minimum overlap length) to avoid averaging in perpendicular tributaries. Note, we should move this processing to find a comid for each derived hydrofabric segment to the original workflow for splitting, or at least, make it a pre-processing step to bring the GIS inline prior to this workflow.
 
 # %%
 # Buffer v2 segments by a small distance to catch nearby ref flowlines
@@ -396,6 +396,7 @@ toseg_df = pd.read_csv(
 )
 toseg_df.rename(columns={"$id": "model_seg_idx"}, inplace=True)
 
+agg = agg.drop(columns=["tosegment"], errors="ignore")
 agg = agg.merge(toseg_df[["model_seg_idx", "tosegment"]], on="model_seg_idx", how="left")
 
 # Default value
@@ -407,12 +408,23 @@ agg.loc[agg["in_waterbody"] == True, "x_coef"] = 0.0
 # Set to 0.0 for outlet segments (tosegment == 0)
 agg.loc[agg["tosegment"] == 0, "x_coef"] = 0.0
 
-print(f"x_coef: {(agg['x_coef'] == 0.2).sum()} segments at 0.2, {(agg['x_coef'] == 0.0).sum()} segments at 0.0")
-print(f"  (waterbody: {agg['in_waterbody'].sum()}, outlet: {(agg['tosegment'] == 0).sum()})")
+n_wb = (agg["in_waterbody"] == True).sum()
+n_outlet = (agg["tosegment"] == 0).sum()
+n_both = ((agg["in_waterbody"] == True) & (agg["tosegment"] == 0)).sum()
+n_zero = (agg["x_coef"] == 0.0).sum()
+
+print(f"x_coef: {(agg['x_coef'] == 0.2).sum()} segments at 0.2, {n_zero} segments at 0.0")
+print(f"  (waterbody: {n_wb}, outlet: {n_outlet}, both: {n_both})")
 
 # %%
 # Compute segment_type:
 # 0=segment (default), 1=headwater, 2=lake, 5=outbound (tosegment=0)
+#
+# Note: Other values exist and are important for computing other water budget output variable in prms 6.0, but it is not clear if this fuctinality extends
+# to pywatershed yet:
+# Segment type (0=segment; 1= headwater; 2=lake; 3=replace inflow; 4=inbound to NHM; 5=outbound from NHM; 6=inbound to region; 7=outbound from region; 8=drains to ocean; 9=sink; 
+# 10=inbound from Great Lakes; 11=outbound to Great Lakes, add 100 to flag that the value is updated)
+#
 # Priority order: outbound first, then headwater, then lake (highest priority last)
 agg["segment_type"] = 0
 
@@ -636,7 +648,7 @@ print(f"\nAll files written to {created_params_dir}")
 # %% [markdown]
 # ## Map: all computed segment parameters
 
-# %%
+# %% jupyter={"source_hidden": true}
 import folium
 from branca.colormap import LinearColormap
 

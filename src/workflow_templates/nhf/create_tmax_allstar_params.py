@@ -101,7 +101,6 @@ grid_spacing = 0.25  # ERA5 grid spacing in degrees
 
 # %%
 from assist.nhf.make_pws_params import fetch_era5_data
-
 era5_valid = fetch_era5_data(v2_gpkg_path, era5_data_dir, start_year, end_year)
 
 # %% [markdown]
@@ -136,7 +135,7 @@ from assist.nhf.make_pws_params import apply_era5_weights_to_hrus
 hru_gdf = gpd.read_file(v2_gpkg_path, layer="nhru")
 nhru = len(hru_gdf)
 
-allsnow, allsnow_f, allrain_offset = apply_era5_weights_to_hrus(
+allsnow_f, allrain_f, allrain_offset = apply_era5_weights_to_hrus(
     ymon_mean, weights_df, nhru
 )
 
@@ -144,22 +143,16 @@ allsnow, allsnow_f, allrain_offset = apply_era5_weights_to_hrus(
 # ## Step 5: Write output parameter CSVs
 
 # %%
-# def write_param_csv(filepath, param_name, data):
-#     """Write parameter in paramdb CSV format ($id, values by month)."""
-#     nhru, nmonths = data.shape
-#     rows = []
-#     # Flatten in Fortran order (column-major): all HRUs for month 1, then month 2, etc.
-#     flat = data.ravel(order="F")
-#     for i, val in enumerate(flat):
-#         rows.append({"$id": i + 1, param_name: val})
-#     pd.DataFrame(rows).to_csv(filepath, index=False)
-#     print(f"Wrote {filepath.name}: {len(rows)} rows")
-#
-#
-# write_param_csv(output_dir / "tmax_allsnow.csv", "tmax_allsnow", allsnow_f)
-# write_param_csv(output_dir / "tmax_allrain_offset.csv", "tmax_allrain_offset", allrain_offset)
-#
-# print(f"\nAll output written to {output_dir}")
+def write_param_csv(filepath, param_name, data):
+    """Write parameter in paramdb CSV format ($id, values by month)."""
+    nhru, nmonths = data.shape
+    rows = []
+    # Flatten in Fortran order (column-major): all HRUs for month 1, then month 2, etc.
+    flat = data.ravel(order="F")
+    for i, val in enumerate(flat):
+        rows.append({"$id": i + 1, param_name: val})
+    pd.DataFrame(rows).to_csv(filepath, index=False)
+    print(f"Wrote {filepath.name}: {len(rows)} rows")
 
 # %% [markdown]
 # ## Map: tmax_allsnow and tmax_allrain_offset by HRU
@@ -314,33 +307,30 @@ print(f"HRRR tmax_allsnow range: {np.nanmin(hrrr_allsnow_f):.2f} - {np.nanmax(hr
 print(f"HRRR tmax_allrain_offset range: {np.nanmin(hrrr_allrain_offset):.2f} - {np.nanmax(hrrr_allrain_offset):.2f} °F")
 
 # %%
-print(f"hrrr_ymon_snow shape: {hrrr_ymon_snow.shape}")
-print(f"hrrr_ymon_snow[0] flattened size: {hrrr_ymon_snow[0].flatten().size}")
-print(f"Max grid_id in weights: {hrrr_weights['grid_id'].max()}")
-print(f"Min grid_id in weights: {hrrr_weights['grid_id'].min()}")
-print(f"Non-NaN in hrrr_ymon_snow[0]: {np.count_nonzero(~np.isnan(hrrr_ymon_snow[0]))}")
-print(f"Snow count[0] > 0: {(hrrr_snow_count[0] > 0).sum()}")
+# # Daignostic block
+# date = datetime(2019, 1, 15, 12)
+# H = Herbie(date, model="hrrr", product="sfc", fxx=0)
+# ds_csnow = H.xarray(":CSNOW:surface")
+# csnow_var = [v for v in ds_csnow.data_vars if v not in ["gribfile_projection"]][0]
+# csnow_vals = ds_csnow[csnow_var].values
 
-
-# %%
-date = datetime(2019, 1, 15, 12)
-H = Herbie(date, model="hrrr", product="sfc", fxx=0)
-ds_csnow = H.xarray(":CSNOW:surface")
-csnow_var = [v for v in ds_csnow.data_vars if v not in ["gribfile_projection"]][0]
-csnow_vals = ds_csnow[csnow_var].values
-
-print(f"Variable name: {csnow_var}")
-print(f"dtype: {csnow_vals.dtype}")
-print(f"Shape: {csnow_vals.shape}")
-print(f"Unique values: {np.unique(csnow_vals)}")
-print(f"Min/Max: {csnow_vals.min()} / {csnow_vals.max()}")
-print(f"Count == 1: {(csnow_vals == 1).sum()}")
-print(f"Count == 1.0: {(csnow_vals == 1.0).sum()}")
-print(f"Count > 0: {(csnow_vals > 0).sum()}")
+# print(f"Variable name: {csnow_var}")
+# print(f"dtype: {csnow_vals.dtype}")
+# print(f"Shape: {csnow_vals.shape}")
+# print(f"Unique values: {np.unique(csnow_vals)}")
+# print(f"Min/Max: {csnow_vals.min()} / {csnow_vals.max()}")
+# print(f"Count == 1: {(csnow_vals == 1).sum()}")
+# print(f"Count == 1.0: {(csnow_vals == 1.0).sum()}")
+# print(f"Count > 0: {(csnow_vals > 0).sum()}")
 
 
 # %% [markdown]
 # ### Step H5: Compare ERA5 vs HRRR side-by-side maps
+# `tmax_allsnow` is the maximum daily temperature (°F) at which all precipitation
+# is assumed to fall as snow. It is a monthly climatological value derived by
+# masking 2m temperature by the categorical snow flag (CSNOW=1 in HRRR, ptype=5
+# in ERA5), then computing the long-term mean for each calendar month at each
+# grid cell, and finally area-weighting to each HRU.
 
 # %%
 import matplotlib.pyplot as plt
@@ -398,7 +388,7 @@ for i in range(12):
 # %% [markdown]
 # ### Compare v1.1 vs v2 ERA5 tmax_allsnow (single month)
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Load v1.1 tmax_allsnow from subdomain param file and GIS
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
