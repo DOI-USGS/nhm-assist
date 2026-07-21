@@ -264,3 +264,6 @@ nhf_assist/notebooks/create_segment_parameters_slides.md
 /pestpp_ies_calibration/notebooks
 pestpp_ies_calibration/parameters.json
 /data_dependencies
+
+# .kiro files
+.kiro/
