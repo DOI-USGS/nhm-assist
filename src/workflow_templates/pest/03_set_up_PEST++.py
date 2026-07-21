@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
