@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -19,12 +19,6 @@ import os
 import pathlib as pl
 import warnings
 
-import pywatershed as pws
-import xarray as xr
-import numpy as np
-import pandas as pd
-import datetime
-
 warnings.filterwarnings("ignore")
 from rich.console import Console
 
@@ -35,12 +29,56 @@ pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+
+import pandas as pd
+import pywatershed as pws
+import xarray as xr
+import numpy as np
+import datetime
+
+# import pathlib as pl
+# from pyPRMS.metadata.metadata import MetaData
+# from pyPRMS import ParameterFile
+from contextlib import redirect_stdout
+import io
+
+f = io.StringIO()
+with redirect_stdout(f):
+    import pywatershed as pws
+
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
-print(root_dir)
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
-from nhm_helpers import efc
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
+
+from dotenv import load_dotenv
+
+# Use home directory for Nebari, otherwise use repo root_dir
+if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+    dotenv_path = pl.Path.home() / ".env"
+else:
+    dotenv_path = root_dir / ".env"
+
+load_dotenv(dotenv_path=dotenv_path)
+
+############################################
+
+
+from assist.nhm.nhm_assist_utilities import load_subdomain_config
+from assist.nhm import efc
 
 config = load_subdomain_config(root_dir)
 
@@ -51,6 +89,9 @@ config = load_subdomain_config(root_dir)
 
 # %% [markdown]
 # ### Make a pest_ies folder in the model directory to hold all pest_ies related files
+
+# %%
+config["model_dir"]
 
 # %%
 if not (config["model_dir"] / "pestpp_ies").exists():
@@ -171,9 +212,6 @@ RCH_all
 c_da = RCH_all.sel(nhru=nhm_ids)
 c_da[["recharge_min_norm", "recharge_max_norm"]].to_netcdf(obsdir / f"RCH_annual.nc")
 RCH_all.close()
-
-# %%
-c_da.recharge_min_norm.values
 
 # %% [markdown]
 # ### Subset Annual Soil Moisture
@@ -324,7 +362,9 @@ del ci_pct, sca_obs, SCAmask, baseline_SCAmin, baseline_SCAmax, SCA_daily
 # SCA_daily.SCA_max.sel(nhru=99860, time=slice("2002-11-01", "2003-01-30")).plot()
 # SCA_daily.SCA_min.sel(nhru=99860, time=slice("2002-11-01", "2003-01-30")).plot()
 hru_sel = nhm_ids[1]
-c_da.SCA_max.sel(nhru=hru_sel, time=slice("2002-11-01", "2008-01-30")).plot()
-c_da.SCA_min.sel(nhru=hru_sel, time=slice("2002-11-01", "2008-01-30")).plot()
+c_da.SCA_max.sel(nhru=hru_sel, time=slice("2002-11-01", "2004-01-30")).plot()
+c_da.SCA_min.sel(nhru=hru_sel, time=slice("2002-11-01", "2004-01-30")).plot()
+
+# %%
 
 # %%

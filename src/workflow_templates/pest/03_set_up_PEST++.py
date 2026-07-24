@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -16,17 +16,8 @@
 # %%
 import sys
 import os
-import shutil
-
 import pathlib as pl
 import warnings
-
-import pywatershed as pws
-import xarray as xr
-import numpy as np
-import pandas as pd
-import datetime
-
 
 warnings.filterwarnings("ignore")
 from rich.console import Console
@@ -38,13 +29,60 @@ pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+
+import pandas as pd
+import shutil
+import pywatershed as pws
+import xarray as xr
+import numpy as np
+import datetime
+
+# import pathlib as pl
+# from pyPRMS.metadata.metadata import MetaData
+# from pyPRMS import ParameterFile
+from contextlib import redirect_stdout
+import io
+
+f = io.StringIO()
+with redirect_stdout(f):
+    import pywatershed as pws
+
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
-print(root_dir)
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
-from nhm_helpers import efc
-from pestpp_ies_calibration.helpers.pest_utils import (
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
+
+from dotenv import load_dotenv
+
+# Use home directory for Nebari, otherwise use repo root_dir
+if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+    dotenv_path = pl.Path.home() / ".env"
+else:
+    dotenv_path = root_dir / ".env"
+
+load_dotenv(dotenv_path=dotenv_path)
+
+###################################################
+
+
+from assist.nhm.nhm_assist_utilities import load_subdomain_config
+from assist.nhm import efc
+
+from assist.pest.pest_utils import (
     pars_to_tpl_entries,
     pars_to_tpl_entries_2,
     write_to_json_tpl,
@@ -53,6 +91,7 @@ from pestpp_ies_calibration.helpers.pest_utils import (
 
 config = load_subdomain_config(root_dir)
 
+sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 
@@ -314,7 +353,9 @@ mask = (obs.obsnme.str.startswith("streamflow_daily")) & (obs.obsval == 0)
 
 obgnme_list = list(set(obs.loc[mask, "obgnme"]))
 
-if (len(obgnme_list) == 1) & (obgnme_list[0] == "streamflow_daily_ex_low"):
+if len(obgnme_list) == 0:
+    print(f"[PASS]: No '0' streamflow observations found — nothing to reassign.")
+elif len(obgnme_list) == 1 and obgnme_list[0] == "streamflow_daily_ex_low":
     print(f"[PASS]: All '0' streamflow observations are in {obs_group}.")
 else:
     change_list = [x for x in obgnme_list if x != obs_group]
@@ -324,6 +365,9 @@ else:
         f"[WARNING]: '0' value streamflows were found in {len(chang_mask)} observations in groups {change_list}.",
         f"The obgnme for these observations will be changes to {obs_group}.",
     )
+
+# %%
+obgnme_list
 
 # %% [markdown]
 # #### Create validation observation groups for streamflow observations.
@@ -925,16 +969,28 @@ exe_name
 # check that pestpp executable exists and run. otherwise, get the exe
 if not pl.Path(pestpp_model_dir / exe_name).exists():
     print(".exe missing")
-    pyemu.utils.get_pestpp(str(pestpp_model_dir))
+
+    # First, look for a local pestpp distribution in data_dependencies
+    dep_dir = pestpp_dir / "data_dependencies"
+    local_pestpp_dirs = sorted(dep_dir.glob("pestpp-*-win"))
+
+    if local_pestpp_dirs:
+        # Use the most recent local distribution
+        local_bin = local_pestpp_dirs[-1] / "bin"
+        print(f"  Found local PEST++ distribution: {local_pestpp_dirs[-1].name}")
+        import shutil
+
+        for exe_file in local_bin.glob("*.exe"):
+            shutil.copy2(exe_file, pestpp_model_dir / exe_file.name)
+            print(f"    Copied {exe_file.name}")
+    else:
+        # No local distribution found — download via pyemu
+        print("  No local PEST++ distribution found, downloading via pyemu...")
+        pyemu.utils.get_pestpp(str(pestpp_model_dir))
+
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
 else:
     print(".exe found")
     pyemu.os_utils.run("pestpp-ies prior_mc.pst", cwd=str(pestpp_model_dir))
-
-# %%
-
-# %%
-
-# %%
 
 # %%
