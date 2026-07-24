@@ -2,7 +2,7 @@
 # jupyter:
 #   jupytext:
 #     cell_metadata_filter: -all
-#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
