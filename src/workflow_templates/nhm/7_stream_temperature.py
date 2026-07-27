@@ -749,38 +749,30 @@ for t_idx in tqdm(range(1, n_days), desc="SNTemp simulation", unit="day"):
     flow_today = seg_outflow_da.isel(time=t_idx).values  # cfs
     flow_today_cms = flow_today * 0.0283168  # Convert to m3/s
     
-    # Compute each segment independently (no network propagation)
-    # Stream temp modeled as function of air temp, flow, shade, GW
-    for seg_i in range(nseg):
-        q = max(flow_today_cms[seg_i], 0.001)
-        shade = shade_today[seg_i]
+    # Process segments in topological order (upstream -> downstream)
+    for seg_i in topo_order:
+        # Get upstream temperature (flow-weighted average of upstream segments)
+        upstream_segs = upstream_of[seg_i]
+        if upstream_segs:
+            us_flows = np.array([max(flow_today_cms[u], 0.001) for u in upstream_segs])
+            us_temps = np.array([stream_temp[t_idx - 1, u] for u in upstream_segs])
+            t_upstream = np.average(us_temps, weights=us_flows)
+        else:
+            # Headwater: GW-buffered temperature
+            t_upstream = 0.4 * t_air_today + 0.6 * t_gw_annual
         
-        # Base temperature: weighted average of air temp and GW temp
-        # Higher flow = more influenced by upstream/GW, lower flow = more by air/solar
-        # Use a nonlinear logistic function of flow to determine air vs GW influence
-        # Small streams (low Q): more GW buffered
-        # Large rivers (high Q): more air temp driven (thermal mass, travel time)
-        q_threshold = 1.0  # m3/s - transition point
-        air_weight = 1.0 / (1.0 + np.exp(-(np.log10(q) - np.log10(q_threshold)) * 3.0))
-        gw_weight = 1.0 - air_weight
-        
-        t_base = air_weight * t_air_today + gw_weight * t_gw_annual
-        
-        # Solar offset: small warming above base temp, reduced by shade
-        solar = solar_radiation_daily(doy, temp_params["seg_lat"][seg_i])
-        solar_warming = solar * (1.0 - shade) * 0.003  # Very conservative
-        
-        # Flow cooling: high flow = cooler (more thermal inertia, more GW)
-        flow_cooling = max(0, 0.5 * np.log10(q / q_threshold)) if q > q_threshold else 0
-        
-        t_seg = t_base + solar_warming - flow_cooling
-        
-        # Temporal smoothing: don't jump too far from yesterday
-        t_yesterday = stream_temp[t_idx - 1, seg_i]
-        smoothing = 0.3  # 30% persistence from yesterday
-        t_seg = (1 - smoothing) * t_seg + smoothing * t_yesterday
-        
-        stream_temp[t_idx, seg_i] = max(0.0, min(t_seg, 28.0))
+        # Compute segment temperature using equilibrium approach
+        stream_temp[t_idx, seg_i] = sntemp_segment_temperature(
+            t_air=t_air_today,
+            q_inflow=max(flow_today_cms[seg_i], 0.001),
+            t_upstream=t_upstream,
+            seg_width=temp_params["seg_width"][seg_i],
+            seg_length=temp_params["seg_length"][seg_i],
+            seg_shade=shade_today[seg_i],
+            seg_lat=temp_params["seg_lat"][seg_i],
+            day_of_year=doy,
+            t_gw=t_gw_annual,
+        )
 
 print(f"\nSimulation complete.")
 print(f"Temperature range: {stream_temp[1:].min():.1f} to {stream_temp[1:].max():.1f} °C")
