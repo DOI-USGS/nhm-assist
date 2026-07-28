@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: pestpp_ies_calibration/notebooks///ipynb,src/workflow_templates/pest///py:percent
+#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -14,23 +14,95 @@
 # ---
 
 # %%
-import pywatershed
-import pandas as pd
-import pathlib as pl
-import numpy as np
 import sys
-import pyemu
-interrupt_notebook = False
-import matplotlib.pyplot as plt
 import os
-plt.rcParams['pdf.fonttype'] = 42
+import pathlib as pl
+import warnings
+
+warnings.filterwarnings("ignore")
+from rich.console import Console
+
+con = Console()
+from rich import pretty
+
+pretty.install()
+import jupyter_black
+
+jupyter_black.load()
+
+import pandas as pd
+import shutil
+import pywatershed as pws
+import xarray as xr
+import numpy as np
+import datetime
+
+# import pathlib as pl
+# from pyPRMS.metadata.metadata import MetaData
+# from pyPRMS import ParameterFile
+from contextlib import redirect_stdout
+import io
+
+f = io.StringIO()
+with redirect_stdout(f):
+    import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
-print(root_dir)
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
-from pestpp_ies_calibration.helpers.pest_utils import pars_to_tpl_entries
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
+
+from dotenv import load_dotenv
+
+# Use home directory for Nebari, otherwise use repo root_dir
+if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+    dotenv_path = pl.Path.home() / ".env"
+else:
+    dotenv_path = root_dir / ".env"
+
+load_dotenv(dotenv_path=dotenv_path)
+
+from assist.nhm.nhm_assist_utilities import load_subdomain_config
+from assist.nhm import efc
+
+from assist.pest.pest_utils import (
+    pars_to_tpl_entries,
+    pars_to_tpl_entries_2,
+    write_to_json_tpl,
+    check_par_bounds,
+)
+
+config = load_subdomain_config(root_dir)
+
+sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
+import pyemu
+import platform
+
+if "Windows" in platform.system():
+    exe_name = "pestpp-ies.exe"
+else:
+    exe_name = "pestpp-ies"
+
+######################################################################################
+
+interrupt_notebook = False
+import matplotlib.pyplot as plt
+
+plt.rcParams['pdf.fonttype'] = 42
 
 config = load_subdomain_config(root_dir)
 
@@ -45,19 +117,19 @@ if not (pestpp_model_dir / "postprocessing").exists():
     (pestpp_model_dir / "postprocessing").mkdir()
 
 # %%
-#all_models = ['01473000','05431486','09112500','14015000']# Create a list of all cutouts
+# all_models = ['01473000','05431486','09112500','14015000']# Create a list of all cutouts
 
 # %%
-#rootdir = pl.Path('../NHM_extractions/20230110_pois_haj/')# Path to location of cutouts
+# rootdir = pl.Path('../NHM_extractions/20230110_pois_haj/')# Path to location of cutouts
 
 # %%
 # cm = all_models[0] # sets cutout from list
-#cm = snakemake.params['basin']
-#pestdir = os.path.join(rootdir, f'{cm}')  # stes path to location of NHM output folder where output files are.
+# cm = snakemake.params['basin']
+# pestdir = os.path.join(rootdir, f'{cm}')  # stes path to location of NHM output folder where output files are.
 
 # %%
-pst = pyemu.Pst(os.path.join(pestpp_model_dir,'prior_mc_loc.pst'))
-num_reals=pst.pestpp_options['ies_num_reals']
+pst = pyemu.Pst(os.path.join(pestpp_model_dir, "prior_mc_loc.pst"))
+num_reals = pst.pestpp_options["ies_num_reals"]
 
 # %% [markdown]
 # ### changing from manual re-weighting to using the 'phi factor' approach
@@ -65,36 +137,46 @@ num_reals=pst.pestpp_options['ies_num_reals']
 # %%
 # Assign relative contributions to the objective function
 # Check with Mike: Is PEST remapping and combining obs based on the key in this dict?
-phi_new_comps = {'actet_mean_mon':0.08,
-                 'actet_mon':  .04,
-                 'recharge_ann': 0.08,
-                 'runoff_mon': .16,
-#                  'sca_daily':.1,
-                 'soil_moist_ann': 0.08,
-                 'soil_moist_mon': 0.1,
-                 'streamflow_mean_mon_cal': .1,
-                 'streamflow_mon': .12,
-                 'scnd': .14,
-                 '_low': 0.1
-                }
+phi_new_comps = {
+    "actet_mean_mon": 0.08,
+    "actet_mon": 0.04,
+    "recharge_ann": 0.08,
+    "runoff_mon": 0.16,
+    #                  'sca_daily':.1,
+    "soil_moist_ann": 0.08,
+    "soil_moist_mon": 0.1,
+    "streamflow_mean_mon_cal": 0.1,
+    "streamflow_mon": 0.12,
+    "scnd": 0.14,
+    "_low": 0.1,
+}
 
 # %%
 phi_new_comps_plot = phi_new_comps.copy()
-phi_new_comps_plot['streamflow_high'] = phi_new_comps_plot.pop('scnd')
-phi_new_comps_plot['streamflow_low'] = phi_new_comps_plot.pop('_low')
+phi_new_comps_plot["streamflow_high"] = phi_new_comps_plot.pop("scnd")
+phi_new_comps_plot["streamflow_low"] = phi_new_comps_plot.pop("_low")
 
 
 # %%
-fig, ax = plt.subplot_mosaic('''
+fig, ax = plt.subplot_mosaic(
+    """
                             aaa.bbb
                             aaa.bbb
                             aaa.bbb
-                            ''', figsize=(8,6))
-ax['a'].pie(pst.phi_components.values(), 
-            labels = [i.replace('_','\n') for i in pst.phi_components.keys()], 
-            startangle=180,textprops={'fontsize': 12})
-ax['b'].pie(phi_new_comps_plot.values(), 
-            labels = [i.replace('_','\n') for i in phi_new_comps_plot.keys()],textprops={'fontsize': 12})
+                            """,
+    figsize=(8, 6),
+)
+ax["a"].pie(
+    pst.phi_components.values(),
+    labels=[i.replace("_", "\n") for i in pst.phi_components.keys()],
+    startangle=180,
+    textprops={"fontsize": 12},
+)
+ax["b"].pie(
+    phi_new_comps_plot.values(),
+    labels=[i.replace("_", "\n") for i in phi_new_comps_plot.keys()],
+    textprops={"fontsize": 12},
+)
 plt.savefig(pestpp_model_dir / f'postprocessing/reweighting_{config["subdomain"]}.pdf')
 
 # %%
@@ -113,12 +195,14 @@ plt.savefig(pestpp_model_dir / f'postprocessing/reweighting_{config["subdomain"]
 # #save to csv
 # phi_fac.to_csv(os.path.join(pestdir,'phi_factors.csv'))
 
-#build phi factor df
+# build phi factor df
 phi_fac = pd.DataFrame(phi_new_comps.items())
-assert (1- np.sum(phi_fac[1]))<0.001 #make sure they sum to 1
+assert (1 - np.sum(phi_fac[1])) < 0.001  # make sure they sum to 1
 
-#save to csv
-phi_fac.to_csv(os.path.join(pestpp_model_dir,'phi_factors.csv'),index=None,header=None)
+# save to csv
+phi_fac.to_csv(
+    os.path.join(pestpp_model_dir, "phi_factors.csv"), index=None, header=None
+)
 
 # %%
 
@@ -126,22 +210,22 @@ phi_fac.to_csv(os.path.join(pestpp_model_dir,'phi_factors.csv'),index=None,heade
 phi_fac
 
 # %%
-#Write a new version of the PEST++ control file (.pst)
-pst.pestpp_options['ies_phi_factor_file']="phi_factors.csv"
-pst.pestpp_options['ies_phi_factors_by_real']=False
-pst.control_data.noptmax=0
-pst.write(os.path.join(pestpp_model_dir, 'prior_mc_reweight.pst'), version=2)
+# Write a new version of the PEST++ control file (.pst)
+pst.pestpp_options["ies_phi_factor_file"] = "phi_factors.csv"
+pst.pestpp_options["ies_phi_factors_by_real"] = False
+pst.control_data.noptmax = 0
+pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
 # ### update the localization matrix to remove groups with only 0-weighted obs
 
 # %%
 # read in the localization matrix from the run directory
-locmat = pyemu.Matrix.from_ascii(str(pestpp_model_dir / 'loc.mat')).to_dataframe()
+locmat = pyemu.Matrix.from_ascii(str(pestpp_model_dir / "loc.mat")).to_dataframe()
 
 # %%
 # find zero-weighted groups (just streamflow no data)
-zero_grps = ['streamflow_nodata']
+zero_grps = ["streamflow_nodata"]
 zero_grps
 
 # %%
@@ -150,24 +234,25 @@ locmat.loc[~locmat.index.isin(zero_grps)]
 
 # %%
 # write out the new matrix in PEST style
-pyemu.Matrix.from_dataframe(locmat.loc[~locmat.index.isin(zero_grps)]).to_ascii(str(pestpp_model_dir/ 'loc.mat'))
+pyemu.Matrix.from_dataframe(locmat.loc[~locmat.index.isin(zero_grps)]).to_ascii(
+    str(pestpp_model_dir / "loc.mat")
+)
 
 # %%
-pyemu.os_utils.run('pestpp-ies prior_mc_reweight.pst',cwd=pestpp_model_dir)
+pyemu.os_utils.run("pestpp-ies prior_mc_reweight.pst", cwd=pestpp_model_dir)
 
 # %%
-pst.control_data.noptmax=-1
-pst.write(os.path.join(pestpp_model_dir, 'prior_mc_reweight.pst'), version=2)
+pst.control_data.noptmax = -1
+pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
 # ### spit out control file for GSA
 
 # %%
-
-pst.pestpp_options['gsa_morris_r']=18
-pst.pestpp_options['gsa_morris_p']=4
-pst.pestpp_options['tie_by_group']=True
-pst.write(os.path.join(pestpp_model_dir, 'prior_mc_reweight_gsa.pst'), version=2)
+pst.pestpp_options["gsa_morris_r"] = 18
+pst.pestpp_options["gsa_morris_p"] = 4
+pst.pestpp_options["tie_by_group"] = True
+pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight_gsa.pst"), version=2)
 
 # quick remap of dependent files
 # Eddie and Matt think this was so Mike didn't have to move new files up to S3 for a sensativity analysis.
@@ -196,9 +281,9 @@ for cn, _ in obs.groupby("obgnme"):
             )
 
         else:
-            
+
             mask_cn_and_notzero = (obs.obgnme == cn) & (obs["obsval"] != 0)
-            
+
             min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
             max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
             print(
@@ -206,9 +291,9 @@ for cn, _ in obs.groupby("obgnme"):
             )
 
     else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
-        
+
         mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
-        
+
         min_val = obs.loc[mask_cn, "weight"].min()
         max_val = obs.loc[mask_cn, "weight"].max()
         print(

@@ -55,12 +55,12 @@ This creates a `domain_data/` folder and adds the example subdomain for the Will
 pixi run setup
 ```
 
-Drops you into a numeric menu that:
+Drops you into a guided menu. Just work through the top four options in order:
 
-1. Prompts for a workspace location (defaults to `~/nhm-workspace`, outside the repo)
-2. Lets you create a project, copy or import a model, set the active model
-3. Generates the NHM notebooks into the project
-4. Launches JupyterLab against the project
+1. Set the workspace root (defaults to `~/nhm-workspace`, outside the repo)
+2. Create a project
+3. Copy an example model (automatically set as the active model)
+4. Launch JupyterLab (generates the NHM notebooks first if needed)
 
 See the "Pixi Workspace for NHM" section below for the layout details.
 

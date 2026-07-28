@@ -271,6 +271,27 @@ def action_open_project(state: SetupState, *, print_func=print, input_func=input
     return project
 
 
+def _set_model_active(
+    state: SetupState,
+    model_name: str,
+    *,
+    workspace_root: Path,
+    print_func=print,
+) -> None:
+    try:
+        service.set_active_model(
+            workspace_root,
+            project_name=state.current_project,
+            model_name=model_name,
+        )
+        print_func(f"Active model set to {model_name}")
+    except (FileNotFoundError, NotADirectoryError, ValueError, OSError) as exc:
+        print_func(
+            f"Model '{model_name}' is available but could not be set active: {exc}. "
+            f"Use 'Set active model' to activate it."
+        )
+
+
 def action_copy_example_model(
     state: SetupState,
     *,
@@ -309,6 +330,12 @@ def action_copy_example_model(
         example_name,
     )
     print_func(f"Copied example model to {paths['model']}")
+    _set_model_active(
+        state,
+        model_name,
+        workspace_root=workspace_root,
+        print_func=print_func,
+    )
     return paths["model"]
 
 
@@ -331,6 +358,12 @@ def action_import_model(
         source_dir,
     )
     print_func(f"Imported model to {paths['model']}")
+    _set_model_active(
+        state,
+        model_name,
+        workspace_root=workspace_root,
+        print_func=print_func,
+    )
     return paths["model"]
 
 
@@ -371,14 +404,11 @@ def action_set_active_model(
     return config_path
 
 
-def action_generate_nhm_notebooks(
+def generate_nhm_notebooks(
     state: SetupState,
     *,
     print_func=print,
-) -> list[Path] | None:
-    if not require_current_project(state, print_func=print_func):
-        return None
-
+) -> list[Path]:
     workspace_root = require_workspace_root(state)
     created = notebook_builder.convert_workflow(
         "nhm",
@@ -395,7 +425,55 @@ def action_generate_nhm_notebooks(
     return created
 
 
+def nhm_notebooks_need_generation(state: SetupState) -> bool:
+    if state.workspace_root is None or state.current_project is None:
+        return True
+
+    template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+    notebook_dir = bridge.get_project_workflow_notebooks_dir(
+        "nhm",
+        state.workspace_root,
+        state.current_project,
+    )
+
+    if not notebook_dir.exists() or not any(notebook_dir.rglob("*.ipynb")):
+        return True
+
+    for py_file in template_dir.rglob("*.py"):
+        relative = py_file.relative_to(template_dir).with_suffix(".ipynb")
+        target = notebook_dir / relative
+        if not target.exists():
+            return True
+        if py_file.stat().st_mtime > target.stat().st_mtime:
+            return True
+
+    return False
+
+
+def action_generate_nhm_notebooks(
+    state: SetupState,
+    *,
+    print_func=print,
+) -> list[Path] | None:
+    if not require_current_project(state, print_func=print_func):
+        return None
+    return generate_nhm_notebooks(state, print_func=print_func)
+
+
 JUPYTER_STARTUP_PROBE_SECONDS = 0.75
+
+
+def _default_jupyter_readiness_probe(project_root: Path) -> bool:
+    try:
+        from jupyter_server.serverapp import list_running_servers
+    except Exception:
+        return True
+    target = str(Path(project_root).resolve())
+    for server in list_running_servers():
+        root = server.get("root_dir") or server.get("notebook_dir") or ""
+        if root and str(Path(root).resolve()) == target:
+            return True
+    return False
 
 
 def action_launch_jupyter(
@@ -403,6 +481,10 @@ def action_launch_jupyter(
     *,
     print_func=print,
     startup_probe_seconds: float = JUPYTER_STARTUP_PROBE_SECONDS,
+    readiness_probe=None,
+    readiness_timeout_seconds: float = 30.0,
+    readiness_poll_seconds: float = 0.5,
+    sleep_func=time.sleep,
 ) -> Path | None:
     if not require_current_project(state, print_func=print_func):
         return None
@@ -412,6 +494,11 @@ def action_launch_jupyter(
         workspace_root,
         state.current_project,
     )
+
+    if nhm_notebooks_need_generation(state):
+        print_func("Generating NHM notebooks before launch…")
+        generate_nhm_notebooks(state, print_func=print_func)
+
     command = [sys.executable, "-m", "jupyter", "lab", str(project_root)]
     pretty_command = " ".join(shlex.quote(part) for part in command)
 
@@ -429,7 +516,7 @@ def action_launch_jupyter(
         print_func(f"Command attempted: {pretty_command}")
         return None
 
-    time.sleep(startup_probe_seconds)
+    sleep_func(startup_probe_seconds)
     return_code = proc.poll()
     if return_code is not None:
         print_func(f"Error: Jupyter exited immediately with code {return_code}.")
@@ -437,8 +524,32 @@ def action_launch_jupyter(
         print_func("Check the output above for the underlying error.")
         return None
 
-    print_func(f"Jupyter started for {project_root} (PID {proc.pid}).")
-    print_func("The Jupyter URL will print in this terminal shortly.")
+    if readiness_probe is None:
+        readiness_probe = lambda: _default_jupyter_readiness_probe(project_root)
+
+    print_func("Loading JupyterLab…")
+    elapsed = 0.0
+    ready = False
+    while elapsed < readiness_timeout_seconds:
+        if readiness_probe():
+            ready = True
+            break
+        if proc.poll() is not None:
+            print_func(
+                f"Error: Jupyter exited while starting with code {proc.returncode}."
+            )
+            print_func("Check the output above for the underlying error.")
+            return None
+        sleep_func(readiness_poll_seconds)
+        elapsed += readiness_poll_seconds
+
+    if ready:
+        print_func(f"JupyterLab is ready for {project_root} (PID {proc.pid}).")
+        print_func("Open the URL printed above in your browser.")
+    else:
+        print_func(
+            "JupyterLab is still starting — its URL will appear above shortly."
+        )
     return project_root
 
 
@@ -520,17 +631,20 @@ def print_main_menu(state: SetupState, *, print_func=print) -> None:
     print_func(f"Active model: {active_model}")
     print_func(f"USGS WaterData API key: {api_key_status}")
     print_func("")
-    print_func("1. Set workspace root")
-    print_func("2. Create project")
-    print_func("3. Open project")
-    print_func("4. Copy example model")
-    print_func("5. Import model folder")
-    print_func("6. Set active model")
-    print_func("7. Generate NHM notebooks")
-    print_func("8. Launch Jupyter")
-    print_func("9. Show current setup")
-    print_func("10. Set USGS WaterData API key")
-    print_func("0. Exit")
+    print_func("  -- Guided setup (do these in order) --")
+    print_func("  1. Set workspace root")
+    print_func("  2. Create project")
+    print_func("  3. Copy example model")
+    print_func("  4. Launch Jupyter")
+    print_func("")
+    print_func("  -- More options --")
+    print_func("  5. Open existing project")
+    print_func("  6. Import model folder")
+    print_func("  7. Set active model")
+    print_func("  8. Generate NHM notebooks")
+    print_func("  9. Show current setup")
+    print_func(" 10. Set USGS WaterData API key")
+    print_func("  0. Exit")
 
 
 def run_setup(
@@ -584,33 +698,33 @@ def run_setup(
                         input_func=input_func,
                     )
                 elif choice == 3:
-                    action_open_project(
-                        state,
-                        print_func=print_func,
-                        input_func=input_func,
-                    )
-                elif choice == 4:
                     action_copy_example_model(
                         state,
                         print_func=print_func,
                         input_func=input_func,
                     )
+                elif choice == 4:
+                    action_launch_jupyter(state, print_func=print_func)
                 elif choice == 5:
-                    action_import_model(
+                    action_open_project(
                         state,
                         print_func=print_func,
                         input_func=input_func,
                     )
                 elif choice == 6:
-                    action_set_active_model(
+                    action_import_model(
                         state,
                         print_func=print_func,
                         input_func=input_func,
                     )
                 elif choice == 7:
-                    action_generate_nhm_notebooks(state, print_func=print_func)
+                    action_set_active_model(
+                        state,
+                        print_func=print_func,
+                        input_func=input_func,
+                    )
                 elif choice == 8:
-                    action_launch_jupyter(state, print_func=print_func)
+                    action_generate_nhm_notebooks(state, print_func=print_func)
                 elif choice == 9:
                     action_show_current_setup(state, print_func=print_func)
                 elif choice == 10:

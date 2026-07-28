@@ -132,32 +132,27 @@ class WorkspaceSetupTests(unittest.TestCase):
             return_value=["Rogue_River", "Walla_Walla"],
         ), patch.object(
             setup,
-            "prompt_required_text",
-            return_value="Model_A",
-        ) as mock_text, patch.object(
-            setup,
             "prompt_menu_choice",
             return_value=2,
         ) as mock_choice, patch.object(
             setup.service,
             "copy_example_model",
-            return_value={"model": self.workspace_root / "Project_A" / "models" / "Model_A"},
-        ) as mock_copy:
+            return_value={"model": self.workspace_root / "Project_A" / "models" / "Walla_Walla"},
+        ) as mock_copy, patch.object(
+            setup.service, "set_active_model"
+        ):
             setup.action_copy_example_model(state, print_func=lambda *_: None)
 
-        mock_text.assert_called_once_with(
-            "Type model name:",
-            input_func=input,
-        )
         mock_choice.assert_called_once_with(
             2,
             input_func=input,
             print_func=unittest.mock.ANY,
         )
+        # The chosen example's name is used as the model name (no separate prompt).
         mock_copy.assert_called_once_with(
             self.workspace_root,
             "Project_A",
-            "Model_A",
+            "Walla_Walla",
             "Walla_Walla",
         )
 
@@ -201,13 +196,17 @@ class WorkspaceSetupTests(unittest.TestCase):
             current_project="Project_A",
         )
 
-        with patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
             mock_popen.return_value.poll.return_value = None
             mock_popen.return_value.pid = 12345
             setup.action_launch_jupyter(
                 state,
                 print_func=lambda *_: None,
                 startup_probe_seconds=0,
+                readiness_probe=lambda: True,
+                sleep_func=lambda *_: None,
             )
 
         command = mock_popen.call_args.args[0]
@@ -230,7 +229,9 @@ class WorkspaceSetupTests(unittest.TestCase):
         )
         printed: list[str] = []
 
-        with patch(
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch(
             "assist.workspace.setup.importlib.util.find_spec",
             return_value=None,
         ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
@@ -238,6 +239,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                 state,
                 print_func=printed.append,
                 startup_probe_seconds=0,
+                sleep_func=lambda *_: None,
             )
 
         self.assertIsNone(result)
@@ -255,7 +257,9 @@ class WorkspaceSetupTests(unittest.TestCase):
         )
         printed: list[str] = []
 
-        with patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
             mock_popen.return_value.poll.return_value = 1
             mock_popen.return_value.returncode = 1
             mock_popen.return_value.pid = 12345
@@ -263,6 +267,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                 state,
                 print_func=printed.append,
                 startup_probe_seconds=0,
+                sleep_func=lambda *_: None,
             )
 
         self.assertIsNone(result)
@@ -279,7 +284,9 @@ class WorkspaceSetupTests(unittest.TestCase):
         )
         printed: list[str] = []
 
-        with patch(
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch(
             "assist.workspace.setup.subprocess.Popen",
             side_effect=FileNotFoundError("python not found"),
         ):
@@ -287,6 +294,7 @@ class WorkspaceSetupTests(unittest.TestCase):
                 state,
                 print_func=printed.append,
                 startup_probe_seconds=0,
+                sleep_func=lambda *_: None,
             )
 
         self.assertIsNone(result)
@@ -405,6 +413,296 @@ class WorkspaceSetupTests(unittest.TestCase):
             )
 
         self.assertEqual(state.current_project, "Columbia_Study")
+
+
+    def test_action_copy_example_model_sets_copied_model_active(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        model_dir = self.workspace_root / "Project_A" / "models" / "Walla_Walla"
+
+        with patch.object(
+            setup,
+            "list_available_example_names",
+            return_value=["Rogue_River", "Walla_Walla"],
+        ), patch.object(
+            setup, "prompt_menu_choice", return_value=2
+        ), patch.object(
+            setup.service,
+            "copy_example_model",
+            return_value={"model": model_dir},
+        ), patch.object(
+            setup.service, "set_active_model"
+        ) as mock_set_active:
+            setup.action_copy_example_model(state, print_func=lambda *_: None)
+
+        mock_set_active.assert_called_once_with(
+            self.workspace_root,
+            project_name="Project_A",
+            model_name="Walla_Walla",
+        )
+
+    def test_action_copy_example_model_returns_model_even_if_set_active_fails(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        model_dir = self.workspace_root / "Project_A" / "models" / "Walla_Walla"
+        printed: list[str] = []
+
+        with patch.object(
+            setup,
+            "list_available_example_names",
+            return_value=["Walla_Walla"],
+        ), patch.object(
+            setup, "prompt_menu_choice", return_value=1
+        ), patch.object(
+            setup.service,
+            "copy_example_model",
+            return_value={"model": model_dir},
+        ), patch.object(
+            setup.service,
+            "set_active_model",
+            side_effect=ValueError("boom"),
+        ):
+            result = setup.action_copy_example_model(state, print_func=printed.append)
+
+        self.assertEqual(result, model_dir)
+        self.assertTrue(
+            any("could not be set active" in line for line in printed),
+            f"expected set-active warning, got: {printed}",
+        )
+
+    def test_action_import_model_sets_imported_model_active(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        model_dir = self.workspace_root / "Project_A" / "models" / "Imported_M"
+
+        with patch.object(
+            setup,
+            "prompt_required_text",
+            side_effect=["Imported_M", "/some/source"],
+        ), patch.object(
+            setup.service,
+            "import_model",
+            return_value={"model": model_dir},
+        ), patch.object(
+            setup.service, "set_active_model"
+        ) as mock_set_active:
+            setup.action_import_model(state, print_func=lambda *_: None)
+
+        mock_set_active.assert_called_once_with(
+            self.workspace_root,
+            project_name="Project_A",
+            model_name="Imported_M",
+        )
+
+    def test_action_generate_nhm_notebooks_delegates_to_helper(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+
+        with patch.object(
+            setup, "generate_nhm_notebooks", return_value=[]
+        ) as mock_gen:
+            setup.action_generate_nhm_notebooks(state, print_func=lambda *_: None)
+
+        mock_gen.assert_called_once()
+
+    def test_nhm_notebooks_need_generation_true_when_none_present(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+
+        self.assertTrue(setup.nhm_notebooks_need_generation(state))
+
+    def test_nhm_notebooks_need_generation_false_when_fresh(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        setup.generate_nhm_notebooks(state, print_func=lambda *_: None)
+
+        self.assertFalse(setup.nhm_notebooks_need_generation(state))
+
+    def test_nhm_notebooks_need_generation_true_when_template_newer(self):
+        import os
+
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        setup.generate_nhm_notebooks(state, print_func=lambda *_: None)
+
+        notebook_dir = setup.bridge.get_project_workflow_notebooks_dir(
+            "nhm", self.workspace_root, "Project_A"
+        )
+        # Force notebooks far into the past so the on-disk templates are newer.
+        for nb in notebook_dir.rglob("*.ipynb"):
+            os.utime(nb, (1_000_000, 1_000_000))
+
+        self.assertTrue(setup.nhm_notebooks_need_generation(state))
+
+    def test_action_launch_jupyter_generates_notebooks_when_needed(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=True
+        ), patch.object(
+            setup, "generate_nhm_notebooks", return_value=[]
+        ) as mock_gen, patch(
+            "assist.workspace.setup.subprocess.Popen"
+        ) as mock_popen:
+            mock_popen.return_value.poll.return_value = None
+            mock_popen.return_value.pid = 111
+            setup.action_launch_jupyter(
+                state,
+                print_func=lambda *_: None,
+                startup_probe_seconds=0,
+                readiness_probe=lambda: True,
+                sleep_func=lambda *_: None,
+            )
+
+        mock_gen.assert_called_once()
+
+    def test_action_launch_jupyter_prints_loading_before_ready(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        printed: list[str] = []
+        calls = {"n": 0}
+
+        def probe():
+            calls["n"] += 1
+            return calls["n"] >= 3
+
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.poll.return_value = None
+            mock_popen.return_value.pid = 222
+            result = setup.action_launch_jupyter(
+                state,
+                print_func=printed.append,
+                startup_probe_seconds=0,
+                readiness_probe=probe,
+                sleep_func=lambda *_: None,
+            )
+
+        self.assertEqual(result, self.workspace_root / "Project_A")
+        loading_idx = next(i for i, l in enumerate(printed) if "Loading JupyterLab" in l)
+        ready_idx = next(i for i, l in enumerate(printed) if "is ready" in l)
+        self.assertLess(loading_idx, ready_idx)
+
+    def test_action_launch_jupyter_reports_timeout_when_never_ready(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        printed: list[str] = []
+
+        with patch.object(
+            setup, "nhm_notebooks_need_generation", return_value=False
+        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.poll.return_value = None
+            mock_popen.return_value.pid = 333
+            result = setup.action_launch_jupyter(
+                state,
+                print_func=printed.append,
+                startup_probe_seconds=0,
+                readiness_probe=lambda: False,
+                readiness_timeout_seconds=1.0,
+                readiness_poll_seconds=0.5,
+                sleep_func=lambda *_: None,
+            )
+
+        self.assertEqual(result, self.workspace_root / "Project_A")
+        self.assertTrue(
+            any("still starting" in line for line in printed),
+            f"expected timeout message, got: {printed}",
+        )
+
+    def test_print_main_menu_lists_guided_then_more_options(self):
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+        )
+        printed: list[str] = []
+
+        setup.print_main_menu(state, print_func=printed.append)
+        text = "\n".join(printed)
+
+        self.assertIn("Guided setup", text)
+        self.assertIn("1. Set workspace root", text)
+        self.assertIn("2. Create project", text)
+        self.assertIn("3. Copy example model", text)
+        self.assertIn("4. Launch Jupyter", text)
+        self.assertIn("More options", text)
+        self.assertIn("5. Open existing project", text)
+        self.assertIn("6. Import model folder", text)
+        self.assertIn("7. Set active model", text)
+        self.assertIn("8. Generate NHM notebooks", text)
+        self.assertIn("9. Show current setup", text)
+        self.assertIn("10. Set USGS WaterData API key", text)
+        self.assertIn("0. Exit", text)
+        self.assertLess(text.index("Guided setup"), text.index("More options"))
+        self.assertLess(
+            text.index("4. Launch Jupyter"), text.index("5. Open existing project")
+        )
+
+    def _run_setup_once(self, choice, action_name):
+        setup.save_workspace_root_to_dotenv(self.repo_root, self.workspace_root)
+        with patch.object(setup, action_name) as mock_action, patch.object(
+            setup, "prompt_menu_choice", side_effect=[choice, 0]
+        ):
+            setup.run_setup(
+                repo_root=self.repo_root,
+                print_func=lambda *_: None,
+                input_func=lambda *_: "",
+            )
+        return mock_action
+
+    def test_run_setup_dispatch_maps_new_numbers(self):
+        cases = {
+            2: "action_create_project",
+            3: "action_copy_example_model",
+            4: "action_launch_jupyter",
+            5: "action_open_project",
+            6: "action_import_model",
+            7: "action_set_active_model",
+            8: "action_generate_nhm_notebooks",
+            9: "action_show_current_setup",
+            10: "action_set_api_key",
+        }
+        for choice, action_name in cases.items():
+            with self.subTest(choice=choice):
+                mock_action = self._run_setup_once(choice, action_name)
+                mock_action.assert_called_once()
 
 
 if __name__ == "__main__":
