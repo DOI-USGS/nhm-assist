@@ -70,7 +70,7 @@ from assist.nhm.output_plots import (
 from assist.nhm.nhm_assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(config_root)
-poi_id_sel = None
+poi_gage_id_sel = None
 
 # %% [markdown]
 # ## Introduction
@@ -179,7 +179,7 @@ yr = widgets.Dropdown(
 
 # Gage combobox
 v2 = widgets.Combobox(
-    options=poi_df.poi_id.tolist(),
+    options=poi_df.poi_gage_id.tolist(),
     placeholder="(optional) Enter gage id",
     description="Zoom to gage:",
     ensure_option=True,
@@ -218,7 +218,7 @@ dc.root_dir = root_dir
 dc.poi_df = poi_df
 dc.out_dir = config["out_dir"]
 dc.plot_start_date = plot_start_date
-# dc.poi_id = poi_id
+# dc.poi_gage_id = poi_gage_id
 dc.plot_end_date = plot_end_date
 dc.water_years = config["water_years"]
 dc.hru_gdf = hru_gdf

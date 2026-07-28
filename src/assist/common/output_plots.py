@@ -247,7 +247,7 @@ def make_plot_var_for_hrus_in_poi_basin(
     hru_gdf,
     poi_df,
     output_var_sel,
-    poi_id_sel,
+    poi_gage_id_sel,
     plot_start_date,
     plot_end_date,
     plot_colors,
@@ -271,7 +271,7 @@ def make_plot_var_for_hrus_in_poi_basin(
         Dataframe containing gages.
     output_var_sel : str
         NHM output variable to plot.
-    poi_id_sel : str
+    poi_gage_id_sel : str
         Gage identifier of selected gage.
     plot_start_date : str
         First date to plot.
@@ -290,9 +290,9 @@ def make_plot_var_for_hrus_in_poi_basin(
         Path to variable plot.
         
     """
-    # plot_file = f"{html_plots_dir}/{output_var_sel}_for_{poi_id_sel}_plot.html"
+    # plot_file = f"{html_plots_dir}/{output_var_sel}_for_{poi_gage_id_sel}_plot.html"
     plot_file_path = pl.Path(
-        html_plots_dir / f"{output_var_sel}_for_{poi_id_sel}_plot.html"
+        html_plots_dir / f"{output_var_sel}_for_{poi_gage_id_sel}_plot.html"
     ).resolve()
 
     if plot_file_path.exists():
@@ -310,9 +310,9 @@ def make_plot_var_for_hrus_in_poi_basin(
 
         hru_gdf, hru_poi_dict = create_poi_group(hru_gdf, poi_df, param_filename)
 
-        if poi_id_sel:
+        if poi_gage_id_sel:
             hru_list = hru_poi_dict[
-                poi_id_sel
+                poi_gage_id_sel
             ]  # returns a list of all upstream contributing hrus
 
             fig = plotly.subplots.make_subplots(
@@ -335,7 +335,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                 ],
             )
             fig.update_layout(
-                title_text=f'The NHM {subdomain} model: catchment {output_var_sel} time-series values for<br> {poi_id_sel}, {poi_df.loc[poi_df.poi_id == poi_id_sel, "poi_name"].values[0]}',  #
+                title_text=f'The NHM {subdomain} model: catchment {output_var_sel} time-series values for<br> {poi_gage_id_sel}, {poi_df.loc[poi_df.poi_gage_id == poi_gage_id_sel, "poi_name"].values[0]}',  #
                 width=900,
                 height=700,
                 legend=dict(
@@ -394,7 +394,7 @@ def make_plot_var_for_hrus_in_poi_basin(
             )
 
             df_basin = sum_var_annual_df.loc[
-                sum_var_annual_df["nhm_id"].isin(hru_poi_dict[poi_id_sel])
+                sum_var_annual_df["nhm_id"].isin(hru_poi_dict[poi_gage_id_sel])
             ]
             df_basin.set_index(
                 ["time", "nhm_id"], inplace=True, drop=True
@@ -466,7 +466,7 @@ def make_plot_var_for_hrus_in_poi_basin(
             )
 
             df_basin = sum_var_monthly_df.loc[
-                sum_var_monthly_df["nhm_id"].isin(hru_poi_dict[poi_id_sel])
+                sum_var_monthly_df["nhm_id"].isin(hru_poi_dict[poi_gage_id_sel])
             ]
             df_basin.set_index(
                 ["time", "nhm_id"], inplace=True, drop=True
@@ -483,7 +483,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                     x=df_basin_plot1.index,
                     y=(df_basin_plot1.output_var).ravel().tolist(),
                     mode="lines",
-                    name=poi_id_sel,
+                    name=poi_gage_id_sel,
                     showlegend=False,
                     legendgroup="poi_basin",
                     # marker=dict(color='lightblue'),
@@ -535,7 +535,7 @@ def make_plot_var_for_hrus_in_poi_basin(
             )
 
             df_basin = var_daily_df.loc[
-                var_daily_df["nhm_id"].isin(hru_poi_dict[poi_id_sel])
+                var_daily_df["nhm_id"].isin(hru_poi_dict[poi_gage_id_sel])
             ]
             df_basin.set_index(
                 ["time", "nhm_id"], inplace=True, drop=True
@@ -552,7 +552,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                     x=df_basin_plot1.index,
                     y=(df_basin_plot1.output_var).ravel().tolist(),
                     mode="lines",
-                    name=poi_id_sel,
+                    name=poi_gage_id_sel,
                     showlegend=False,
                     legendgroup="poi_basin",
                     # marker=dict(color='lightblue'),
@@ -616,7 +616,7 @@ def oopla(
     poi_df,
     output_var_list,
     output_var_sel,
-    poi_id_sel,
+    poi_gage_id_sel,
     plot_start_date,
     plot_end_date,
     plot_colors,
@@ -644,7 +644,7 @@ def oopla(
         List of output variables.
     output_var_sel : str
         Selected output variable.
-    poi_id_sel : str
+    poi_gage_id_sel : str
         Gage identifier of selected gage.
     plot_start_date : str
         First date to plot.
@@ -668,7 +668,7 @@ def oopla(
 
     """
     plot_file_path = pl.Path(
-        html_plots_dir / f"water_budget_fluxes_for_{poi_id_sel}_plot.html"
+        html_plots_dir / f"water_budget_fluxes_for_{poi_gage_id_sel}_plot.html"
     ).resolve()
 
     if plot_file_path.exists():
@@ -697,7 +697,7 @@ def oopla(
             ],
         )
         fig.update_layout(
-            title_text=f'The NHM {subdomain} model: catchment water budget flux rates for<br> {poi_id_sel}, {poi_df.loc[poi_df.poi_id == poi_id_sel, "poi_name"].values[0]}',  #
+            title_text=f'The NHM {subdomain} model: catchment water budget flux rates for<br> {poi_gage_id_sel}, {poi_df.loc[poi_df.poi_gage_id == poi_gage_id_sel, "poi_name"].values[0]}',  #
             width=900,
             height=700,
             legend=dict(orientation="v", yanchor="top", y=1, xanchor="right", x=10.0),
@@ -772,7 +772,7 @@ def oopla(
                 var,
                 hru_gdf,
                 hru_poi_dict,
-                poi_id_sel,
+                poi_gage_id_sel,
             )
 
             df_basin_plot1_monthly = create_var_ts_for_poi_basin_df(
@@ -780,7 +780,7 @@ def oopla(
                 var,
                 hru_gdf,
                 hru_poi_dict,
-                poi_id_sel,
+                poi_gage_id_sel,
             )
 
             df_basin_plot1_daily = create_var_ts_for_poi_basin_df(
@@ -788,7 +788,7 @@ def oopla(
                 var,
                 hru_gdf,
                 hru_poi_dict,
-                poi_id_sel,
+                poi_gage_id_sel,
             )
 
             annual_fig.add_trace(
@@ -937,9 +937,9 @@ def calculate_monthly_kge_in_poi_df(
 
     """
     
-    for i in poi_df.poi_id:
-        # print(obs.sel(poi_id=poi_tag))
-        df_sf_data_sel_temp = obs.sel(poi_id=i)
+    for i in poi_df.poi_gage_id:
+        # print(obs.sel(poi_gage_id=poi_tag))
+        df_sf_data_sel_temp = obs.sel(poi_gage_id=i)
         df_sf_data_sel = df_sf_data_sel_temp.to_dataframe()
         # Determine por
         por_start = df_sf_data_sel["discharge"].notna().idxmax()  # First Day
@@ -947,9 +947,9 @@ def calculate_monthly_kge_in_poi_df(
 
         # Slice to por
         df_sf_data_sel = (
-            obs.sel(poi_id=i, time=slice(por_start, por_end))
+            obs.sel(poi_gage_id=i, time=slice(por_start, por_end))
         ).to_dataframe()
-        df_sf_data_sel.drop(columns=["poi_id"], inplace=True)  # drop unwanted columns
+        df_sf_data_sel.drop(columns=["poi_gage_id"], inplace=True)  # drop unwanted columns
 
         sim_flow = (
             var_daily.sel(npoi_gages=i, time=slice(por_start, por_end))
@@ -975,7 +975,7 @@ def calculate_monthly_kge_in_poi_df(
             0
         ]  # this grabs only the kge var, in position"0" from the list of ke.kge() output vars
 
-        poi_df.loc[poi_df.poi_id == i, "kge"] = np.array(
+        poi_df.loc[poi_df.poi_gage_id == i, "kge"] = np.array(
             kge_func[0]
         )  # pandas wrangling of the array output from he.evaluator() as an array
 
@@ -984,7 +984,7 @@ def calculate_monthly_kge_in_poi_df(
 
 def create_streamflow_plot(
     *,
-    poi_id_sel,
+    poi_gage_id_sel,
     plot_start_date,
     plot_end_date,
     water_years,
@@ -998,7 +998,7 @@ def create_streamflow_plot(
 
     Parameters
     ----------
-    poi_id_sel : str
+    poi_gage_id_sel : str
         Gage identifier of selected gage.
     plot_start_date : str
         First date to plot.
@@ -1023,7 +1023,7 @@ def create_streamflow_plot(
     """
     
     plot_file_path = pl.Path(
-        html_plots_dir / f"streamflow_eval_for_{poi_id_sel}_plot.html"
+        html_plots_dir / f"streamflow_eval_for_{poi_gage_id_sel}_plot.html"
     ).resolve()
 
     if plot_file_path.exists():
@@ -1057,13 +1057,13 @@ def create_streamflow_plot(
         )
 
         # Single request
-        if len((obs_annual.sel(poi_id=poi_id_sel)).to_dataframe().dropna()) < 2:
+        if len((obs_annual.sel(poi_gage_id=poi_gage_id_sel)).to_dataframe().dropna()) < 2:
             con.print(
-                f"The gage {poi_id_sel} has no observation data in the streamflow obs file."
+                f"The gage {poi_gage_id_sel} has no observation data in the streamflow obs file."
             )
             pass
         else:
-            df_sf_data_sel = (obs.sel(poi_id=poi_id_sel)).to_dataframe()
+            df_sf_data_sel = (obs.sel(poi_gage_id=poi_gage_id_sel)).to_dataframe()
 
             # Determine por
             por_start = df_sf_data_sel["discharge"].notna().idxmax()  # First Day
@@ -1071,22 +1071,22 @@ def create_streamflow_plot(
 
             # Slice to por
             df_sf_data_sel = (
-                obs.sel(poi_id=poi_id_sel, time=slice(por_start, por_end))
+                obs.sel(poi_gage_id=poi_gage_id_sel, time=slice(por_start, por_end))
             ).to_dataframe()
             df_sf_data_sel.drop(
-                columns=["poi_id"], inplace=True
+                columns=["poi_gage_id"], inplace=True
             )  # drop unwanted columns
 
             obs_efc_sel = (
-                obs_efc.sel(poi_id=poi_id_sel, time=slice(por_start, por_end))
+                obs_efc.sel(poi_gage_id=poi_gage_id_sel, time=slice(por_start, por_end))
             ).to_dataframe()
-            obs_efc_sel.drop(columns=["poi_id"], inplace=True)  # drop unwanted columns
+            obs_efc_sel.drop(columns=["poi_gage_id"], inplace=True)  # drop unwanted columns
             obs_with_efc_sel = df_sf_data_sel.merge(
                 obs_efc_sel, right_index=True, left_index=True, how="inner"
             )  # .dropna() #how='left' will slice ts with obs range
 
             sim_flow = (
-                var_daily.sel(npoi_gages=poi_id_sel, time=slice(por_start, por_end))
+                var_daily.sel(npoi_gages=poi_gage_id_sel, time=slice(por_start, por_end))
             ).to_dataframe()
             sim_flow.drop(columns=["npoi_gages"], inplace=True)  # drop unwanted columns
 
@@ -1163,12 +1163,12 @@ def create_streamflow_plot(
             )
 
             poi_name = poi_name_df.loc[
-                poi_name_df.index == poi_id_sel, "poi_name"
+                poi_name_df.index == poi_gage_id_sel, "poi_name"
             ].values[0]
             date_range = f"{daily_stat_df.index.month[0]}-{daily_stat_df.index.day[0]}-{daily_stat_df.index.year[0]} to {daily_plot_df.index.month[-1]}-{daily_plot_df.index.day[-1]}-{daily_plot_df.index.year[-1]} "
 
             fig.update_layout(
-                title_text=f"The NHM {subdomain} model: simulated streamflow at {poi_id_sel},<br>{poi_name}, {date_range}",  #
+                title_text=f"The NHM {subdomain} model: simulated streamflow at {poi_gage_id_sel},<br>{poi_name}, {date_range}",  #
                 width=900,
                 height=700,
                 legend=dict(
@@ -1220,8 +1220,8 @@ def create_streamflow_plot(
             # Useful xarray calls
             # f'{(obs["time"][0].dt.datetime.strftime("%Y-%m-%d").values.tolist())} to {(obs["time"][-1].dt.datetime.strftime("%Y-%m-%d").values.tolist())} '
             # x_values_annual = (output_var_annual["time"].dt.datetime.strftime("%Y-%m-%d").values.tolist())
-            # sim_values_annual = (output_var_annual.sel(npoi_gages = poi_id_sel).values.tolist())
-            # obs_values = (obs_annual.sel(poi_id = poi_id_sel).values.tolist())
+            # sim_values_annual = (output_var_annual.sel(npoi_gages = poi_gage_id_sel).values.tolist())
+            # obs_values = (obs_annual.sel(poi_gage_id = poi_gage_id_sel).values.tolist())
 
             ######################################################
             # Create annual subplot
@@ -1307,7 +1307,7 @@ def create_streamflow_plot(
             daily_plots = [
                 go.Scatter(
                     x=daily_efc_high_plot_df.index,  # (output_var["time"].dt.datetime.strftime("%Y-%m-%d").values.tolist()),
-                    y=daily_efc_high_plot_df.discharge,  # (obs.sel(poi_id = poi_id_sel).values.tolist()),
+                    y=daily_efc_high_plot_df.discharge,  # (obs.sel(poi_gage_id = poi_gage_id_sel).values.tolist()),
                     mode="lines",
                     name="Observed flow",
                     showlegend=True,
@@ -1322,7 +1322,7 @@ def create_streamflow_plot(
                 ),
                 go.Scatter(
                     x=daily_efc_low_plot_df.index,  # (output_var["time"].dt.datetime.strftime("%Y-%m-%d").values.tolist()),
-                    y=daily_efc_low_plot_df.discharge,  # (obs.sel(poi_id = poi_id_sel).values.tolist()),
+                    y=daily_efc_low_plot_df.discharge,  # (obs.sel(poi_gage_id = poi_gage_id_sel).values.tolist()),
                     mode="lines",
                     name="Observed flow, (Low)",
                     showlegend=True,
@@ -1337,7 +1337,7 @@ def create_streamflow_plot(
                 ),
                 go.Scatter(
                     x=daily_plot_df.index,  # (output_var["time"].dt.datetime.strftime("%Y-%m-%d").values.tolist()),
-                    y=daily_plot_df.seg_outflow,  # (output_var.sel(npoi_gages = poi_id_sel).values.tolist()),
+                    y=daily_plot_df.seg_outflow,  # (output_var.sel(npoi_gages = poi_gage_id_sel).values.tolist()),
                     mode="lines",
                     name="Simulated flow",
                     showlegend=True,
@@ -1566,7 +1566,7 @@ def create_streamflow_plot(
 
             # # Saving the plot as txt file with the html code
             # # idx = 1
-            # with open(Folium_maps_dir / f"streamflow_{poi_id_sel}.txt", "w") as f:
+            # with open(Folium_maps_dir / f"streamflow_{poi_gage_id_sel}.txt", "w") as f:
             #     f.write(text_div)
 
             plotly.offline.plot(fig, filename=f"{plot_file_path}", auto_open=False)

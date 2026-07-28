@@ -505,7 +505,7 @@ def create_var_ts_for_poi_basin_df(
     var,
     hru_gdf,
     hru_poi_dict,
-    poi_id_sel,
+    poi_gage_id_sel,
 ):
     """
     Output from the datasets is in mean_daily value (inches/day), and needs to be converted to cfs for this plot.
@@ -527,7 +527,7 @@ def create_var_ts_for_poi_basin_df(
     hru_poi_dict : dict
         A dictionary of HRUs and the poi catchment they are contained in.
     
-    poi_id_sel : str
+    poi_gage_id_sel : str
         The selected gage.
 
     Returns
@@ -565,7 +565,7 @@ def create_var_ts_for_poi_basin_df(
 
     # subset to only hrus in the selected poi
     df_basin1 = df_mean_var_ts.loc[
-        df_mean_var_ts["nhm_id"].isin(hru_poi_dict[poi_id_sel])
+        df_mean_var_ts["nhm_id"].isin(hru_poi_dict[poi_gage_id_sel])
     ]
     df_basin1.set_index(
         ["time", "nhm_id"], inplace=True, drop=True

@@ -484,8 +484,8 @@ paramfile_poi_gage_id_list = pardat.parameters.get("poi_gage_id").tolist()
 cdat = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc").sel(
     time=slice(seg_outflow_start, seg_outflow_end),
 )
-cdat = cdat.sel(poi_id=cdat.poi_id.isin(paramfile_poi_gage_id_list))
-cdat = cdat.reindex(poi_id=paramfile_poi_gage_id_list)
+cdat = cdat.sel(poi_gage_id=cdat.poi_gage_id.isin(paramfile_poi_gage_id_list))
+cdat = cdat.reindex(poi_gage_id=paramfile_poi_gage_id_list)
 
 cdat = cdat[["discharge", "efc", "high_low"]]
 
@@ -536,8 +536,8 @@ cdat = cdat.fillna(-9999)
 
 # set up the indices in sequence
 inds = [
-    f'_{int(cdat["efc"].sel(poi_id=j, time=i).item())}_{int(cdat["high_low"].sel(poi_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
-    for j in cdat.indexes["poi_id"]
+    f'_{int(cdat["efc"].sel(poi_gage_id=j, time=i).item())}_{int(cdat["high_low"].sel(poi_gage_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
+    for j in cdat.indexes["poi_gage_id"]
     for i in cdat.indexes["time"]
 ]
 
@@ -556,7 +556,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # Now write to the pest obs file
 inds = [
     f"{i.year}_{i.month}:{j}"
-    for j in cdat_monthly.indexes["poi_id"]
+    for j in cdat_monthly.indexes["poi_gage_id"]
     for i in cdat_monthly.indexes["time"]
 ]  # set up the indices in sequence
 varvals = np.ravel(
@@ -572,7 +572,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_cal.indexes["poi_id"]
+    for j in cdat_mean_monthly_cal.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_cal.indexes["month"]
 ]
 varvals = np.ravel(
@@ -588,7 +588,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_val.indexes["poi_id"]
+    for j in cdat_mean_monthly_val.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_val.indexes["month"]
 ]
 varvals = np.ravel(

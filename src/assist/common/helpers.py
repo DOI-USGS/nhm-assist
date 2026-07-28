@@ -164,7 +164,7 @@ def create_poi_group(hru_gdf, poi_df, param_filename):
     
     """First, group HRUs to the downstream gagepoi that they contribute flow.
     """
-    poi_list = poi_df["poi_id"].values.tolist()
+    poi_list = poi_df["poi_gage_id"].values.tolist()
 
     """Make a dictionary of pois and the list of HRUs in the contributing area for each poi.
     """

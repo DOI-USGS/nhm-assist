@@ -19,7 +19,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
         self.root_dir = self.tmp_path / "repo"
         (self.root_dir / "data_dependencies").mkdir(parents=True)
         self.resource_file = self.tmp_path / "resource_gages.csv"
-        self.poi_df = pd.DataFrame({"poi_id": ["12345678"]})
+        self.poi_df = pd.DataFrame({"poi_gage_id": ["12345678"]})
 
     def test_returns_empty_when_no_gage_ids_provided(self):
         result = nhm_assist_utilities.find_missing_gage_info(
@@ -36,7 +36,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
 
     def test_skips_gages_already_in_resource_file(self):
         self.resource_file.write_text(
-            "poi_id,latitude,longitude,poi_name,poi_agency\n"
+            "poi_gage_id,latitude,longitude,poi_name,poi_agency\n"
             "12345678,45.0,-122.0,Existing Gage,USGS\n",
             encoding="utf-8",
         )
@@ -57,7 +57,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
         import geopandas as gpd
         nldi_gdf = gpd.GeoDataFrame(
             {
-                "poi_id": ["12345678"],
+                "poi_gage_id": ["12345678"],
                 "poi_agency": ["USGS"],
                 "poi_name": ["Test Gage"],
                 "latitude": [45.0],
@@ -94,7 +94,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
         # NLDI knows about 12345678 but NOT 87654321
         nldi_gdf = gpd.GeoDataFrame(
             {
-                "poi_id": ["12345678"],
+                "poi_gage_id": ["12345678"],
                 "poi_agency": ["USGS"],
                 "poi_name": ["NLDI Gage"],
                 "latitude": [45.0],
@@ -241,8 +241,8 @@ class LoadNldiCachedTests(unittest.TestCase):
 
         self.assertEqual(read_calls, [self.geojson])
         self.assertEqual(write_calls, [self.gpkg])
-        self.assertIn("poi_id", result.columns)
-        self.assertIn("12345678", result["poi_id"].tolist())
+        self.assertIn("poi_gage_id", result.columns)
+        self.assertIn("12345678", result["poi_gage_id"].tolist())
 
     def test_reads_gpkg_when_newer_than_geojson(self):
         self.geojson.write_text("{}", encoding="utf-8")
@@ -254,7 +254,7 @@ class LoadNldiCachedTests(unittest.TestCase):
         def fake_read(path):
             import geopandas as gpd
             return gpd.GeoDataFrame(
-                {"poi_id": ["12345678"], "poi_agency": ["USGS"]},
+                {"poi_gage_id": ["12345678"], "poi_agency": ["USGS"]},
                 geometry=gpd.points_from_xy([-122.0], [45.0]),
                 crs="EPSG:4326",
             )
@@ -267,7 +267,7 @@ class LoadNldiCachedTests(unittest.TestCase):
         # Should have read the .gpkg, not the .geojson
         called_paths = [Path(c.args[0]) for c in mock_read.call_args_list]
         self.assertEqual(called_paths, [self.gpkg])
-        self.assertIn("12345678", result["poi_id"].tolist())
+        self.assertIn("12345678", result["poi_gage_id"].tolist())
 
 
 if __name__ == "__main__":

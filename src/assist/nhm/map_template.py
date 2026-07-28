@@ -182,7 +182,7 @@ def make_webbrowser_map(map_file):
         webbrowser.open(map_file_str, new=2)
 
 
-def folium_map_elements(hru_gdf, poi_df, poi_id_sel):
+def folium_map_elements(hru_gdf, poi_df, poi_gage_id_sel):
     """
     Set approximate latitude, longitude and zoom level for subdomain is calculated for starting point of folium.map plot window.
 
@@ -192,7 +192,7 @@ def folium_map_elements(hru_gdf, poi_df, poi_id_sel):
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
     poi_df : pandas DataFrame()
         First parameter; Pandas DataFrame() containing gages from the parameter file.
-    poi_id_sel : string
+    poi_gage_id_sel : string
         Gage id of selected gage.
 
     Returns
@@ -207,10 +207,10 @@ def folium_map_elements(hru_gdf, poi_df, poi_id_sel):
         The zoom (out) level at which gage markers are clustered on the folium maps.
     """
     
-    if poi_id_sel:
-        poi_lookup = poi_id_sel
-        pfile_lat = poi_df.loc[poi_df.poi_id == poi_lookup, "latitude"].values[0]
-        pfile_lon = poi_df.loc[poi_df.poi_id == poi_lookup, "longitude"].values[0]
+    if poi_gage_id_sel:
+        poi_lookup = poi_gage_id_sel
+        pfile_lat = poi_df.loc[poi_df.poi_gage_id == poi_lookup, "latitude"].values[0]
+        pfile_lon = poi_df.loc[poi_df.poi_gage_id == poi_lookup, "longitude"].values[0]
         zoom = 12
         cluster_zoom = 8
     else:
@@ -472,7 +472,7 @@ def create_poi_marker_cluster(
     )
     ##add POI markers and labels using row df.interowss loop
     for idx, row in poi_df.iterrows():
-        text = f'{row["poi_id"]}'
+        text = f'{row["poi_gage_id"]}'
         label_lat = row["latitude"]  # -0.01
         label_lon = row["longitude"]
 
@@ -487,9 +487,9 @@ def create_poi_marker_cluster(
 
         marker = folium.CircleMarker(
             location=[row["latitude"], row["longitude"]],
-            name=row["poi_id"],
+            name=row["poi_gage_id"],
             popup=folium.Popup(
-                f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["nhm_seg"]}</font>',
+                f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["nhm_seg"]}</font>',
                 max_width=280,
                 max_height=2000,
             ),
@@ -552,12 +552,12 @@ def create_non_poi_marker_cluster(
 
     ##add Non-poi gage markers and labels using row df.interowss loop
     gages_list = gages_df.index.to_list()
-    additional_gages = list(set(gages_list) - set(poi_df.poi_id))
+    additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
     for idx, row in nwis_gages_aoi.iterrows():
-        if row["poi_id"] in additional_gages:
+        if row["poi_gage_id"] in additional_gages:
 
-            text = f'{row["poi_id"]}'
+            text = f'{row["poi_gage_id"]}'
             label_lat = row["latitude"]  # -0.01
             label_lon = row["longitude"]
 
@@ -573,9 +573,9 @@ def create_non_poi_marker_cluster(
 
             marker = folium.CircleMarker(
                 location=[row["latitude"], row["longitude"]],
-                name=row["poi_id"],
+                name=row["poi_gage_id"],
                 popup=folium.Popup(
-                    f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
+                    f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
                     max_width=280,
                     max_height=2000,
                 ),
@@ -1000,9 +1000,9 @@ def create_poi_paramplot_marker_cluster(
     )
 
     for idx, row in poi_df.iterrows():
-        poi_id = row["poi_id"]
+        poi_gage_id = row["poi_gage_id"]
         # Read ploty plot of each poi
-        with open(Folium_maps_dir / f"{par_sel}_{poi_id}.txt", "r") as f:
+        with open(Folium_maps_dir / f"{par_sel}_{poi_gage_id}.txt", "r") as f:
             div_txt = f.read()
 
         # Create html code to insert the plotly plot to the folium pop up
@@ -1029,7 +1029,7 @@ def create_poi_paramplot_marker_cluster(
 
         marker = folium.CircleMarker(
             location=[row["latitude"], row["longitude"]],
-            name=row["poi_id"],
+            name=row["poi_gage_id"],
             popup=folium.Popup(
                 iframe,
                 # max_width=500,
@@ -1047,7 +1047,7 @@ def create_poi_paramplot_marker_cluster(
         ).add_to(marker_cluster)
 
         # marker_cluster.add_child(marker)
-        text = f'{row["poi_id"]}'
+        text = f'{row["poi_gage_id"]}'
         label_lat = row["latitude"] - 0.01
         label_lon = row["longitude"]
 
@@ -1304,16 +1304,16 @@ def create_streamflow_poi_markers(
     )
 
     for idx, row in poi_df.iterrows():
-        poi_id = row["poi_id"]
+        poi_gage_id = row["poi_gage_id"]
 
         if row["nhm_calib"] == "Y":  # Do this for all the gages used in calibration
             if row["kge"] >= 0.7:
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1328,7 +1328,7 @@ def create_streamflow_poi_markers(
                     z_index_offset=4006,
                 ).add_to(marker_cluster)
 
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1346,9 +1346,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1364,7 +1364,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1382,9 +1382,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1400,7 +1400,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1422,9 +1422,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1440,7 +1440,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1458,9 +1458,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1476,7 +1476,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1494,9 +1494,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br>',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br>',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1512,7 +1512,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1530,9 +1530,9 @@ def create_streamflow_poi_markers(
 
                 marker = folium.CircleMarker(
                     location=[row["latitude"], row["longitude"]],
-                    name=row["poi_id"],
+                    name=row["poi_gage_id"],
                     popup=folium.Popup(
-                        f'Gage <b>{row["poi_id"]}</b>, {row["poi_name"]}<br> Gage has less than 2yrs of observations.',
+                        f'Gage <b>{row["poi_gage_id"]}</b>, {row["poi_name"]}<br> Gage has less than 2yrs of observations.',
                         max_width=150,
                         max_height=70,
                     ),
@@ -1548,7 +1548,7 @@ def create_streamflow_poi_markers(
                 ).add_to(marker_cluster)
 
                 # marker_cluster.add_child(marker)
-                text = f'{row["poi_id"]}'
+                text = f'{row["poi_gage_id"]}'
                 label_lat = row["latitude"]  # -0.005
                 label_lon = row["longitude"]
 
@@ -1573,7 +1573,7 @@ def make_hf_map(
     HW_basins_gdf,
     HW_basins,
     poi_df,
-    poi_id_sel,
+    poi_gage_id_sel,
     seg_gdf,
     nwis_gages_aoi,
     gages_df,
@@ -1595,7 +1595,7 @@ def make_hf_map(
         Polyline file that was made using HW_basins_gdf.boundary
     poi_df : pandas DataFrame
         Pandas DataFrame containing gages from the parameter file.
-    poi_id_sel : string
+    poi_gage_id_sel : string
         Gage id of selected gage.
     seg_gdf : geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
@@ -1620,7 +1620,7 @@ def make_hf_map(
     pdb = ParameterFile(param_filename, metadata=prms_meta, verbose=False)
 
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(
-        hru_gdf, poi_df, poi_id_sel
+        hru_gdf, poi_df, poi_gage_id_sel
     )
     USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
         folium_map_tiles()
@@ -1683,7 +1683,7 @@ def make_hf_map(
 
     ##add Non-poi gage markers and labels using row df.interowss loop
     gages_list = gages_df.index.to_list()
-    additional_gages = list(set(gages_list) - set(poi_df.poi_id))
+    additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
     explan_txt = f"HRUs: {pdb.dimensions.get('nhru').meta['size']}, segments: {pdb.dimensions.get('nsegment').meta['size']},<br>gages: {pdb.dimensions.get('npoigages').meta['size']}, Potential gages: {len(additional_gages)}"
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The NHM {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
@@ -1878,7 +1878,7 @@ def make_var_map(
     water_years,
     hru_gdf,
     poi_df,
-    poi_id_sel,
+    poi_gage_id_sel,
     seg_gdf,
     html_maps_dir,
     year_list,
@@ -1907,7 +1907,7 @@ def make_var_map(
         HRU geodataframe from GIS data in subdomain. 
     poi_df : pandas DataFrame
         Pandas DataFrame containing gages from the parameter file.
-    poi_id_sel : string
+    poi_gage_id_sel : string
         Gage id of selected gage
     seg_gdf : geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
@@ -1945,7 +1945,7 @@ def make_var_map(
 
     # Load standard map settings and elements
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(
-        hru_gdf, poi_df, poi_id_sel
+        hru_gdf, poi_df, poi_gage_id_sel
     )
     USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
         folium_map_tiles()
@@ -2052,7 +2052,7 @@ def make_streamflow_map(
     water_years,
     hru_gdf,
     poi_df,
-    poi_id_sel,
+    poi_gage_id_sel,
     seg_gdf,
     html_maps_dir,
     subdomain,
@@ -2077,7 +2077,7 @@ def make_streamflow_map(
         HRU geodataframe from GIS data in subdomain. 
     poi_df : pandas DataFrame
         Pandas DataFrame containing gages from the parameter file.
-    poi_id_sel: string
+    poi_gage_id_sel: string
         Gage id of selected gage
     seg_gdf: geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
@@ -2132,7 +2132,7 @@ def make_streamflow_map(
 
     # Load standard map settings
     pfile_lat, pfile_lon, zoom, cluster_zoom = folium_map_elements(
-        hru_gdf, poi_df, poi_id_sel
+        hru_gdf, poi_df, poi_gage_id_sel
     )
 
     USGSHydroCached_layer, USGStopo_layer, Esri_WorldImagery, OpenTopoMap = (
@@ -2272,8 +2272,8 @@ def create_poi_obs_marker_cluster(
 
 ##############        #####
         #for idx, row in poi_df.iterrows():
-        poi_id = row["poi_id"]
-        obs_plot_file = Folium_maps_dir / f"{poi_id}_streamflow_obs.txt"
+        poi_gage_id = row["poi_gage_id"]
+        obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
         # Read ploty plot of each poi
         with open(obs_plot_file, "r") as f:
             div_txt = f.read()
@@ -2302,7 +2302,7 @@ def create_poi_obs_marker_cluster(
 
 ##############
         
-        text = f'{row["poi_id"]}'
+        text = f'{row["poi_gage_id"]}'
         label_lat = row["latitude"]  # -0.01
         label_lon = row["longitude"]
 
@@ -2317,16 +2317,16 @@ def create_poi_obs_marker_cluster(
 
         marker = folium.CircleMarker(
             location=[row["latitude"], row["longitude"]],
-            name=row["poi_id"],
+            name=row["poi_gage_id"],
             popup=folium.Popup(
                 iframe,
                 # max_width=500,
                 # max_height=300,
                 parse_html=True,
             ),
-            tooltip= f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]}) on segment: {row["nhm_seg"]}<br>{row["poi_name"]}<br></font>',
+            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["nhm_seg"]}<br>{row["poi_name"]}<br></font>',
             # popup=folium.Popup(
-            #     f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["nhm_seg"]}</font>',
+            #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["nhm_seg"]}</font>',
             #     max_width=280,
             #     max_height=2000,
             # ),
@@ -2390,14 +2390,14 @@ def create_non_poi_obs_marker_cluster(
 
     ##add Non-poi gage markers and labels using row df.interowss loop
     gages_list = gages_df.index.to_list()
-    additional_gages = list(set(gages_list) - set(poi_df.poi_id))
+    additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
     gages_df.reset_index(inplace=True, drop=False)
 
     for idx, row in gages_df.iterrows():
-        if row["poi_id"] in additional_gages:
+        if row["poi_gage_id"] in additional_gages:
 #########
-            poi_id = row["poi_id"]
-            obs_plot_file = Folium_maps_dir / f"{poi_id}_streamflow_obs.txt"
+            poi_gage_id = row["poi_gage_id"]
+            obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
             # Read ploty plot of each poi
             with open(obs_plot_file, "r") as f:
                 div_txt = f.read()
@@ -2425,7 +2425,7 @@ def create_non_poi_obs_marker_cluster(
             # popup = folium.Popup(iframe, max_width=3250,parse_html=True)
     ######
 
-            text = f'{row["poi_id"]}'
+            text = f'{row["poi_gage_id"]}'
             label_lat = row["latitude"]  # -0.01
             label_lon = row["longitude"]
 
@@ -2441,7 +2441,7 @@ def create_non_poi_obs_marker_cluster(
 
             marker = folium.CircleMarker(
                 location=[row["latitude"], row["longitude"]],
-                name=row["poi_id"],
+                name=row["poi_gage_id"],
                 popup=folium.Popup(
                 iframe,
                 # max_width=500,
@@ -2449,11 +2449,11 @@ def create_non_poi_obs_marker_cluster(
                 parse_html=True,
                 ),
                 # popup=folium.Popup(
-                #     f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
+                #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
                 #     max_width=280,
                 #     max_height=2000,
                 # ),
-                tooltip= f'<font size="3px">{row["poi_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+                tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
                 radius=3,
                 weight=2,
                 color="gray",

@@ -176,7 +176,7 @@ pdb = ParameterFile(
 
 """Make a dictionary of pois and the list of HRUs in the contributing area for each poi."""
 
-poi_list = poi_df["poi_id"].values.tolist()
+poi_list = poi_df["poi_gage_id"].values.tolist()
 poi_hrus = {}
 poi_segs = {}
 
@@ -190,12 +190,12 @@ for cpoi in poi_list:
     poi_segs[cpoi] = len(_segs_upstream[cpoi])
 
 
-poi_df["poi_area"] = poi_df["poi_id"].map(poi_hrus)
+poi_df["poi_area"] = poi_df["poi_gage_id"].map(poi_hrus)
 subdomain_area = poi_df["poi_area"].max()
 poi_df["poi_area_permyriad"] = (10000 * (poi_df["poi_area"] / subdomain_area)).astype(
     int
 )
-poi_df["poi_seg_count"] = poi_df["poi_id"].map(poi_segs)
+poi_df["poi_seg_count"] = poi_df["poi_gage_id"].map(poi_segs)
 
 poi_df["poi_name_alt"] = (
     "nseg"
