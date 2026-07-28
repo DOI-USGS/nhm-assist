@@ -239,7 +239,7 @@ xr_streamflow = create_sf_efc_df(
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_id.values[0]  # "08049300"
+cpoi_id = xr_streamflow.poi_gage_id.values[0]  # "08049300"
 print(
     f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
 )
@@ -254,7 +254,7 @@ start_date = config[
 end_date = config[
     "end_date"
 ]  # pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
-ds_sub = xr_streamflow.sel(poi_id=cpoi_id, time=slice(start_date, end_date))
+ds_sub = xr_streamflow.sel(poi_gage_id=cpoi_id, time=slice(start_date, end_date))
 ds_sub = ds_sub.to_dataframe()
 flow_col = "discharge"
 plot_efc(ds_sub, flow_col)

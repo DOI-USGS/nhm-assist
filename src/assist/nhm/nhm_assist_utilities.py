@@ -173,7 +173,7 @@ def fetch_nwis_gage_info(
     if nwis_gages_file.exists():
         col_names = [
             "poi_agency",
-            "poi_id",
+            "poi_gage_id",
             "poi_name",
             "latitude",
             "longitude",
@@ -198,7 +198,7 @@ def fetch_nwis_gage_info(
             dtype=cols,
             usecols=[
                 "poi_agency",
-                "poi_id",
+                "poi_gage_id",
                 "poi_name",
                 "latitude",
                 "longitude",
@@ -288,7 +288,7 @@ def fetch_nwis_gage_info(
 
         field_map = {
             "agency_code": "poi_agency",
-            "monitoring_location_number": "poi_id",
+            "monitoring_location_number": "poi_gage_id",
             "monitoring_location_name": "poi_name",
             "latitude": "latitude",
             "longitude": "longitude",
@@ -299,7 +299,7 @@ def fetch_nwis_gage_info(
 
         nwis_gage_info_aoi = nwis_gage_info_aoi.loc[:, include_cols]
         nwis_gage_info_aoi.rename(columns=field_map, inplace=True)
-        nwis_gage_info_aoi.set_index("poi_id", inplace=True)
+        nwis_gage_info_aoi.set_index("poi_gage_id", inplace=True)
         nwis_gage_info_aoi = nwis_gage_info_aoi.sort_index()
         nwis_gage_info_aoi.reset_index(inplace=True)
 
@@ -338,7 +338,7 @@ def make_plots_par_vals(
 
     """First, group HRUs to the downstream gagepoi that they contribute flow.
     """
-    poi_list = poi_df["poi_id"].values.tolist()
+    poi_list = poi_df["poi_gage_id"].values.tolist()
 
     """Make a dictionary of pois and the list of HRUs in the contributing area for each poi.
     """
@@ -374,12 +374,12 @@ def make_plots_par_vals(
         except KeyError:
             # print(f"Checking for {par} dimensioned by nhru.")
 
-            for idx, poi_id in enumerate(poi_list):
-                par_plot_file = Folium_maps_dir / f"{par}_{poi_id}.txt"
+            for idx, poi_gage_id in enumerate(poi_list):
+                par_plot_file = Folium_maps_dir / f"{par}_{poi_gage_id}.txt"
                 if par_plot_file.exists():
                     pass
                     # print(
-                    #     f"{par}_{poi_id}.txt exists. To recreate the plot, remove the file from Folium_maps_dir"
+                    #     f"{par}_{poi_gage_id}.txt exists. To recreate the plot, remove the file from Folium_maps_dir"
                     # )
                     # print(par_plot_file)
                 else:
@@ -387,7 +387,7 @@ def make_plots_par_vals(
                     ##%%time = par
                     # Preporcessing: pulling only the selected param values for the HRUs related to the selected POI to plot.
                     output_var_sel_plot_df = hru_gdf[
-                        hru_gdf["nhm_id"].astype(int).isin(hru_poi_dict[poi_id])
+                        hru_gdf["nhm_id"].astype(int).isin(hru_poi_dict[poi_gage_id])
                     ]
                     output_var_sel_plot_df = output_var_sel_plot_df.sort_values(
                         ["hru_area"], ascending=True
@@ -409,7 +409,7 @@ def make_plots_par_vals(
 
                     fig.update_layout(
                         title=dict(
-                            text=f"{par} for HRUs in {poi_id} catchment",
+                            text=f"{par} for HRUs in {poi_gage_id} catchment",
                             font=dict(size=18),
                             automargin=True,
                             yref="paper",
@@ -478,7 +478,7 @@ def make_plots_par_vals(
 
                     # Saving the plot as txt file with the html code
                     # idx = 1
-                    with open(Folium_maps_dir / f"{par}_{poi_id}.txt", "w") as f:
+                    with open(Folium_maps_dir / f"{par}_{poi_gage_id}.txt", "w") as f:
                         f.write(text_div)
 
                     # fig.show()
@@ -486,9 +486,9 @@ def make_plots_par_vals(
         else:
             # print(f"Checking for {par} dimensioned by nhru and nmonths")
 
-            for idx, poi_id in enumerate(poi_list):
+            for idx, poi_gage_id in enumerate(poi_list):
 
-                par_plot_file = Folium_maps_dir / f"{par}_{poi_id}.txt"
+                par_plot_file = Folium_maps_dir / f"{par}_{poi_gage_id}.txt"
                 if par_plot_file.exists():
                     pass
                     
@@ -515,9 +515,9 @@ def make_plots_par_vals(
                     nhru_params_nmonths_sel_df = df.copy()
                     ############################################################################################
                     nhru_params_nmonths_sel_plot_df = nhru_params_nmonths_sel_df[
-                        nhru_params_nmonths_sel_df["nhm_id"].isin(hru_poi_dict[poi_id])
+                        nhru_params_nmonths_sel_df["nhm_id"].isin(hru_poi_dict[poi_gage_id])
                     ]
-                    # nhru_params_nmonths_sel_plot_df = nhru_params_nmonths_sel_df[nhru_params_nmonths_sel_df['poi_group'] == poi_id]
+                    # nhru_params_nmonths_sel_plot_df = nhru_params_nmonths_sel_df[nhru_params_nmonths_sel_df['poi_group'] == poi_gage_id]
 
                     fig = px.line(
                         nhru_params_nmonths_sel_plot_df,
@@ -530,7 +530,7 @@ def make_plots_par_vals(
                     )
 
                     fig.update_layout(
-                        title_text=f"{par} for HRUs in {poi_id} catchment",
+                        title_text=f"{par} for HRUs in {poi_gage_id} catchment",
                         width=500,
                         height=300,
                         showlegend=True,
@@ -590,7 +590,7 @@ def make_plots_par_vals(
                     )
 
                     # Saving the plot as txt file with the html code
-                    with open(Folium_maps_dir / f"{par}_{poi_id}.txt", "w") as f:
+                    with open(Folium_maps_dir / f"{par}_{poi_gage_id}.txt", "w") as f:
                         f.write(text_div)
 
 
@@ -635,7 +635,7 @@ def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium
                 f"{cpoi}_streamflow_obs.txt file exists. To make a new plot, delete the existing plot and rerun this cell."
             )
         else:
-            ds_sub = xr_streamflow.sel(poi_id=cpoi, time=slice(start_date, end_date))
+            ds_sub = xr_streamflow.sel(poi_gage_id=cpoi, time=slice(start_date, end_date))
             ds_sub_df = ds_sub.to_dataframe()
             # ds_sub_df.dropna(subset=["discharge"], inplace=True)
             ds_sub_df.reset_index(inplace=True, drop=False)
@@ -738,13 +738,9 @@ def create_append_gages_to_param_file(
     append_gages_to_param_file_df = append_gages_to_param_file_df[
         ["nhm_seg", "poi_name", "poi_agency", "distance"]
     ].reset_index(drop=False)
-    append_gages_to_param_file_df.rename(
-        columns={"poi_id": "poi_gage_id"},
-        inplace=True,
-    )
     """ Set an attribute "in_param_file" to show user which gages in the gages_df are in the myparam.param file. """
     append_gages_to_param_file_df["in_param_file"] = "no"
-    param_file_gages = poi_df.poi_id.to_list()
+    param_file_gages = poi_df.poi_gage_id.to_list()
     append_gages_to_param_file_df.loc[
         append_gages_to_param_file_df["poi_gage_id"].isin(param_file_gages),
         "in_param_file",
@@ -971,7 +967,7 @@ def _load_nldi_cached(
         return gdf
 
     gdf = gpd.read_file(geojson_path)
-    gdf[["poi_agency", "poi_id"]] = (
+    gdf[["poi_agency", "poi_gage_id"]] = (
         gdf["id"]
         .astype("string")
         .str.strip()
@@ -994,16 +990,16 @@ def _load_nldi_cached(
 def _translate_waterdata_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Map WaterData response columns to NHM's POI schema."""
     rename = {
-        "monitoring_location_id": "poi_id",
+        "monitoring_location_id": "poi_gage_id",
         "monitoring_location_name": "poi_name",
         "agency_code": "poi_agency",
     }
     translated = df.rename(columns=rename).copy()
-    if "poi_id" in translated.columns:
-        translated["poi_id"] = (
-            translated["poi_id"].astype(str).str.replace("USGS-", "", regex=False)
+    if "poi_gage_id" in translated.columns:
+        translated["poi_gage_id"] = (
+            translated["poi_gage_id"].astype(str).str.replace("USGS-", "", regex=False)
         )
-        translated = translated.set_index("poi_id")
+        translated = translated.set_index("poi_gage_id")
     for col in ["latitude", "longitude", "poi_name", "poi_agency"]:
         if col not in translated.columns:
             translated[col] = pd.NA
@@ -1020,7 +1016,7 @@ def find_missing_gage_info(
 ) -> pd.DataFrame:
     """Look up metadata for gages missing from the resource file.
 
-    Returns a DataFrame indexed by poi_id with columns latitude, longitude,
+    Returns a DataFrame indexed by poi_gage_id with columns latitude, longitude,
     poi_name, poi_agency. Queries NLDI (local geojson) and WaterData
     (network) only for gages not already covered.
 
@@ -1029,7 +1025,7 @@ def find_missing_gage_info(
     """
     METADATA_COLS = ["latitude", "longitude", "poi_name", "poi_agency"]
     empty = pd.DataFrame(columns=METADATA_COLS)
-    empty.index.name = "poi_id"
+    empty.index.name = "poi_gage_id"
     if not gage_ids:
         return empty
 
@@ -1039,12 +1035,12 @@ def find_missing_gage_info(
         try:
             resource_df = pd.read_csv(
                 resource_file_path,
-                dtype={"poi_id": str},
+                dtype={"poi_gage_id": str},
             )
         except (FileNotFoundError, pd.errors.EmptyDataError):
             resource_df = None
-        if resource_df is not None and "poi_id" in resource_df.columns:
-            covered = set(resource_df["poi_id"].astype(str).tolist())
+        if resource_df is not None and "poi_gage_id" in resource_df.columns:
+            covered = set(resource_df["poi_gage_id"].astype(str).tolist())
             pending = [g for g in pending if g not in covered]
 
     if not pending:
@@ -1061,8 +1057,8 @@ def find_missing_gage_info(
     try:
         nldi_gdf = _load_nldi_cached(nldi_geojson_path, nldi_gpkg_path)
         nldi_lookup = (
-            nldi_gdf.set_index("poi_id")[METADATA_COLS]
-            if "poi_id" in nldi_gdf.columns
+            nldi_gdf.set_index("poi_gage_id")[METADATA_COLS]
+            if "poi_gage_id" in nldi_gdf.columns
             else pd.DataFrame(columns=METADATA_COLS)
         )
         hits = [g for g in pending if g in nldi_lookup.index]
