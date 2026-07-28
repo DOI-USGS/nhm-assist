@@ -6,7 +6,7 @@ import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
-from assist.nhm.nhm_assist_utilities import (fetch_nwis_gage_info,
+from assist.nhm.nhm_assist_utilities import (fetch_waterdata_gage_info,
                                               find_missing_gage_info,
                                               make_HW_cal_level_files)
 pretty.install()
@@ -252,7 +252,7 @@ def create_poi_df(
     hru_gdf,
     gages_file,
     default_gages_file,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     seg_gdf,
 ):
     """
@@ -272,7 +272,7 @@ def create_poi_df(
         Path to file containing gage information from NWIS for the gages in the parameter file and user modified information.
     default_gages_file : pathlib Path class
         Path to file containing gage information from NWIS for the gages in the parameter file.
-    nwis_gage_nobs_min : int
+    waterdata_gage_nobs_min : int
         Minimum number of days for NWIS gage to be considered as potential poi.
 
     Returns
@@ -306,16 +306,16 @@ def create_poi_df(
     Create a dataframe for poi_gages from the parameter file with NWIS gage information data.
 
     """
-    nwis_gage_info_aoi = fetch_nwis_gage_info(
+    waterdata_gage_info_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
 
-    poi = poi.merge(nwis_gage_info_aoi, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
+    poi = poi.merge(waterdata_gage_info_aoi, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
 
     """
@@ -435,17 +435,17 @@ def create_default_gages_file(
     root_dir,
     model_dir,
     control_file_name,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     hru_gdf,
     poi_df,
     seg_gdf,
 ):
 
-    nwis_gages_aoi = fetch_nwis_gage_info(
+    waterdata_gages_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -468,7 +468,7 @@ def create_default_gages_file(
         Path object to the subdomain directory.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gage_nobs_min : int
+    waterdata_gage_nobs_min : int
         Minimum number of days for NWIS gage to be considered as potential poi.
     hru_gdf : geopandas GeoDataFrame
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
@@ -482,17 +482,17 @@ def create_default_gages_file(
 
     """
     """ Remove NWIS gages with no daily streamflow data after the st_date in the control file """
-    nwis_cache_file = model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
-    with xr.open_dataset(nwis_cache_file) as NWIS_ds:
-        NWIS_df = NWIS_ds.to_dataframe()
-        NWIS_obs_list = list(NWIS_df.index.get_level_values(0).unique())
-        # print(NWIS_obs_list)
-        del NWIS_ds
+    waterdata_cache_file = model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
+    with xr.open_dataset(waterdata_cache_file) as waterdata_ds:
+        waterdata_df = waterdata_ds.to_dataframe()
+        waterdata_obs_list = list(waterdata_df.index.get_level_values(0).unique())
+        # print(waterdata_obs_list)
+        del waterdata_ds
     """ But we need to add gages without obs back in to the list, if they are in the param file """
-    keep_list = list(set(NWIS_obs_list + poi_df.poi_gage_id.to_list()))
+    keep_list = list(set(waterdata_obs_list + poi_df.poi_gage_id.to_list()))
     #print(keep_list)
 
-    #_nwis_gages_aoi = nwis_gages_aoi.loc[nwis_gages_aoi["poi_gage_id"].isin(keep_list)]
+    #_waterdata_gages_aoi = waterdata_gages_aoi.loc[waterdata_gages_aoi["poi_gage_id"].isin(keep_list)]
 
 
     """Read in additional non-nwis gages from the resource gage file. These are a list of user requested gages that may or may not be in the parameter file or the nwis gage file, and likely include non NWIS gages.
@@ -539,13 +539,13 @@ def create_default_gages_file(
 
     for idx, row in default_gages_df.iterrows():
         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = nwis_gages_aoi["poi_gage_id"].to_list()
+        check_list = waterdata_gages_aoi["poi_gage_id"].to_list()
         for item in columns:
             if pd.isnull(row[item]):
                 new_poi_id = row["poi_gage_id"]
                 if new_poi_id in check_list:
-                    new_item = nwis_gages_aoi.loc[
-                        nwis_gages_aoi.poi_gage_id == new_poi_id, item].values[0]
+                    new_item = waterdata_gages_aoi.loc[
+                        waterdata_gages_aoi.poi_gage_id == new_poi_id, item].values[0]
                     default_gages_df.loc[idx, item] = new_item
 
     for idx, row in default_gages_df.iterrows():
@@ -723,12 +723,12 @@ def make_hf_map_elements(
     GIS_format,
     param_filename,
     control_file_name,
-    nwis_gages_file,
+    waterdata_gages_file,
     gages_file,
     default_gages_file,
     nhru_params,
     nhru_nmonths_params,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
 ):
     """
     Packages all elements required for the hydrofabric map.
@@ -745,8 +745,8 @@ def make_hf_map_elements(
         Path to parameter file.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gages_file : pathlib Path class
-        Path to NWIS data, e.g., model_dir / "NWISgages.csv"
+    waterdata_gages_file : pathlib Path class
+        Path to NWIS data, e.g., model_dir / "WaterDataGages.csv"
     gages_file : pathlib Path class
         Path to file containing gage information from NWIS for the gages in the parameter file.
     default_gages_file : pathlib Path class
@@ -755,7 +755,7 @@ def make_hf_map_elements(
         Parameters dimensioned by HRU only.   
     nhru_nmonths_params : list
         Parameters dimensioned by HRU and month.
-    nwis_gage_nobs_min : int
+    waterdata_gage_nobs_min : int
         Minimum number of days for NWIS gage to be considered as potential poi.
     
     Returns
@@ -770,7 +770,7 @@ def make_hf_map_elements(
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
     seg_txt : str
         Informational feedback printed in notebooks.
-    nwis_gages_aoi : Pandas DataFrame()
+    waterdata_gages_aoi : Pandas DataFrame()
         Pandas DataFrame() containing gages from NWIS in the subdomain.
     poi_df : pandas DataFrame
         Dataframe containing gages from the parameter file.
@@ -809,14 +809,14 @@ def make_hf_map_elements(
         hru_gdf=hru_gdf,
         gages_file=gages_file,
         default_gages_file=default_gages_file,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         seg_gdf=seg_gdf,
     )
-    nwis_gages_aoi = fetch_nwis_gage_info(
+    waterdata_gages_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -835,7 +835,7 @@ def make_hf_map_elements(
         hru_cal_level_txt,
         seg_gdf,
         seg_txt,
-        nwis_gages_aoi,
+        waterdata_gages_aoi,
         poi_df,
         gages_df,
         gages_txt,

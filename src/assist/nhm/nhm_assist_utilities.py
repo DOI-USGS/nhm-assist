@@ -112,12 +112,12 @@ def bynsegment_parameter_list(param_filename):
 
 
 # Reads/Creates NWIS stations file if not already created
-def fetch_nwis_gage_info(
+def fetch_waterdata_gage_info(
     *,
     root_dir,
     model_dir,
     control_file_name,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     hru_gdf,
     seg_gdf,
 ):
@@ -132,7 +132,7 @@ def fetch_nwis_gage_info(
         Path object to the subdomain directory.
     control_file_name : pathlib Path class
         Path object to the control file.
-    nwis_gage_nobs_min : int
+    waterdata_gage_nobs_min : int
         Minimum number of days for NWIS gage to be considered as potential poi.
     hru_gdf : geopandas GeoDataFrame()
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.
@@ -141,11 +141,11 @@ def fetch_nwis_gage_info(
 
     Returns
     -------
-    nwis_gage_info_aoi : pandas DataFrame()
+    waterdata_gage_info_aoi : pandas DataFrame()
         DataFrame containing gage information for gages found in NWIS.
     """
 
-    nwis_gages_file = model_dir / "NWISgages.csv"
+    waterdata_gages_file = model_dir / "WaterDataGages.csv"
     control = pws.Control.load_prms(
         pl.Path(model_dir / control_file_name, warn_unused_options=False)
     )
@@ -170,7 +170,7 @@ def fetch_nwis_gage_info(
     st_date = "1900-01-01"# pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
     en_date = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
-    if nwis_gages_file.exists():
+    if waterdata_gages_file.exists():
         col_names = [
             "poi_agency",
             "poi_gage_id",
@@ -193,8 +193,8 @@ def fetch_nwis_gage_info(
             zip(col_names, col_types)
         )  # Creates a dictionary of column header and datatype called below.
 
-        nwis_gage_info_aoi = pd.read_csv(
-            nwis_gages_file,
+        waterdata_gage_info_aoi = pd.read_csv(
+            waterdata_gages_file,
             dtype=cols,
             usecols=[
                 "poi_agency",
@@ -280,7 +280,7 @@ def fetch_nwis_gage_info(
             domain_locations.geometry.x
         )  # need this for the notebooks
 
-        nwis_gage_info_aoi = (
+        waterdata_gage_info_aoi = (
             domain_locations.set_index("monitoring_location_number", drop=False)
             .set_crs("EPSG:4326")
             .to_crs(crs)
@@ -297,13 +297,13 @@ def fetch_nwis_gage_info(
         }
         include_cols = list(field_map.keys())
 
-        nwis_gage_info_aoi = nwis_gage_info_aoi.loc[:, include_cols]
-        nwis_gage_info_aoi.rename(columns=field_map, inplace=True)
-        nwis_gage_info_aoi.set_index("poi_gage_id", inplace=True)
-        nwis_gage_info_aoi = nwis_gage_info_aoi.sort_index()
-        nwis_gage_info_aoi.reset_index(inplace=True)
+        waterdata_gage_info_aoi = waterdata_gage_info_aoi.loc[:, include_cols]
+        waterdata_gage_info_aoi.rename(columns=field_map, inplace=True)
+        waterdata_gage_info_aoi.set_index("poi_gage_id", inplace=True)
+        waterdata_gage_info_aoi = waterdata_gage_info_aoi.sort_index()
+        waterdata_gage_info_aoi.reset_index(inplace=True)
 
-    return nwis_gage_info_aoi
+    return waterdata_gage_info_aoi
 
 
 def make_plots_par_vals(
@@ -831,7 +831,7 @@ def delete_notebook_output_files(
         if count:
             deleted_by_subfolder[subfolder] = count
 
-    files = ['default_gages.csv', 'NWISgages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
+    files = ['default_gages.csv', 'WaterDataGages.csv', 'append_gages_to_param_file.csv', 'default_gages_file.csv']
     deleted_model_files = 0
     for file in files:
         if (model_dir / file).exists():
@@ -859,7 +859,7 @@ def delete_notebook_output_files(
 #     param_filename = pl.Path(pp["param_filename"])
 #     gages_file = pl.Path(pp["gages_file"])
 #     default_gages_file = pl.Path(pp["default_gages_file"])
-#     nwis_gages_file = pl.Path(pp["nwis_gages_file"])
+#     waterdata_gages_file = pl.Path(pp["waterdata_gages_file"])
 #     output_netcdf_filename = pl.Path(pp["output_netcdf_filename"])
 #     NHM_dir = pl.Path(pp["NHM_dir"])
 #     out_dir = pl.Path(pp["out_dir"])
@@ -872,7 +872,7 @@ def delete_notebook_output_files(
 #     GIS_format = pp["GIS_format"]
 #     param_file = pp["param_file"]
 #     control_file_name = pp["control_file_name"]
-#     nwis_gage_nobs_min = pp["nwis_gage_nobs_min"]
+#     waterdata_gage_nobs_min = pp["waterdata_gage_nobs_min"]
 #     nhru_nmonths_params = pp["nhru_nmonths_params"]
 #     nhru_params = pp["nhru_params"]
 #     selected_output_variables = pp["selected_output_variables"]
@@ -885,7 +885,7 @@ def delete_notebook_output_files(
 #         param_filename,
 #         gages_file,
 #         default_gages_file,
-#         nwis_gages_file,
+#         waterdata_gages_file,
 #         output_netcdf_filename,
 #         NHM_dir,
 #         out_dir,
@@ -898,7 +898,7 @@ def delete_notebook_output_files(
 #         GIS_format,
 #         param_file,
 #         control_file_name,
-#         nwis_gage_nobs_min,
+#         waterdata_gage_nobs_min,
 #         nhru_nmonths_params,
 #         nhru_params,
 #         selected_output_variables,
@@ -927,7 +927,7 @@ def load_subdomain_config(root_dir):
         "param_filename": pl.Path(pp["param_filename"]),
         "gages_file": pl.Path(pp["gages_file"]),
         "default_gages_file": pl.Path(pp["default_gages_file"]),
-        "nwis_gages_file": pl.Path(pp["nwis_gages_file"]),
+        "waterdata_gages_file": pl.Path(pp["waterdata_gages_file"]),
         "output_netcdf_filename": pl.Path(pp["output_netcdf_filename"]),
         "NHM_dir": pl.Path(pp["NHM_dir"]),
         "out_dir": pl.Path(pp["out_dir"]),
@@ -939,7 +939,7 @@ def load_subdomain_config(root_dir):
         "GIS_format": pp["GIS_format"],
         "param_file": pp["param_file"],
         "control_file_name": pp["control_file_name"],
-        "nwis_gage_nobs_min": pp["nwis_gage_nobs_min"],
+        "waterdata_gage_nobs_min": pp["waterdata_gage_nobs_min"],
         "nhru_nmonths_params": pp["nhru_nmonths_params"],
         "nhru_params": pp["nhru_params"],
         "selected_output_variables": pp["selected_output_variables"],

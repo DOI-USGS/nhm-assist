@@ -506,7 +506,7 @@ def create_poi_marker_cluster(
 
 def create_non_poi_marker_cluster(
     poi_df,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     cluster_zoom: pd.DataFrame,
 ) -> tuple[folium.plugins.MarkerCluster, folium.plugins.MarkerCluster]:
@@ -518,7 +518,7 @@ def create_non_poi_marker_cluster(
     ----------
     poi_df : pandas DataFrame()
         Pandas DataFrame() containing gages from the parameter file.
-    nwis_gages_aoi : Pandas DataFrame()
+    waterdata_gages_aoi : Pandas DataFrame()
         Pandas DataFrame() containing gages from NWIS in the subdomain.
     gages_df : pandas DataFrame() 
         Represents data pertaining to subdomain gages in parameter file, NWIS, and others. 
@@ -554,7 +554,7 @@ def create_non_poi_marker_cluster(
     gages_list = gages_df.index.to_list()
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
 
-    for idx, row in nwis_gages_aoi.iterrows():
+    for idx, row in waterdata_gages_aoi.iterrows():
         if row["poi_gage_id"] in additional_gages:
 
             text = f'{row["poi_gage_id"]}'
@@ -1575,7 +1575,7 @@ def make_hf_map(
     poi_df,
     poi_gage_id_sel,
     seg_gdf,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     html_maps_dir,
     Folium_maps_dir,
@@ -1599,7 +1599,7 @@ def make_hf_map(
         Gage id of selected gage.
     seg_gdf : geopandas GeoDataFrame
         Segments geodataframe from GIS data in subdomain and segment parameter values from parameter file.
-    nwis_gages_aoi : Pandas DataFrame
+    waterdata_gages_aoi : Pandas DataFrame
         Pandas DataFrame containing gages from NWIS in the subdomain.
     gages_df : pandas DataFrame
         Pandas DataFrame containing gages from the default.csv or gages.csv (whichever is in use).
@@ -1637,7 +1637,7 @@ def make_hf_map(
     )
 
     non_poi_marker_cluster, non_poi_marker_cluster_label = (
-        create_non_poi_obs_marker_cluster(poi_df, nwis_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
+        create_non_poi_obs_marker_cluster(poi_df, waterdata_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
     )
 
     m2 = folium.Map()
@@ -2342,7 +2342,7 @@ def create_poi_obs_marker_cluster(
 
 def create_non_poi_obs_marker_cluster(
     poi_df,
-    nwis_gages_aoi,
+    waterdata_gages_aoi,
     gages_df,
     Folium_maps_dir,
     param_filename,
@@ -2356,7 +2356,7 @@ def create_non_poi_obs_marker_cluster(
     ----------
     poi_df : pandas DataFrame()
         Pandas DataFrame() containing gages from the parameter file.
-    nwis_gages_aoi : Pandas DataFrame()
+    waterdata_gages_aoi : Pandas DataFrame()
         Pandas DataFrame() containing gages from NWIS in the subdomain.
     gages_df : pandas DataFrame() 
         Represents data pertaining to subdomain gages in parameter file, NWIS, and others. 

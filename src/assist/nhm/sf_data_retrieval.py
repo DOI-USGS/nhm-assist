@@ -45,7 +45,7 @@ def _safe_clip_mask(hru_gdf):
 from rich import pretty
 from rich.progress import Progress
 from assist.nhm.efc import efc
-from assist.nhm.nhm_assist_utilities import fetch_nwis_gage_info
+from assist.nhm.nhm_assist_utilities import fetch_waterdata_gage_info
 
 
 
@@ -749,18 +749,18 @@ def create_waterdata_sf_df(
     _ensure_usgs_pat_stripped()
 
     waterdata_cache_file = (
-        model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
+        model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
     )
     control = pws.Control.load_prms(
         pl.Path(model_dir / control_file_name), warn_unused_options=False
     )
     waterdata_gages_file = model_dir / "WaterDataGages.csv"
 
-    waterdata_gage_info_aoi = fetch_nwis_gage_info(
+    waterdata_gage_info_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=waterdata_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
@@ -946,7 +946,7 @@ def create_sf_efc_df(
     output_netcdf_filename,
     owrd_df,
     ecy_df,
-    NWIS_df,
+    waterdata_df,
     gages_df,
 ):
     """
@@ -971,7 +971,7 @@ def create_sf_efc_df(
         Dataframe containing OWRD mean daily streamflow data for the specified gage and date range.        
     ecy_df : pandas DataFrame
         Dataframe containing ECY mean daily streamflow data for the specified gage and date range.        
-    NWIS_df : pandas DataFrame
+    waterdata_df : pandas DataFrame
         Dataframe of NWIS gages.        
     gages_df : pandas DataFrame
         Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
@@ -991,7 +991,7 @@ def create_sf_efc_df(
             "All available streamflow observations were previously retrieved and included in the sf_efc.nc file. [bold]To update delete sf_efc.nc[/bold] and rerun 1_Create_Streamflow_Observations.ipynb."
         )
     else:
-        streamflow_df = NWIS_df.copy()  # Sets streamflow file to default, NWIS_df
+        streamflow_df = waterdata_df.copy()  # Sets streamflow file to default, waterdata_df
 
         if (
             not owrd_df.empty
