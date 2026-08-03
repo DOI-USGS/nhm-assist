@@ -39,6 +39,12 @@ pixi install
 
 This reads `pyproject.toml` + `pixi.lock` and installs a reproducible Python environment under `.pixi/envs/default/`. All subsequent `pixi run …` commands use this env automatically.
 
+> **On USGS VPN?** If `pixi install` fails with an SSL certificate error (`invalid peer certificate: UnknownIssuer`), the DOI network's TLS inspection is blocking package downloads. Run the one-time fix from PowerShell:
+> ```powershell
+> powershell -ExecutionPolicy Bypass -File scripts/fix-ssl-usgs-vpn.ps1
+> ```
+> Then close and reopen your terminal.
+
 ## Retrieve a provided NHM subdomain model
 
 If you have been provided an NHM subdomain model, it can be downloaded from the USGS [HyTEST](https://hytest-org.github.io/hytest/doc/About.html) OSN storage pod:
