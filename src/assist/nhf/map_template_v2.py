@@ -1977,6 +1977,23 @@ def make_hf_map(
     
     m2.get_root().html.add_child(Element(title_html))
 
+    # Add drawing tools for annotation (lines, polygons, markers)
+    from folium.plugins import Draw
+
+    Draw(
+        export=True,
+        position="topright",
+        draw_options={
+            "polyline": {"shapeOptions": {"color": "red", "weight": 3}},
+            "polygon": {"shapeOptions": {"color": "blue"}},
+            "marker": True,
+            "circlemarker": False,
+            "rectangle": True,
+            "circle": False,
+        },
+        edit_options={"edit": True, "remove": True},
+    ).add_to(m2)
+
     map_file = f"{html_maps_dir}/hydrofabric_map.html"
     m2.save(map_file)
 

@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
+#     formats: nhf_assist/notebooks//ipynb,src/workflow_templates/nhf//py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -122,7 +122,9 @@ if basin_polygons.index.name == "basin_id" and "basin_id" not in basin_polygons.
     basin_polygons = basin_polygons.reset_index()
 
 for _, row in basin_polygons.iterrows():
+
     basin_id = row["basin_id"]
+    print(basin_id)
     layer_name = basin_id
     gdf_one = gpd.GeoDataFrame([row], crs=basin_polygons.crs)
     gdf_one.to_file(basin_gpkg, layer=layer_name, driver="GPKG")
@@ -167,9 +169,10 @@ source_gpkg = (
 source_layers = fiona.listlayers(source_gpkg)
 source_layers
 
-# %%
+# %% jupyter={"source_hidden": true}
 # list layers
 basin_layers = fiona.listlayers(basin_gpkg)
+print(basin_layers)
 
 # source_layers = fiona.listlayers(source_gpkg)
 source_layers = [
@@ -180,6 +183,7 @@ source_layers = [
 
 
 for basin_layer in basin_layers:
+    print(basin_layer)
     basin_gdf = gpd.read_file(basin_gpkg, layer=basin_layer)
     basin_geom = basin_gdf.geometry.unary_union
 
@@ -194,6 +198,8 @@ for basin_layer in basin_layers:
         out_gpkg, layer=f"domain", driver="GPKG"
     )  # save the domain outline as a layer
 
+    child_hru_segments = set()  # populated when nhru is processed
+
     # now make a child layer from each parent layer
     for src_layer in source_layers:
         src_gdf = gpd.read_file(source_gpkg, layer=src_layer)
@@ -206,10 +212,61 @@ for basin_layer in basin_layers:
             # centroid-based selection: centroid is within basin
             centroids = src_gdf.geometry.centroid
             mask = centroids.within(basin_geom)
-            sel = src_gdf[mask]
+            sel = src_gdf[mask].copy()
+
+            # Filter out edge-case HRUs whose centroid is inside but polygon
+            # is mostly outside. Require >= 50% of HRU area within the domain.
+            overlap_area = sel.geometry.intersection(basin_geom).area
+            hru_area = sel.geometry.area
+            overlap_frac = overlap_area / hru_area
+            edge_hrus = sel[overlap_frac < 0.5]
+            if len(edge_hrus) > 0:
+                print(
+                    f"  Removed {len(edge_hrus)} edge HRUs with <50% overlap: "
+                    f"hru_id={edge_hrus['hru_id'].tolist()}"
+                )
+            sel = sel[overlap_frac >= 0.5]
+
+            # Save selected HRU segment indices for segment selection below
+            child_hru_segments = set(sel["hru_segment"].unique())
+
+        elif src_layer == "nsegment":
+            # Method 1 (attribute-based): Select segments that child HRUs drain to.
+            sel_by_hru = src_gdf[src_gdf["model_seg_idx"].isin(child_hru_segments)]
+
+            # Also include segments that are contained within the domain AND are a
+            # downstream receiver (to_segment) of the hru_segment set.
+            # This captures outlet/pass-through segments that have no local HRUs
+            # but are routed to by segments in the child domain.
+            hru_seg_to_segments = set(sel_by_hru["to_segment"]) - {0}
+            sel_within = src_gdf[src_gdf.geometry.within(basin_geom)]
+            within_seg_ids = set(sel_within["model_seg_idx"])
+
+            # Segments within the domain that are downstream receivers of child segments
+            downstream_keepers = within_seg_ids & hru_seg_to_segments
+            # Combine: hru_segment segments + downstream receivers within domain
+            final_seg_ids = child_hru_segments | downstream_keepers
+
+            sel = src_gdf[src_gdf["model_seg_idx"].isin(final_seg_ids)]
+
+            # Report differences for debugging
+            only_in_within = within_seg_ids - final_seg_ids
+            only_in_final = final_seg_ids - within_seg_ids
+
+            print(
+                f"  Segments selected: {len(final_seg_ids)} "
+                f"(hru_segment: {len(child_hru_segments)}, "
+                f"+ downstream keepers: {len(downstream_keepers)})"
+            )
+            if only_in_within:
+                print(
+                    f"    Excluded from within (no HRU, not a to_segment): {sorted(only_in_within)}"
+                )
+            if only_in_final:
+                print(f"    In final but not in intersect: {sorted(only_in_final)}")
 
         else:
-            # spatial selection: intersecting features
+            # spatial selection: intersecting features (npoi, etc.)
             sel = src_gdf[src_gdf.geometry.intersects(basin_geom)]
 
         if sel.empty:
@@ -232,7 +289,7 @@ for folder in folders:
     print(folder.name)  # just the folder name, not full path
 
 # %%
-child_model_name = "Malheur_Lake"  # "Rogue_River"  #
+child_model_name = "UpperWillamette"  # "Rogue_River"  #
 
 child_model_path = [f for f in folders if child_model_name in f.name]
 print(child_model_path[0])
@@ -240,7 +297,7 @@ child_model_gdf = gpd.read_file(
     child_model_path[0] / "GIS/child_nhf_domain.gpkg", layer="nhru"
 )
 
-# %%
+# %% jupyter={"source_hidden": true}
 import folium
 
 gpkg_path = child_model_path[0] / "GIS/child_nhf_domain.gpkg"
@@ -262,7 +319,9 @@ layer_styles = {
 
 style = layer_styles.get(layer_name, dict(color="gray", fill=False))
 
-m = child_model_gdf.explore(name=layer_name, style_kwds=style, tooltip=False)
+m = child_model_gdf.explore(
+    name=layer_name, style_kwds=style, tooltip=["hru_id", "hru_segment"]
+)
 
 
 for layer_name in layers:
@@ -278,9 +337,133 @@ for layer_name in layers:
         # tooltip=False,
     )
 
+# --- Add segment comparison layers ---
+# Read the full parent segment layer and the child basin polygon
+source_gpkg_map = (
+    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
+)
+all_segs = gpd.read_file(source_gpkg_map, layer="nsegment")
+
+# Get child HRU segments (attribute-based method)
+child_nhru = gpd.read_file(gpkg_path, layer="nhru")
+child_hru_seg_ids = set(child_nhru["hru_segment"].unique())
+
+# Get segments contained within the domain
+basin_domain = gpd.read_file(gpkg_path, layer="domain")
+basin_geom_map = basin_domain.geometry.unary_union
+if all_segs.crs != basin_domain.crs:
+    all_segs = all_segs.to_crs(basin_domain.crs)
+within_seg_ids = set(
+    all_segs[all_segs.geometry.within(basin_geom_map)]["model_seg_idx"]
+)
+
+# Downstream keepers: segments within domain that are to_segment targets of child segments
+sel_by_hru_map = all_segs[all_segs["model_seg_idx"].isin(child_hru_seg_ids)]
+hru_seg_to_segments = set(sel_by_hru_map["to_segment"]) - {0}
+downstream_keepers = within_seg_ids & hru_seg_to_segments
+final_seg_ids = child_hru_seg_ids | downstream_keepers
+
+# Segments excluded: within domain but not in final (no HRU, not a downstream receiver)
+excluded_ids = within_seg_ids - final_seg_ids
+# Segments in final but not within domain
+only_in_final = final_seg_ids - within_seg_ids
+
+if excluded_ids:
+    segs_excluded = all_segs[all_segs["model_seg_idx"].isin(excluded_ids)]
+    m = segs_excluded.explore(
+        m=m,
+        name="Excluded segments (within domain, no HRU or to_segment link)",
+        style_kwds=dict(color="red", weight=4),
+    )
+    print(f"  Excluded segments (red): {len(excluded_ids)}")
+
+if downstream_keepers:
+    segs_downstream = all_segs[all_segs["model_seg_idx"].isin(downstream_keepers)]
+    m = segs_downstream.explore(
+        m=m,
+        name="Downstream keepers (no HRU, but is a to_segment of child)",
+        style_kwds=dict(color="orange", weight=4),
+    )
+    print(f"  Downstream keeper segments (orange): {len(downstream_keepers)}")
+
+if only_in_final:
+    segs_only_final = all_segs[all_segs["model_seg_idx"].isin(only_in_final)]
+    m = segs_only_final.explore(
+        m=m,
+        name="Segments in final but not within domain",
+        style_kwds=dict(color="green", weight=4),
+    )
+    print(f"  Segments in final but not within domain (green): {len(only_in_final)}")
+
+if not excluded_ids and not downstream_keepers and not only_in_final:
+    print("  All methods agree — no differences to display.")
+
 # add layer control so you can toggle them
 folium.LayerControl().add_to(m)
 
 m  # display in Jupyter
+
+# %% [markdown]
+# ### Test: Check for HRU and segment overlap between child domains
+
+# %%
+# Read all child domain GeoPackages and check for shared HRUs or segments
+from collections import defaultdict
+
+domains_dir_test = Path(root_dir / "nhf_assist/hydrofabric_domain_data")
+child_folders = [
+    p
+    for p in domains_dir_test.iterdir()
+    if p.is_dir() and (p / "GIS" / "child_nhf_domain.gpkg").exists()
+]
+
+hru_to_basins = defaultdict(list)
+seg_to_basins = defaultdict(list)
+
+for folder in child_folders:
+    gpkg = folder / "GIS" / "child_nhf_domain.gpkg"
+    basin_name = folder.name
+
+    # Check HRUs
+    try:
+        nhru = gpd.read_file(gpkg, layer="nhru")
+        for hru_id in nhru["hru_id"].values:
+            hru_to_basins[hru_id].append(basin_name)
+    except Exception:
+        pass
+
+    # Check segments
+    try:
+        nseg = gpd.read_file(gpkg, layer="nsegment")
+        for seg_idx in nseg["model_seg_idx"].values:
+            seg_to_basins[seg_idx].append(basin_name)
+    except Exception:
+        pass
+
+# Find overlaps
+hru_overlaps = {k: v for k, v in hru_to_basins.items() if len(v) > 1}
+seg_overlaps = {k: v for k, v in seg_to_basins.items() if len(v) > 1}
+
+print("=" * 70)
+print("Child Domain Overlap Test")
+print("=" * 70)
+print(f"  Child domains checked: {len(child_folders)}")
+print()
+
+if hru_overlaps:
+    print(f"  [WARNING] {len(hru_overlaps)} HRUs appear in multiple child domains:")
+    for hru_id, basins in sorted(hru_overlaps.items()):
+        print(f"    hru_id {hru_id}: {basins}")
+else:
+    print("  [PASS] No HRU overlap between child domains.")
+
+print()
+
+if seg_overlaps:
+    print(f"  [WARNING] {len(seg_overlaps)} segments appear in multiple child domains:")
+    for seg_idx, basins in sorted(seg_overlaps.items()):
+        print(f"    model_seg_idx {seg_idx}: {basins}")
+else:
+    print("  [PASS] No segment overlap between child domains.")
 
 # %%
