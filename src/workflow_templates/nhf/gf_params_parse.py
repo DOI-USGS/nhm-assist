@@ -20,6 +20,13 @@ import pathlib as pl
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# Provide a display() fallback when running outside Jupyter
+try:
+    display
+except NameError:
+    display = print
+
 from rich.console import Console
 
 con = Console()
@@ -611,7 +618,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Rogue_River"  # Powder_River, John_Day_River
+child_name = "UpperWillamette"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
