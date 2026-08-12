@@ -351,5 +351,3 @@ with open(config_root / "subdomain_config.yaml", "w") as file:
     documents = yaml.dump(dict_file, file)
 
 # %%
-
-# %%
