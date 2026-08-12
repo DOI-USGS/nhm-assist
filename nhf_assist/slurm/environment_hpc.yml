@@ -1,0 +1,22 @@
+name: nhm-gridmet
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - pandas
+  - numpy
+  - xarray
+  - geopandas
+  - rioxarray
+  - netcdf4
+  - dask
+  - distributed
+  - requests
+  - tqdm
+  - shapely
+  - fiona
+  - pyproj
+  - pyyaml
+  - pip
+  - pip:
+    - gdptools

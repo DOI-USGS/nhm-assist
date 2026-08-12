@@ -497,3 +497,11 @@ pestpp_ies_calibration/parameters.json
 
 # .kiro files
 .kiro/
+
+# Hovenweep HPC — generated/sensitive files (not tracked)
+nhf_assist/slurm/.env.hovenweep
+nhf_assist/slurm/gridmet_array_job.sh
+nhf_assist/slurm/transfer_to_hpc.ps1
+nhf_assist/slurm/retrieve_from_hpc.ps1
+nhf_assist/slurm/catalog.parquet
+nhf_assist/slurm/run_all_models.log
