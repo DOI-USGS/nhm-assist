@@ -43,7 +43,7 @@ import pathlib as pl
 # %%
 param_source_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
 climate_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\gridmet_climate_drivers")
-output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\created_hru_params")
+output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
@@ -674,84 +674,85 @@ def compare_param(v1_gdf, v1_values, v2_gdf, v2_values, param_name, month_idx=No
     plt.tight_layout()
     plt.show()
 
+
 # %% [markdown]
 # ### jh_coef_hru comparison
 
-# %% jupyter={"source_hidden": true}
-# v1_jh_coef_hru = pdb_v1.get("jh_coef_hru").data
-# v1_vals = v1_jh_coef_hru[v1_hru_gdf["param_idx"].values]
+# %%
+v1_jh_coef_hru = pdb_v1.get("jh_coef_hru").data
+v1_vals = v1_jh_coef_hru[v1_hru_gdf["param_idx"].values]
 
-# # v2 values (clip to v1 domain for comparison)
-# v2_vals = jh_coef_hru  # all v2 HRUs
+# v2 values (clip to v1 domain for comparison)
+v2_vals = jh_coef_hru  # all v2 HRUs
 
-# # compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "jh_coef_hru")
+# compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "jh_coef_hru")
 
-# print(f"v1.1 range: {v1_vals.min():.2f} — {v1_vals.max():.2f}")
-# print(f"v2 range: {v2_vals.min():.2f} — {v2_vals.max():.2f}")
+print(f"v1.1 range: {v1_vals.min():.2f} — {v1_vals.max():.2f}")
+print(f"v2 range: {v2_vals.min():.2f} — {v2_vals.max():.2f}")
 
 # %% [markdown]
 # ### jh_coef comparison (July)
 
 # %%
-# compare_month = 6  # July (index 6)
-# month_name = "Jul"
+compare_month = 6  # July (index 6)
+month_name = "Jul"
 
-# v1_jh_coef = pdb_v1.get("jh_coef").data  # shape: (nhru, 12)
-# v1_vals = v1_jh_coef[v1_hru_gdf["param_idx"].values, compare_month]
-# v2_vals = jh_coef[:, compare_month]
+v1_jh_coef = pdb_v1.get("jh_coef").data  # shape: (nhru, 12)
+v1_vals = v1_jh_coef[v1_hru_gdf["param_idx"].values, compare_month]
+v2_vals = jh_coef[:, compare_month]
 
-# # compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "jh_coef", compare_month, month_name)
+# compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "jh_coef", compare_month, month_name)
 
-# print(f"v1.1 range: {v1_vals.min():.6f} — {v1_vals.max():.6f}")
-# print(f"v2 range: {v2_vals.min():.6f} — {v2_vals.max():.6f}")
+print(f"v1.1 range: {v1_vals.min():.6f} — {v1_vals.max():.6f}")
+print(f"v2 range: {v2_vals.min():.6f} — {v2_vals.max():.6f}")
 
 # %%
-# # Check before clipping
-# jh_coef_raw = np.zeros((nhru, 12))
-# ihru, imon = 100, 6
-# elh = (597.3 - (0.5653 * tavg_c_monthly_jh[imon, ihru])) * 2.54
-# denom = (tavg_f_monthly_jh[imon, ihru] - jh_coef_hru[ihru]) * solrad_targets[imon, ihru] / elh
+# Check before clipping
+jh_coef_raw = np.zeros((nhru, 12))
+ihru, imon = 100, 6
+elh = (597.3 - (0.5653 * tavg_c_monthly_jh[imon, ihru])) * 2.54
+denom = (tavg_f_monthly_jh[imon, ihru] - jh_coef_hru[ihru]) * solrad_targets[imon, ihru] / elh
 
-# print(f"tavg_f = {tavg_f_monthly_jh[imon, ihru]:.1f} °F")
-# print(f"tavg_c = {tavg_c_monthly_jh[imon, ihru]:.1f} °C")
-# print(f"jh_coef_hru = {jh_coef_hru[ihru]:.1f} °F")
-# print(f"solrad = {solrad_targets[imon, ihru]:.1f} Langleys/day")
-# print(f"farns = {farns_in_per_day[ihru, imon]:.6f} in/day")
-# print(f"elh = {elh:.1f}")
-# print(f"denom = {denom:.4f}")
-# print(f"jh_coef = {farns_in_per_day[ihru, imon] / denom:.6f}")
+print(f"tavg_f = {tavg_f_monthly_jh[imon, ihru]:.1f} °F")
+print(f"tavg_c = {tavg_c_monthly_jh[imon, ihru]:.1f} °C")
+print(f"jh_coef_hru = {jh_coef_hru[ihru]:.1f} °F")
+print(f"solrad = {solrad_targets[imon, ihru]:.1f} Langleys/day")
+print(f"farns = {farns_in_per_day[ihru, imon]:.6f} in/day")
+print(f"elh = {elh:.1f}")
+print(f"denom = {denom:.4f}")
+print(f"jh_coef = {farns_in_per_day[ihru, imon] / denom:.6f}")
 
 
 # %% [markdown]
 # ### dday_slope comparison (January)
 
 # %%
-# compare_month = 0  # January
-# month_name = "Jan"
+compare_month = 6  # January
+month_name = "Jul"
 
-# v1_dday_slope = pdb_v1.get("dday_slope").data  # shape: (nhru, 12)
-# v1_vals = v1_dday_slope[v1_hru_gdf["param_idx"].values, compare_month]
-# v2_vals = dday_slope_monthly[compare_month, :]  # (12, nhru) -> select month
+v1_dday_slope = pdb_v1.get("dday_slope").data  # shape: (nhru, 12)
+v1_vals = v1_dday_slope[v1_hru_gdf["param_idx"].values, compare_month]
+v2_vals = dday_slope_monthly[compare_month, :]  # (12, nhru) -> select month
 
-# # compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "dday_slope", compare_month, month_name)
+# compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_vals, "dday_slope", compare_month, month_name)
 
-# print(f"v1.1 range: {v1_vals.min():.4f} — {v1_vals.max():.4f}")
-# print(f"v2 range: {v2_vals.min():.4f} — {v2_vals.max():.4f}")
+print(f"v1.1 range: {v1_vals.min():.4f} — {v1_vals.max():.4f}")
+print(f"v2 range: {v2_vals.min():.4f} — {v2_vals.max():.4f}")
 
 # %% [markdown]
 # ### dday_intcp comparison (January)
 
 # %%
-# v1_dday_intcp = pdb_v1.get("dday_intcp").data  # shape: (nhru, 12)
-# v1_vals = v1_dday_intcp[v1_hru_gdf["param_idx"].values, compare_month]
+v1_dday_intcp = pdb_v1.get("dday_intcp").data  # shape: (nhru, 12)
+v1_vals = v1_dday_intcp[v1_hru_gdf["param_idx"].values, compare_month]
 
-# # v2 dday_intcp (from v1.1 CONUS paramdb via nhm_id mapping)
-# v2_dday_intcp = dday_intcp[compare_month, :]  # (12, nhru) -> select month
+# v2 dday_intcp (from v1.1 CONUS paramdb via nhm_id mapping)
+v2_dday_intcp = dday_intcp[compare_month, :]  # (12, nhru) -> select month
 
-# compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_dday_intcp, "dday_intcp", compare_month, month_name)
+compare_param(v1_hru_gdf, v1_vals, hru_gdf, v2_dday_intcp, "dday_intcp", compare_month, month_name)
 
-# print(f"v1.1 range: {v1_vals.min():.4f} — {v1_vals.max():.4f}")
-# print(f"v2 range: {v2_dday_intcp.min():.4f} — {v2_dday_intcp.max():.4f}")
+print(f"v1.1 range: {v1_vals.min():.4f} — {v1_vals.max():.4f}")
+print(f"v2 range: {v2_dday_intcp.min():.4f} — {v2_dday_intcp.max():.4f}")
 
 # %%
 # What solar radiation values does v1.1 use internally?
