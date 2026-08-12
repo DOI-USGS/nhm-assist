@@ -246,7 +246,7 @@ def create_segment_gdf(
         ).fillna(
             0
         )  # Reads segemnt file to Geopandas.
-        seg_gdb = seg_gdb.set_index("nhm_seg_id", drop=False).fillna(
+        seg_gdb = seg_gdb.set_index("nhm_seg", drop=False).fillna(
             0
         )  # Set an index for HRU geodatabase.
         seg_gdb.index.name = "index"  # Index column must be renamed of the hru
@@ -259,7 +259,7 @@ def create_segment_gdf(
     #     seg_gdb.index.name = "index"  # Index column must be renamed of the hru
 
     seg_gdb = seg_gdb.to_crs(crs)  # reprojects to the defined crs projection
-    seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)
+    #seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)
     
     #if "nhm_seg_id" in seg_gdb.columns:
     #    seg_gdb.drop(columns=["nhm_seg_id"], inplace=True)

@@ -124,8 +124,10 @@ highlight_function_seg_map = lambda x: {
 }
 
 popup_seg = folium.GeoJsonPopup(
-    fields=["segment_id", "tosegment", "huc12_pp"],
-    aliases=["segment", "flows to segment", "huc12_pp"],
+    fields=["segment_id", "tosegment", #"huc12_pp"
+           ],
+    aliases=["segment", "flows to segment", #"huc12_pp"
+            ],
     labels=True,
     localize=False,
 )
@@ -1849,14 +1851,14 @@ def make_hf_map(
             # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
         ),
             )
-    
-    huc12_pp_map = gpd.read_file(
+    try:
+        huc12_pp_map = gpd.read_file(
         root_dir / "domain_data" / subdomain / "GIS" / "model_layers.gpkg",
         layer="huc12_pp",
     ).to_crs(epsg=4326)
     
     
-    huc12_layer = folium.GeoJson(
+        huc12_layer = folium.GeoJson(
         huc12_pp_map,
         name="HUC12 points",
         show=False,
@@ -1864,10 +1866,12 @@ def make_hf_map(
         #tooltip=folium.GeoJsonTooltip(fields=["hl_link", "segment_id"]),
         #popup=folium.GeoJsonPopup(fields=["hl_link", "segment_id"]),
     )
+        huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
+        seg_gdf["huc12_pp"] = "none"
+        seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
 
-    huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
-    seg_gdf["huc12_pp"] = "none"
-    seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
+    except:
+        pass
         
     seg_map_show = create_segment_map_show(seg_gdf)
 
@@ -1934,7 +1938,10 @@ def make_hf_map(
     huc10_map_layer.add_to(m2)
     
     seg_map_show.add_to(m2)
-    huc12_layer.add_to(m2)
+    try:
+        huc12_layer.add_to(m2)
+    except:
+        pass
 
     ref_poi_marker_cluster.add_to(m2)
     ref_poi_marker_cluster_label.add_to(m2)

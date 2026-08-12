@@ -61,7 +61,7 @@ def drop_z(geom):
 # **How it works:**
 # - The AOI geometry is used to find all NHM v1.1 segments that **intersect** it.
 # - From those intersecting segments, the notebook traces the **full upstream
-#   network** — every segment that contributes flow to the segments in your AOI.
+#   network** â€” every segment that contributes flow to the segments in your AOI.
 # - All HRUs connected to those upstream segments are included automatically.
 #
 # **Your AOI does not need to be precise.** It just needs to cover the outlet(s)
@@ -159,7 +159,7 @@ buffer_bbox = tuple(aoi_buffered_4326.total_bounds)
 seg_context = gpd.read_file(gdb_path, layer="nsegment_v1_1", bbox=buffer_bbox)
 if seg_context.empty:
     # Fallback: load all segments and clip manually
-    print("  bbox filter returned empty — loading all and clipping...")
+    print("  bbox filter returned empty â€” loading all and clipping...")
     seg_context = gpd.read_file(gdb_path, layer="nsegment_v1_1")
     seg_context = seg_context.to_crs(epsg=4326)
     buffer_geom = aoi_buffered_4326.geometry.iloc[0]
@@ -211,7 +211,7 @@ folium.GeoJson(
     },
 ).add_to(m_preview)
 
-# Context segments (all within 100 km buffer) — gray
+# Context segments (all within 100 km buffer) â€” gray
 context_features = []
 for _, row in seg_context.iterrows():
     geom = row["geometry"]
@@ -245,7 +245,7 @@ if context_features:
         ),
     ).add_to(m_preview)
 
-# Selected segments (from upstream trace) — blue
+# Selected segments (from upstream trace) â€” blue
 selected_segs_preview = seg_all[seg_all["nsegment_v1_1"].astype(int).isin(all_network_segs)].to_crs(epsg=4326)
 selected_features = []
 for _, row in selected_segs_preview.iterrows():
@@ -298,12 +298,12 @@ m_preview
 #
 # After modifying the lists, re-run the cells below to update the selection.
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Edit these lists based on the preview map
 add_to_selected_segments = []  # e.g. [49990, 50001]
 remove_from_selected_segments = []  # e.g. [12345]
 
-# Apply modifications — trace full upstream network for any added/removed segments
+# Apply modifications â€” trace full upstream network for any added/removed segments
 if add_to_selected_segments:
     # Find all upstream segments connected to the added segments
     add_with_upstream = get_all_upstream(set(add_to_selected_segments), upstream_map)
@@ -317,19 +317,19 @@ if remove_from_selected_segments:
     print(f"  Removed {len(remove_from_selected_segments)} seed segments + {len(remove_with_upstream) - len(remove_from_selected_segments)} upstream = {len(remove_with_upstream)} total removed")
 
 if not add_to_selected_segments and not remove_from_selected_segments:
-    print("  No modifications — using original selection.")
+    print("  No modifications â€” using original selection.")
 
 print(f"  Final selected segment count: {len(all_network_segs)}")
 
 # %% [markdown]
 # ## Find HRUs connected to the stream network
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Subset segments to only those in the network
 seg_gdf = seg_all[seg_all["nsegment_v1_1"].astype(int).isin(all_network_segs)].copy()
 print(f"Segments for map: {len(seg_gdf)}")
 
-# Load HRUs (simplified) — load all, then filter by segment membership
+# Load HRUs (simplified) â€” load all, then filter by segment membership
 # Cannot use bbox because some HRUs draining to network segments may be outside segment extent
 print("Loading all HRUs (simplified)...")
 hru_all = gpd.read_file(gdb_path, layer="nhru_v1_1_simp")
@@ -362,10 +362,10 @@ print(f"Segments for map: {len(seg_gdf)}")
 # %% [markdown]
 # ## Check for interior HRUs not connected to the network
 # Dissolve selected HRUs into one boundary, then find any unselected HRUs
-# whose centroid falls inside that boundary. These are "orphan" HRUs — typically
+# whose centroid falls inside that boundary. These are "orphan" HRUs â€” typically
 # in closed basins or routing to segments outside the traced network, but can also occur as small loop anomolies in HRU boundaries.
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Dissolve selected HRUs into a single boundary (fill holes so interior HRUs aren't missed)
 from shapely.geometry import Polygon, MultiPolygon
 
@@ -409,7 +409,7 @@ else:
 # This map shows the selected HRUs (green) alongside all NHM v1.1 HRUs within
 # a 100 km buffer of the AOI (gray) for context.
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Load all HRUs within 100 km buffer of AOI for context
 hru_context = hru_all.to_crs(epsg=4326)
 buffer_geom_4326 = aoi_buffered_4326.geometry.iloc[0]
@@ -450,7 +450,7 @@ folium.GeoJson(
     },
 ).add_to(m_hru_preview)
 
-# Context HRUs (all within 100 km buffer) — gray
+# Context HRUs (all within 100 km buffer) â€” gray
 context_hru_features = []
 for _, row in hru_context.iterrows():
     context_hru_features.append({
@@ -482,7 +482,7 @@ if context_hru_features:
         ),
     ).add_to(m_hru_preview)
 
-# Selected HRUs — green
+# Selected HRUs â€” green
 selected_hru_features = []
 for _, row in hru_gdf.iterrows():
     selected_hru_features.append({
@@ -514,7 +514,7 @@ if selected_hru_features:
         ),
     ).add_to(m_hru_preview)
 
-# Interior HRUs (orphans found in Check 1) — orange
+# Interior HRUs (orphans found in Check 1) â€” orange
 if interior_hrus_for_map is not None and len(interior_hrus_for_map) > 0:
     interior_hru_features = []
     for _, row in interior_hrus_for_map.iterrows():
@@ -567,8 +567,8 @@ else:
 orphan_hrus_included = []  # e.g. [97949, 97994]
 orphan_hrus_excluded = [hid for hid in all_orphan_hru_ids if hid not in orphan_hrus_included]
 
-print(f"Orphan HRUs included: {len(orphan_hrus_included)} — {orphan_hrus_included}")
-print(f"Orphan HRUs excluded: {len(orphan_hrus_excluded)} — {orphan_hrus_excluded}")
+print(f"Orphan HRUs included: {len(orphan_hrus_included)} â€” {orphan_hrus_included}")
+print(f"Orphan HRUs excluded: {len(orphan_hrus_excluded)} â€” {orphan_hrus_excluded}")
 
 # Apply: add included orphan HRUs to the selection
 if orphan_hrus_included and interior_hrus_for_map is not Non:
@@ -589,7 +589,7 @@ else:
 #
 # **Note:** When you add an HRU, the segment it flows to (`hru_segment_v1_1`) is
 # automatically added to the selected segments as well. Only the direct segment
-# is added — NOT its full upstream network. This ensures the HRU has a valid
+# is added â€” NOT its full upstream network. This ensures the HRU has a valid
 # routing target in the model without pulling in an entire additional watershed.
 
 # %%
@@ -790,10 +790,10 @@ len(hru_gdf)
 #
 # This step creates a child model directory named after the AOI shapefile and
 # writes a GeoPackage containing:
-# - `nhru` — selected HRUs
-# - `nsegment` — selected segments
-# - `npoi` — POIs whose `poi_segment_v1_1` is in the selected segments
-# - `domain` — dissolved HRU boundary (holes filled)
+# - `nhru` â€” selected HRUs
+# - `nsegment` â€” selected segments
+# - `npoi` â€” POIs whose `poi_segment_v1_1` is in the selected segments
+# - `domain` â€” dissolved HRU boundary (holes filled)
 
 # %%
 # Derive child model name from AOI filename
@@ -801,20 +801,25 @@ child_model_name = aoi_path.stem  # e.g. "Malheur_Lake" from "Malheur_Lake.shp"
 root_dir = pl.Path(r"D:\nhm-assist")
 
 # Create child model directory
-child_model_dir = root_dir / "domain_data" / child_model_name
-child_gis_dir = child_model_dir / "GIS"
+child_hf_dir = root_dir / "hydrofabric_domain_data" / child_model_name
+child_hf_dir.mkdir(parents=True, exist_ok=True)
+child_gis_dir = child_hf_dir / "GIS"
 child_gis_dir.mkdir(parents=True, exist_ok=True)
 
 # Output GeoPackage path
-child_gpkg = child_gis_dir / "model_layers.gpkg"
+child_gpkg = child_gis_dir / "child_nhf_domain.gpkg"
 print(f"Child model: {child_model_name}")
 print(f"Output: {child_gpkg}")
+
+# %%
+hru_gdf.columns
 
 # %%
 # Get the set of selected segment IDs for POI filtering
 selected_seg_ids = set(seg_gdf["nsegment_v1_1"].astype(int))
 
 # Write HRU layer
+
 hru_gdf.to_file(child_gpkg, layer="nhru", driver="GPKG")
 print(f"  Wrote nhru: {len(hru_gdf)} features")
 
@@ -845,6 +850,9 @@ print(f"  Wrote domain: 1 feature (dissolved HRU boundary, holes filled)")
 print(f"\nChild model GeoPackage written to: {child_gpkg}")
 print(f"  Layers: nhru ({len(hru_gdf)}), nsegment ({len(seg_gdf)}), "
       f"npoi ({len(pois_selected)}), domain (1)")
+
+# %%
+seg_gdf
 
 # %% [markdown]
 # ## View child model GeoPackage
