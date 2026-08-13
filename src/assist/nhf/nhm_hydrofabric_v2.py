@@ -119,6 +119,14 @@ def create_hru_gdf(
 
     hru_gdb = hru_gdb.to_crs(crs)  # reprojects to the defined crs projection
     print(hru_gdb.columns)
+
+    # If the GIS file doesn't have 'hru_id', fall back to 'model_idx' or 'model_hru_idx'
+    # (v1.1 uses 'model_idx' or 'model_hru_idx' where v2 uses 'hru_id' — they are the same value)
+    if "hru_id" not in hru_gdb.columns:
+        if "model_idx" in hru_gdb.columns:
+            hru_gdb["hru_id"] = hru_gdb["model_idx"]
+        elif "model_hru_idx" in hru_gdb.columns:
+            hru_gdb["hru_id"] = hru_gdb["model_hru_idx"]
    
     # Create a dataframe for parameter values
     first = True
@@ -307,14 +315,17 @@ def create_segment_gdf(
     #     )
     #     print(diff)
 
-        # Join the HRU params values to the HRU geodatabase using Merge
+    # Drop segment_id from GIS if present to avoid duplicate after merge
+    if "segment_id" in seg_gdb.columns:
         seg_gdb.drop(columns=["segment_id"], inplace=True)
-        seg_gdb = pd.merge(df, seg_gdb, on="nhm_seg")
-    
-        # Create a Goepandas GeoDataFrame for the HRU geodatabase
-        seg_gdf = gpd.GeoDataFrame(seg_gdb, geometry="geometry")
-    
-        seg_txt = f", {len(seg_gdf.index)} [bold]segments[/bold]"
+
+    # Join the segment params values to the segment geodatabase using Merge
+    seg_gdb = pd.merge(df, seg_gdb, on="nhm_seg")
+
+    # Create a Goepandas GeoDataFrame for the segment geodatabase
+    seg_gdf = gpd.GeoDataFrame(seg_gdb, geometry="geometry")
+
+    seg_txt = f", {len(seg_gdf.index)} [bold]segments[/bold]"
 
     return seg_gdf, seg_txt
 

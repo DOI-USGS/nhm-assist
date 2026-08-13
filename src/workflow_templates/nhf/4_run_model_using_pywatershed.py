@@ -117,9 +117,20 @@ with xr.open_dataset(pws_prcp_input_file) as ds:
 # %% [markdown]
 # ### Parameter file check
 # `pywatershed` requires the soilzone variable "pref_flow_infil_frac" to be present in the parameter file. If the variable is not in the parameter file, it must be added as all zeros before passing the parameters to `pywatershed`.
+#
+# The parameter `stream_tave_init` in NHM v1.1 is dimensioned by `nsegment`,
+# but pywatershed metadata expects it as a scalar. We remove it before loading
+# to avoid a dimension mismatch error.
 
 # %%
-params = pws.parameters.PrmsParameters.load(config['param_filename'])
+from pywatershed.utils.prms5_file_util import PrmsFile
+
+param_data = PrmsFile(config['param_filename'], "parameter").get_data()
+param_data["parameter"]["parameters"].pop("stream_tave_init", None)
+
+params = pws.parameters.PrmsParameters._process_file_input(
+    param_data["parameter"]["parameters"],
+)
 if "pref_flow_infil_frac" not in params.parameters.keys():
     # Parameter objects are not directly editable in pywatershed,
     # so we export to an equivalent object we can edit, in this case
@@ -196,5 +207,14 @@ for var in ["seg_outflow"]:
     del data
 
 # %%
+
+# %%
+
+# %% [markdown]
+# ### Quick look at the recharge output
+
+# %%
+recharge = xr.load_dataarray(config['out_dir'] / "recharge.nc")
+recharge
 
 # %%

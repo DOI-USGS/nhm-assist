@@ -158,16 +158,20 @@ def create_sum_var_dataarrays(
 
     with xr.load_dataarray(out_dir / f"{output_var_sel}.nc") as da:
         # these machinations are to keep downstream things as they were before some refactoring
+        nhm_id_values = da.coords["nhm_id"].values
         da = da.to_dataset().rename_dims({"nhm_id": "nhru"})[da.name]
+        da = da.assign_coords(nhm_id=("nhru", nhm_id_values))
         var_units = da.units
         var_desc = da.desc
         var_daily = da.sel(time=slice(plot_start_date, plot_end_date))
         sum_var_monthly = var_daily.resample(time="m").sum()
+        sum_var_monthly = sum_var_monthly.assign_coords(nhm_id=("nhru", nhm_id_values))
 
         if water_years:
             sum_var_annual = var_daily.resample(time="A-SEP").sum()
         else:
             sum_var_annual = var_daily.resample(time="y").sum()
+        sum_var_annual = sum_var_annual.assign_coords(nhm_id=("nhru", nhm_id_values))
     del da
 
     return var_daily, sum_var_monthly, sum_var_annual, var_units, var_desc
@@ -215,16 +219,20 @@ def create_mean_var_dataarrays(
 
     with xr.load_dataarray(out_dir / f"{output_var_sel}.nc") as da:
         # these machinations are to keep downstream things as they were before some refactoring
+        nhm_id_values = da.coords["nhm_id"].values
         da = da.to_dataset().rename_dims({"nhm_id": "nhru"})[da.name]
+        da = da.assign_coords(nhm_id=("nhru", nhm_id_values))
         var_units = da.units
         var_desc = da.desc
         var_daily = da.sel(time=slice(plot_start_date, plot_end_date))
         mean_var_monthly = var_daily.resample(time="m").mean()
+        mean_var_monthly = mean_var_monthly.assign_coords(nhm_id=("nhru", nhm_id_values))
 
         if water_years:
             mean_var_annual = var_daily.resample(time="A-SEP").mean()
         else:
             mean_var_annual = var_daily.resample(time="y").mean()
+        mean_var_annual = mean_var_annual.assign_coords(nhm_id=("nhru", nhm_id_values))
     del da
 
     return var_daily, mean_var_monthly, mean_var_annual, var_units, var_desc
