@@ -85,7 +85,17 @@ for input_file_path in input_file_path_list:
             nhmx_input_file
         ) as input:  # This is the input file given with NHMx
             #model_input = input.swap_dims({"hruid": "nhm_id"}).drop("hruid")
-            model_input = input.rename({"hruid": "nhm_id"})
+            # Handle different dimension names across model versions:
+            # v1.1 cbh.nc uses 'hruid', v2 uses 'nhm_id', some use 'nhru'
+            if "hruid" in input.dims or "hruid" in input.coords:
+                model_input = input.rename({"hruid": "nhm_id"})
+            elif "nhru" in input.dims and "nhm_id" in input.data_vars:
+                # nhm_id exists as a variable; swap dims to use it as the coordinate
+                model_input = input.swap_dims({"nhru": "nhm_id"}).drop_vars("nhru", errors="ignore")
+            elif "nhru" in input.dims and "nhm_id" not in input.dims:
+                model_input = input.rename({"nhru": "nhm_id"})
+            else:
+                model_input = input
             prcp = getattr(model_input, "prcp")
             tmin = getattr(model_input, "tmin")
             tmax = getattr(model_input, "tmax")
