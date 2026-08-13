@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -44,6 +44,9 @@ from shapely.geometry import mapping as geom_mapping
 # Auto-rebuild .shx index file if missing from shapefiles
 os.environ["SHAPE_RESTORE_SHX"] = "YES"
 
+import assist as _assist_pkg
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+
 
 def drop_z(geom):
     """Remove Z dimension from geometry."""
@@ -70,10 +73,10 @@ def drop_z(geom):
 # find the full contributing watershed above it.
 
 # %%
-gdb_path = pl.Path(r"D:\nhm-assist\data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb")
+gdb_path = pl.Path(root_dir / r"data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb")
 
 # User-supplied area of interest (shapefile, gpkg, geojson, etc.)
-aoi_path = pl.Path(r"D:\nhm-assist\data_dependencies\Examples\WWGW_Basin.shp")
+aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\WWGW_Basin.shp")
 aoi_layer = None  # set to None for shapefiles
 
 # %% [markdown]
@@ -660,7 +663,7 @@ else:
 # Final map showing the selected segments and HRUs after all checks and modifications.
 # Click on any segment to highlight all upstream segments and their HRUs.
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Center on the network extent
 bounds = seg_gdf.total_bounds
 center_lat = (bounds[1] + bounds[3]) / 2
@@ -771,7 +774,7 @@ folium.LayerControl().add_to(m)
 m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
 # Save
-out_html = pl.Path(r"D:\nhm-assist\nhf_assist\notebooks\notebook_output_files\html_maps")
+out_html = pl.Path(root_dir / r"notebooks\notebook_output_files\html_maps")
 out_html.mkdir(parents=True, exist_ok=True)
 map_file = out_html / "NHM_v1_1_subbasin_selector.html"
 m.save(str(map_file))
@@ -798,7 +801,6 @@ len(hru_gdf)
 # %%
 # Derive child model name from AOI filename
 child_model_name = aoi_path.stem  # e.g. "Malheur_Lake" from "Malheur_Lake.shp"
-root_dir = pl.Path(r"D:\nhm-assist")
 
 # Create child model directory
 child_hf_dir = root_dir / "hydrofabric_domain_data" / child_model_name
@@ -850,9 +852,6 @@ print(f"  Wrote domain: 1 feature (dissolved HRU boundary, holes filled)")
 print(f"\nChild model GeoPackage written to: {child_gpkg}")
 print(f"  Layers: nhru ({len(hru_gdf)}), nsegment ({len(seg_gdf)}), "
       f"npoi ({len(pois_selected)}), domain (1)")
-
-# %%
-seg_gdf
 
 # %% [markdown]
 # ## View child model GeoPackage

@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -49,7 +49,7 @@ warnings.filterwarnings("ignore")
 # --- Workspace bridge pattern (NHM) ---
 import assist as _assist_pkg
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -63,7 +63,7 @@ if project_context:
 else:
     config_root = root_dir
 
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
+from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 
 config = load_subdomain_config(config_root)
 
@@ -268,3 +268,5 @@ if pws_tmax_file.exists():
         print(f"  tmax mean: {tmax_mean:.1f} °F (expect ~50-70 for PNW)")
 
 print("\nDone! These files are ready for notebook 4 (pywatershed).")
+
+# %%

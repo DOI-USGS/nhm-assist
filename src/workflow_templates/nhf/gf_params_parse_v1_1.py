@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
+#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -1049,5 +1049,7 @@ control_file_src = (
 )
 control_file_dst = child_pws_dir
 shutil.copy2(control_file_src, control_file_dst)
+
+# %%
 
 # %%

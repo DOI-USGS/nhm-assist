@@ -156,7 +156,7 @@ def create_hru_gdf(
         )  # Set an index for HRU geodatabase.
     if df_by_nhm_id["hru_id"].equals(hru_gdb["hru_id"]):
         print("GIS nhm_id matches order found in myparam.param")
-        df.drop(columns=["hru_id", "hru_segment"], inplace=True)
+        df.drop(columns=["hru_id"], inplace=True)
     else:
         print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")
         diff = df_by_nhm_id.loc[~same, ["hru_id"]].join(
@@ -167,6 +167,13 @@ def create_hru_gdf(
         print(diff)
     
     # Join the HRU params values to the HRU geodatabase using Merge
+    # Drop columns from the param dataframe that already exist in the GIS
+    # to avoid _x/_y suffixing during the merge (merge key 'nhm_id' excluded)
+    overlap_cols = [c for c in df.columns if c in hru_gdb.columns and c != "nhm_id"]
+    if overlap_cols:
+        print(f"  Dropping overlapping columns from param df before merge: {overlap_cols}")
+        df.drop(columns=overlap_cols, inplace=True)
+
     hru_gdb = pd.merge(df, hru_gdb, on="nhm_id")
     #hru_gdb = pd.merge(df, hru_gdb, left_on="hru_id", right_on="model_hru_idx")
 
@@ -254,10 +261,16 @@ def create_segment_gdf(
         ).fillna(
             0
         )  # Reads segemnt file to Geopandas.
+
+        # Normalize column names across hydrofabric versions:
+        # v2 uses 'nhm_seg_id' where v1.1 uses 'nhm_seg'
+        if "nhm_seg" not in seg_gdb.columns and "nhm_seg_id" in seg_gdb.columns:
+            seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)
+
         seg_gdb = seg_gdb.set_index("nhm_seg", drop=False).fillna(
             0
-        )  # Set an index for HRU geodatabase.
-        seg_gdb.index.name = "index"  # Index column must be renamed of the hru
+        )  # Set an index for segment geodatabase.
+        seg_gdb.index.name = "index"  # Index column must be renamed
 
     # if GIS_format == ".shp":
     #     seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)
@@ -267,10 +280,7 @@ def create_segment_gdf(
     #     seg_gdb.index.name = "index"  # Index column must be renamed of the hru
 
     seg_gdb = seg_gdb.to_crs(crs)  # reprojects to the defined crs projection
-    #seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)
-    
-    #if "nhm_seg_id" in seg_gdb.columns:
-    #    seg_gdb.drop(columns=["nhm_seg_id"], inplace=True)
+
     print(seg_gdb.columns)
     # Create a dataframe for parameter values
     first = True
