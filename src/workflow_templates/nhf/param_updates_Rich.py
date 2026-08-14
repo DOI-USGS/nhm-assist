@@ -185,9 +185,15 @@ print(f"Writing {len(changed_params)} updated parameters to {out_dir}\n")
 for param_name, source_file in changed_params:
     df = pd.read_csv(source_dir / source_file)
 
+    values = df[param_name]
+
+    # hru_area in the source CSV is in square meters; PRMS expects acres
+    if param_name == "hru_area":
+        values = values / 4046.8564
+
     out_df = pd.DataFrame({
         "$id": df["hru_id"],
-        param_name: df[param_name],
+        param_name: values,
     })
 
     out_path = out_dir / f"{param_name}.csv"
