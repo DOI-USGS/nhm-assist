@@ -1813,44 +1813,50 @@ def make_hf_map(
     hru_simple = hru_simple.to_crs(crs)
     hru_map = create_hru_map(hru_simple)
 
-    huc10_map = gpd.read_file(
-        root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
-    ).to_crs(epsg=4326)
-    huc10_map =huc10_map[["huc10","geometry"]]
-    #huc10_map = gpd.clip(huc10_map, hru_map)
-    from shapely import make_valid
-    hru_simple["geometry"] = hru_simple.geometry.apply(
-        lambda g: make_valid(g) if g is not None and not g.is_empty else g
-    )
-    hru_union = hru_simple.geometry.union_all()
+    try:
+        huc10_map = gpd.read_file(
+            root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
+        ).to_crs(epsg=4326)
+        huc10_map =huc10_map[["huc10","geometry"]]
+        #huc10_map = gpd.clip(huc10_map, hru_map)
+        from shapely import make_valid
+        hru_simple["geometry"] = hru_simple.geometry.apply(
+            lambda g: make_valid(g) if g is not None and not g.is_empty else g
+        )
+        hru_union = hru_simple.geometry.union_all()
 
-    # Compute centroids and select HUC10s whose centroids fall within HRU union
-    huc10_centroids = huc10_map.copy()
-    huc10_centroids["geometry"] = huc10_centroids.geometry.centroid
+        # Compute centroids and select HUC10s whose centroids fall within HRU union
+        huc10_centroids = huc10_map.copy()
+        huc10_centroids["geometry"] = huc10_centroids.geometry.centroid
 
-    huc10_in_hru = huc10_map[huc10_centroids.within(hru_union)]
+        huc10_in_hru = huc10_map[huc10_centroids.within(hru_union)]
 
-    huc10_map_layer = folium.GeoJson(
-        huc10_in_hru,
-        style_function= lambda x:{
-            "opacity": 1,
-            "fillColor": "#00000000",  #'goldenrod',
-            "color": "black",
-            "weight": 2,
-            },
-        name="HUC-10 basins",
-        # tooltip=tooltip_hru,
-        popup=folium.GeoJsonPopup(
-            fields=["huc10"],
-            aliases=["HUC-10"],
-            labels=True,
-            localize=False,
-            style=(
-                "font-size: 16px;"
-            ),  # Note that this tooltip style sets the style for all tool_tips.
-            # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
-        ),
-            )
+        if huc10_in_hru.empty:
+            huc10_map_layer = None
+        else:
+            huc10_map_layer = folium.GeoJson(
+                huc10_in_hru,
+                style_function= lambda x:{
+                    "opacity": 1,
+                    "fillColor": "#00000000",  #'goldenrod',
+                    "color": "black",
+                    "weight": 2,
+                    },
+                name="HUC-10 basins",
+                # tooltip=tooltip_hru,
+                popup=folium.GeoJsonPopup(
+                    fields=["huc10"],
+                    aliases=["HUC-10"],
+                    labels=True,
+                    localize=False,
+                    style=(
+                        "font-size: 16px;"
+                    ),  # Note that this tooltip style sets the style for all tool_tips.
+                    # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
+                ),
+                    )
+    except Exception:
+        huc10_map_layer = None
     try:
         huc12_pp_map = gpd.read_file(
         root_dir / "domain_data" / subdomain / "GIS" / "model_layers.gpkg",
@@ -1935,7 +1941,8 @@ def make_hf_map(
 
 
     hru_map.add_to(m2)
-    huc10_map_layer.add_to(m2)
+    if huc10_map_layer is not None:
+        huc10_map_layer.add_to(m2)
     
     seg_map_show.add_to(m2)
     try:

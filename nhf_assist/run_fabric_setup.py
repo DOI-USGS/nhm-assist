@@ -21,17 +21,26 @@ import re
 # === CONFIGURATION ===
 # List of child model names (must match basin_id values and folder names in hydrofabric_domain_data/)
 child_models = [
-    "MiddleWillamette",
-    "NorthCoast_MidCoastA",
-    "OwyheeRiver",
-    "PowderRiver",
-    "SandyRiver",
-    "SouthCoastB_LowerRogue",
-    "UmatillaRiver",
-    "UpperRogue",
-    "UpperUmpqua",
-    "UpperWillamette",
-    # Add more child models here
+    'DeschutesRiver',
+    'GooseSummerLakes',
+    'GrandeRonde',
+    'HoodRiver',
+    'JohnDayRiver',
+    'KlamathRiver',
+    'LowerWillamette',
+    'MalheurLake',
+    'MalheurRiver',
+    'MidCoastB_LowerUmpqua_SouthCoastA',
+    'MiddleWillamette',
+    'NorthCoast_MidCoastA',
+    'OwyheeRiver',
+    'PowderRiver',
+    'SandyRiver',
+    'SouthCoastB_LowerRogue',
+    'UmatillaRiver',
+    'UpperRogue',
+    'UpperUmpqua',
+    'UpperWillamette',
 ]
 
 # Workflow scripts

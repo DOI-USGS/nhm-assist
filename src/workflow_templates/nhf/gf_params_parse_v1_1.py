@@ -35,7 +35,7 @@ jupyter_black.load()
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]/ "nhf_assist"
 
 # from assist.nhf.sf_data_retrieval_v2_1 import fetch_single_nwis_gage
 from assist.nhf.sf_data_retrieval_v2_1 import fetch_daily_discharge_batch
@@ -241,7 +241,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "WWGW_Basin"  # Powder_River, John_Day_River
+child_name = "model_domain"  # Powder_River, John_Day_River
 
 hydrofabric_dir = root_dir / "hydrofabric_domain_data"
 

@@ -76,7 +76,7 @@ def drop_z(geom):
 gdb_path = pl.Path(root_dir / r"data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb")
 
 # User-supplied area of interest (shapefile, gpkg, geojson, etc.)
-aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\WWGW_Basin.shp")
+aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\model_domain.shp")
 aoi_layer = None  # set to None for shapefiles
 
 # %% [markdown]
@@ -151,7 +151,7 @@ print(f"Full upstream network: {len(all_network_segs)} segments (including {len(
 # This map shows the segments selected via upstream tracing (blue) alongside
 # all NHM v1.1 segments within a 100 km buffer of the AOI (gray) for context.
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Load all segments within 100 km buffer of AOI for context
 aoi_proj = aoi_gdf.to_crs(epsg=5070)
 aoi_buffered_100km = aoi_proj.union_all().buffer(100_000)
@@ -301,10 +301,10 @@ m_preview
 #
 # After modifying the lists, re-run the cells below to update the selection.
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Edit these lists based on the preview map
 add_to_selected_segments = []  # e.g. [49990, 50001]
-remove_from_selected_segments = []  # e.g. [12345]
+remove_from_selected_segments = []  # e.g. [12345] (it seems to be chasing up the network when removing. Fix that)
 
 # Apply modifications â€” trace full upstream network for any added/removed segments
 if add_to_selected_segments:
@@ -368,7 +368,7 @@ print(f"Segments for map: {len(seg_gdf)}")
 # whose centroid falls inside that boundary. These are "orphan" HRUs â€” typically
 # in closed basins or routing to segments outside the traced network, but can also occur as small loop anomolies in HRU boundaries.
 
-# %% jupyter={"source_hidden": true}
+# %%
 # Dissolve selected HRUs into a single boundary (fill holes so interior HRUs aren't missed)
 from shapely.geometry import Polygon, MultiPolygon
 
@@ -593,7 +593,7 @@ else:
 # **Note:** When you add an HRU, the segment it flows to (`hru_segment_v1_1`) is
 # automatically added to the selected segments as well. Only the direct segment
 # is added â€” NOT its full upstream network. This ensures the HRU has a valid
-# routing target in the model without pulling in an entire additional watershed.
+# routing target in the model without pulling in an entire additional watershed. (Parker says that we should better set this to "0" and not include the segment.)
 
 # %%
 # Edit this list to add any additional HRUs to the selection

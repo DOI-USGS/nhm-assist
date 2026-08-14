@@ -26,18 +26,28 @@ import re
 # === CONFIGURATION ===
 # List of child model subdomain names (folder names in domain_data/)
 child_models = [
-    "MiddleWillamette",
-    "NorthCoast_MidCoastA",
-    "OwyheeRiver",
-    "PowderRiver",
-    "SandyRiver",
-    "SouthCoastB_LowerRogue",
-    "UmatillaRiver",
-    "UpperRogue",
-    "UpperUmpqua",
-    "UpperWillamette",
-    # Add more child models here
+    'DeschutesRiver',
+    'GooseSummerLakes',
+    'GrandeRonde',
+    'HoodRiver',
+    'JohnDayRiver',
+    'KlamathRiver',
+    'LowerWillamette',
+    'MalheurLake',
+    'MalheurRiver',
+    'MidCoastB_LowerUmpqua_SouthCoastA',
+    'MiddleWillamette',
+    'NorthCoast_MidCoastA',
+    'OwyheeRiver',
+    'PowderRiver',
+    'SandyRiver',
+    'SouthCoastB_LowerRogue',
+    'UmatillaRiver',
+    'UpperRogue',
+    'UpperUmpqua',
+    'UpperWillamette',
 ]
+
 
 # Workflow .py scripts to execute in order
 workflows = [
