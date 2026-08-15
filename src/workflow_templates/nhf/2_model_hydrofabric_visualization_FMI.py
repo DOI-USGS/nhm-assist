@@ -166,21 +166,22 @@ con.print(
 poi_df
 
 # %%
-map_file = make_hf_map(
-    root_dir=root_dir,
-    hru_gdf=hru_gdf,
-    # HW_basins_gdf=HW_basins_gdf,
-    # HW_basins=HW_basins,
-    poi_df=poi_df,
-    poi_gage_id_sel="",
-    seg_gdf=seg_gdf,
-    waterdata_gages_aoi=waterdata_gages_aoi,
-    gages_df=gages_df,
-    html_maps_dir=config["html_maps_dir"],
-    Folium_maps_dir=config["Folium_maps_dir"],
-    param_filename=config["param_filename"],
-    subdomain=config["subdomain"],
-)
+if not os.environ.get("NHM_BATCH_MODE"):
+    map_file = make_hf_map(
+        root_dir=root_dir,
+        hru_gdf=hru_gdf,
+        # HW_basins_gdf=HW_basins_gdf,
+        # HW_basins=HW_basins,
+        poi_df=poi_df,
+        poi_gage_id_sel="",
+        seg_gdf=seg_gdf,
+        waterdata_gages_aoi=waterdata_gages_aoi,
+        gages_df=gages_df,
+        html_maps_dir=config["html_maps_dir"],
+        Folium_maps_dir=config["Folium_maps_dir"],
+        param_filename=config["param_filename"],
+        subdomain=config["subdomain"],
+    )
 
 # %%
 poi_df

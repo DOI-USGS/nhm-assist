@@ -262,19 +262,21 @@ end_date = config[
 ds_sub = xr_streamflow.sel(poi_gage_id=cpoi_id, time=slice(start_date, end_date))
 ds_sub = ds_sub.to_dataframe()
 flow_col = "discharge"
-plot_efc(ds_sub, flow_col)
+if not os.environ.get("NHM_BATCH_MODE"):
+    plot_efc(ds_sub, flow_col)
 
 # %% [markdown]
 # # Create daily streamflow observation plots
 # #### The cell below creates plots of daily streamflow observations and saves the plots as html.txt files for all gages listed in the `gages_df`.
 
 # %%
-make_obs_plot_files(
-    start_date=config["start_date"],
-    end_date=config["end_date"],
-    gages_df=gages_df,
-    xr_streamflow=xr_streamflow,
-    Folium_maps_dir=config["Folium_maps_dir"],
-)
+if not os.environ.get("NHM_BATCH_MODE"):
+    make_obs_plot_files(
+        start_date=config["start_date"],
+        end_date=config["end_date"],
+        gages_df=gages_df,
+        xr_streamflow=xr_streamflow,
+        Folium_maps_dir=config["Folium_maps_dir"],
+    )
 
 # %%

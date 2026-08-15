@@ -18,6 +18,7 @@ Or edit the `child_models` list below and run interactively.
 
 import subprocess
 import sys
+import os
 import pathlib as pl
 import shutil
 import time
@@ -92,6 +93,7 @@ def execute_workflow(workflow_path: str, timeout: int = 1800):
         return False
 
     cmd = [sys.executable, str(full_path)]
+    env = {**os.environ, "NHM_BATCH_MODE": "1"}
 
     print(f"  Running: {pl.Path(workflow_path).name}")
     start = time.time()
@@ -102,6 +104,7 @@ def execute_workflow(workflow_path: str, timeout: int = 1800):
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
 
     elapsed = time.time() - start
