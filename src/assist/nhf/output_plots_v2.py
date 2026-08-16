@@ -203,6 +203,7 @@ def make_webbrowser_map(map_file):
     
     If running in Nebari, print the URL to open the map.
     If running in WSL, convert the path to a Windows path before opening it.
+    If NHM_BATCH_MODE is set, skip opening the browser (HTML is already saved).
 
     Parameters
     ----------
@@ -214,6 +215,8 @@ def make_webbrowser_map(map_file):
     None
         This function does not return anything.
     """
+    if os.environ.get("NHM_BATCH_MODE"):
+        return
 
     # create string of map file path
     map_file_str = f"{map_file}"
