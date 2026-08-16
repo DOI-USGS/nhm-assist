@@ -1,17 +1,13 @@
-"""Batch runner: execute NHF-Assist workflows 0, 1, 2 for a list of child models.
+"""Batch runner: execute pywatershed (workflow 4) for a list of child models.
 
-This script runs the workspace setup, streamflow observation creation, and
-hydrofabric visualization workflows in sequence for each child model listed
-in `child_models`. Each workflow .py file is executed directly with Python,
-which is faster than running notebooks via nbconvert (no Jupyter kernel overhead).
-
-The key mechanism: for each child model, the script temporarily updates the
-`subdomain` variable in the workspace setup script, executes it (which writes
-subdomain_config.yaml), then executes workflows 1 and 2 (which read the config).
+This script runs the workspace setup and pywatershed model run workflows
+in sequence for each child model listed in `child_models`. For each model,
+it updates the subdomain in workflow 0, executes it (to write subdomain_config.yaml),
+then executes workflow 4 (which reads the config and runs pywatershed).
 
 Usage
 -----
-    pixi run python nhf_assist/run_child_model_workflows.py
+    pixi run python nhf_assist/run_pywatershed_models.py
 
 Or edit the `child_models` list below and run interactively.
 """
@@ -20,7 +16,6 @@ import subprocess
 import sys
 import os
 import pathlib as pl
-import shutil
 import time
 import re
 
@@ -49,13 +44,10 @@ child_models = [
     'UpperWillamette',
 ]
 
-
 # Workflow .py scripts to execute in order
 workflows = [
     "src/workflow_templates/nhf/0_workspace_setup.py",
-    "src/workflow_templates/nhf/1_create_streamflow_observations.py",
-    "src/workflow_templates/nhf/Create_gridmet_climate_drivers.py",
-    "src/workflow_templates/nhf/2_model_hydrofabric_visualization_FMI.py",
+    "src/workflow_templates/nhf/4_run_model_using_pywatershed.py",
 ]
 
 # Root directory (auto-detect from this script's location)
@@ -85,7 +77,7 @@ def set_subdomain_in_setup(subdomain_name: str):
     return True
 
 
-def execute_workflow(workflow_path: str, timeout: int = 1800):
+def execute_workflow(workflow_path: str, timeout: int = 3600):
     """Execute a .py workflow script directly with Python."""
     full_path = root_dir / workflow_path
 
@@ -126,7 +118,7 @@ def execute_workflow(workflow_path: str, timeout: int = 1800):
 
 def main():
     print("=" * 70)
-    print("NHF-Assist Batch Workflow Runner")
+    print("NHF-Assist Batch pywatershed Runner")
     print("=" * 70)
     print(f"Root directory: {root_dir}")
     print(f"Child models: {child_models}")
@@ -166,7 +158,7 @@ def main():
 
         if all_passed:
             results[model_name] = "SUCCESS"
-            print(f"  All workflows completed for {model_name}")
+            print(f"  pywatershed run completed for {model_name}")
 
     # Summary
     print(f"\n{'=' * 70}")

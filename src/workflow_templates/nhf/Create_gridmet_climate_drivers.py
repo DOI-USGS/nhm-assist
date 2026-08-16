@@ -253,19 +253,19 @@ print("Output files:")
 for f in [weights_file, gridmet_nc, pws_prcp_file, pws_tmin_file, pws_tmax_file]:
     if f.exists():
         size_mb = f.stat().st_size / (1024 * 1024)
-        print(f"  ✓ {f.name:35s} ({size_mb:.1f} MB)")
+        print(f"  [OK] {f.name:35s} ({size_mb:.1f} MB)")
     else:
-        print(f"  ✗ {f.name:35s} MISSING")
+        print(f"  [MISSING] {f.name:35s}")
 
 # Quick sanity check on temperature range
 if pws_tmin_file.exists():
     with xr.open_dataset(pws_tmin_file) as ds_check:
         tmin_mean = float(ds_check["tmin"].mean())
-        print(f"\n  tmin mean: {tmin_mean:.1f} °F (expect ~30-50 for PNW)")
+        print(f"\n  tmin mean: {tmin_mean:.1f} deg F (expect ~30-50 for PNW)")
 if pws_tmax_file.exists():
     with xr.open_dataset(pws_tmax_file) as ds_check:
         tmax_mean = float(ds_check["tmax"].mean())
-        print(f"  tmax mean: {tmax_mean:.1f} °F (expect ~50-70 for PNW)")
+        print(f"  tmax mean: {tmax_mean:.1f} deg F (expect ~50-70 for PNW)")
 
 print("\nDone! These files are ready for notebook 4 (pywatershed).")
 

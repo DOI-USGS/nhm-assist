@@ -149,6 +149,82 @@ if "pref_flow_infil_frac" not in params.parameters.keys():
     params_ds["pref_flow_infil_frac"] = params_ds.pref_flow_den[:] * 0.0
     params = pws.parameters.PrmsParameters.from_ds(params_ds)
 
+# --- pywatershed parameter guardrails ---
+# pywatershed has SOME internal guards during soilzone initialization:
+#   - soil_rechr_max < 1e-5 is clipped to 1e-5 (line 373 in prms_soilzone.py)
+#   - soil_rechr_max > soil_moist_max is capped to soil_moist_max
+#   - soil_lower_ratio division uses np.where(soil_lower_max > 0) guard
+#
+# pywatershed does NOT guard against:
+#   - soil_moist_max == 0 (used as divisor in _compute_szactet without guard)
+#   - soil_rechr_max_frac == 1.0 (makes soil_lower_max = 0; guarded in init
+#     but not in the numba-compiled per-HRU loop)
+#   - hru_frac_perv == 0 (used as divisor in capwater_maxin calculation;
+#     comment says "has to be > zero" but no runtime check exists)
+#
+# The checks below catch these unguarded cases before they reach the model run.
+
+# Check for zero soil_moist_max values which cause ZeroDivisionError in soilzone.
+# PRMS documentation implicitly assumes soil_moist_max > 0 for all HRUs
+# (even water bodies should have 10-60 inches). pywatershed processes all HRUs
+# vectorially without the hru_type guards that the original Fortran code used,
+# so zero values cause division by zero in soil moisture ratio calculations.
+import numpy as np
+smm = params.parameters["soil_moist_max"]
+n_zero = np.sum(smm == 0)
+if n_zero > 0:
+    con.print(
+        f"[bold yellow]Warning:[/bold yellow] {n_zero} of {len(smm)} HRU(s) have "
+        f"[bold]soil_moist_max = 0[/bold], which causes division by zero in "
+        f"pywatershed's soilzone calculation. PRMS documentation implicitly "
+        f"assumes soil_moist_max > 0 for all HRUs. This is likely due to lake "
+        f"or swale HRUs.\nResetting {n_zero} zero value(s) to 0.001 for "
+        f"compatibility with pywatershed."
+    )
+    params_ds = params.to_xr_ds()
+    params_ds["soil_moist_max"] = params_ds["soil_moist_max"].clip(min=0.001)
+    params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
+# Check for soil_rechr_max_frac == 1.0 which causes soil_lower_max = 0
+# (ZeroDivisionError). When soil_rechr_max_frac = 1.0, the recharge zone
+# equals the full soil profile, leaving no lower zone. pywatershed divides
+# by soil_lower_max in ratio calculations. Cap at 0.999 to ensure a nonzero
+# lower zone exists.
+srmf = params.parameters["soil_rechr_max_frac"]
+n_one = np.sum(srmf >= 1.0)
+if n_one > 0:
+    con.print(
+        f"[bold yellow]Warning:[/bold yellow] {n_one} of {len(srmf)} HRU(s) have "
+        f"[bold]soil_rechr_max_frac >= 1.0[/bold], which makes soil_lower_max = 0 "
+        f"and causes division by zero in pywatershed's soilzone calculation.\n"
+        f"Capping soil_rechr_max_frac at 0.999 for compatibility with pywatershed."
+    )
+    params_ds = params.to_xr_ds()
+    params_ds["soil_rechr_max_frac"] = params_ds["soil_rechr_max_frac"].clip(max=0.999)
+    params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
+# Check for hru_frac_perv == 0 which causes division by zero in soilzone.
+# hru_frac_perv = (hru_area - hru_percent_imperv*hru_area - dprst_frac*hru_area) / hru_area
+# If dprst_frac + hru_percent_imperv >= 1.0, pervious fraction is zero.
+# Cap dprst_frac so that hru_frac_perv remains > 0.
+if "dprst_frac" in params.parameters and "hru_percent_imperv" in params.parameters:
+    dprst = params.parameters["dprst_frac"]
+    imperv = params.parameters["hru_percent_imperv"]
+    total_non_perv = dprst + imperv
+    n_bad = np.sum(total_non_perv >= 1.0)
+    if n_bad > 0:
+        con.print(
+            f"[bold yellow]Warning:[/bold yellow] {n_bad} of {len(dprst)} HRU(s) have "
+            f"[bold]dprst_frac + hru_percent_imperv >= 1.0[/bold], which makes "
+            f"hru_frac_perv = 0 and causes division by zero in pywatershed's "
+            f"soilzone calculation.\nReducing dprst_frac so that the sum does not "
+            f"exceed 0.999 for compatibility with pywatershed."
+        )
+        params_ds = params.to_xr_ds()
+        max_dprst = 0.999 - params_ds["hru_percent_imperv"]
+        params_ds["dprst_frac"] = params_ds["dprst_frac"].clip(max=max_dprst)
+        params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
 # %% [markdown]
 # ## Custom Run for NHM subdomain model
 # The custom run loop will output the `pywatershed` standard output variables only and outputs each variable as a .nc file. The standard output variables, `selected_output_variables`, were selected in [notebook 0](.\0_Workspace_setup.ipynb).

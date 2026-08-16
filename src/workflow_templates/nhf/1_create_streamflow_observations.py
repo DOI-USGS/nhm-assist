@@ -270,13 +270,12 @@ if not os.environ.get("NHM_BATCH_MODE"):
 # #### The cell below creates plots of daily streamflow observations and saves the plots as html.txt files for all gages listed in the `gages_df`.
 
 # %%
-if not os.environ.get("NHM_BATCH_MODE"):
-    make_obs_plot_files(
-        start_date=config["start_date"],
-        end_date=config["end_date"],
-        gages_df=gages_df,
-        xr_streamflow=xr_streamflow,
-        Folium_maps_dir=config["Folium_maps_dir"],
-    )
+make_obs_plot_files(
+    start_date=config["start_date"],
+    end_date=config["end_date"],
+    gages_df=gages_df,
+    xr_streamflow=xr_streamflow,
+    Folium_maps_dir=config["Folium_maps_dir"],
+)
 
 # %%

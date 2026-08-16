@@ -2580,9 +2580,12 @@ def create_poi_obs_marker_cluster(
         #for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
         obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
-        # Read ploty plot of each poi
-        with open(obs_plot_file, "r") as f:
-            div_txt = f.read()
+        # Read ploty plot of each poi — skip if file doesn't exist (e.g., batch mode)
+        if not obs_plot_file.exists():
+            div_txt = f"<p>No observation plot available for {poi_gage_id}</p>"
+        else:
+            with open(obs_plot_file, "r") as f:
+                div_txt = f.read()
     
         # Create html code to insert the plotly plot to the folium pop up
         html = (
