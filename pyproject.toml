@@ -13,16 +13,14 @@ requires-python = ">=3.11"
 where = ["src"]
 
 [tool.pixi.workspace]
-channels = ["conda-forge"]
+channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
-[tool.pixi.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
+[tool.pixi.environments]
+default = { solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
 
-[tool.pixi.feature.nhm]
-channels = ["conda-forge", "nodefaults"]
-
-[tool.pixi.feature.nhm.dependencies]
+[tool.pixi.dependencies]
 cdsapi = "*"
 dask = "*"
 dataretrieval = "*"
@@ -42,16 +40,19 @@ pywatershed = ">=2.0.1"
 tobler = "==0.12.0"
 topojson = "*"
 
-[tool.pixi.feature.nhm.pypi-dependencies]
+[tool.pixi.pypi-dependencies]
+nhm-assist = { path = ".", editable = true }
 dotenv = "*"
 hydroeval = "==0.1"
 jupyter-black = "*"
 gdptools = "*"
 pyprms = "*"
 
-[tool.pixi.environments]
-default = { features = ["nhm"], solve-group = "default" }
-nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
+[tool.pixi.feature.dev.dependencies]
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+ruff = "*"
 
 [tool.pixi.tasks]
 setup = { cmd = "python -m assist.workspace.cli setup", default-environment = "default", description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, generate notebooks, and launch JupyterLab." }
@@ -66,3 +67,5 @@ model-create = { cmd = "python -m assist.workspace.cli model-create --workspace-
 model-list = { cmd = "python -m assist.workspace.cli model-list --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default", description = "List every model defined under the given project." }
 model-copy-example = { cmd = "python -m assist.workspace.cli model-copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "model_name", "example_name"], default-environment = "default", description = "Copy a bundled example subdomain (e.g. Walla_Walla) into a project under the given model name." }
 model-import = { cmd = "python -m assist.workspace.cli model-import --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "model_name", "source_dir"], default-environment = "default", description = "Import an existing PRMS model folder from <source_dir> into a project under the given model name." }
+lint = { cmd = "ruff check . && ruff format --check .", default-environment = "dev", description = "Lint and check formatting with ruff." }
+test = { cmd = "pytest tests/", default-environment = "dev", description = "Run the test suite." }
