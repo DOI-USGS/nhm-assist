@@ -497,3 +497,6 @@ pestpp_ies_calibration/parameters.json
 
 # .kiro files
 .kiro/
+
+# hatch-vcs generated version file
+src/assist/_version.py

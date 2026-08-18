@@ -1,23 +1,54 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "nhm-assist"
-version = "0.0.0"
-description = "Notebook and helper workflows for NHM and NHF model support."
+dynamic = ["version"]
+description = "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed."
 readme = "README.md"
+license = "CC0-1.0"
+license-files = ["LICENSE.md"]
+authors = [
+  { name = "U.S. Geological Survey" },
+]
+maintainers = [
+  { name = "Adel Haj", email = "ahaj@usgs.gov" },
+]
 requires-python = ">=3.11"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.urls]
+Homepage = "https://code.usgs.gov/wma/hytest/nhm-assist"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "2.0.0.dev0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/assist/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assist", "src/workflow_templates"]
 
 [tool.pixi.workspace]
 channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
 [tool.pixi.environments]
-default = { solve-group = "default" }
+default = { features = ["prod"], solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
 
 [tool.pixi.dependencies]
@@ -59,10 +90,12 @@ tqdm = "*"
 xarray = "*"
 
 [tool.pixi.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
 dotenv = "*"
 hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
+
+[tool.pixi.feature.prod.pypi-dependencies]
+nhm-assist = { path = "." }
 
 [tool.pixi.feature.dev.dependencies]
 pre-commit = "*"
@@ -74,6 +107,9 @@ gdptools = "*"
 ipyleaflet = "*"
 pint-xarray = "*"
 tobler = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+nhm-assist = { path = ".", editable = true }
 
 [tool.pixi.tasks.setup]
 cmd = "python -m assist.workspace.cli setup"
