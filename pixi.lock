@@ -223,7 +223,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openldap-2.6.13-hbde042b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.3-h35e630c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.3.0-h21090e2_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.2.3-py311h7db5c69_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.3.3-py311hed34c8f_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pandoc-3.10-ha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pango-1.56.4-hda50119_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
@@ -354,8 +354,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -619,8 +619,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -978,7 +978,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openjpeg-2.5.4-h52bb76a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openssl-3.6.3-hc881268_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/orc-2.3.0-h982cfee_2.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.2.3-py311hcf53e2f_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.3.3-py311hca9a5ca_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pandoc-3.10-h694c41f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pango-1.56.4-hf280016_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pcre2-10.47-h13923f0_0.conda
@@ -1092,8 +1092,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -1451,7 +1451,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openjpeg-2.5.4-hd9e9057_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openssl-3.6.3-hd24854e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/orc-2.3.0-hd11884d_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.2.3-py311hca32420_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.3.3-py311hdb8e4fa_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandoc-3.10-hce30654_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pango-1.56.4-hf80efc4_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pcre2-10.47-h30297fc_0.conda
@@ -1562,8 +1562,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -1912,7 +1912,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/openjpeg-2.5.4-h0e57b4f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/openssl-3.6.3-hf411b9b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/orc-2.3.0-h8fc0eb6_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.2.3-py311hcf9f919_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.3.3-py311h11fd7f3_2.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pandoc-3.10-h57928b3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pcre2-10.47-hd2b5f0e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pillow-12.2.0-py311h17b8079_0.conda
@@ -2202,7 +2202,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openldap-2.6.13-hbde042b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/openssl-3.6.3-h35e630c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/orc-2.3.0-h21090e2_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.2.3-py311h7db5c69_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.3.3-py311hed34c8f_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pandoc-3.10-ha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pango-1.56.4-hda50119_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pcre2-10.47-haa7fec5_0.conda
@@ -2350,8 +2350,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -2661,8 +2661,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -3092,7 +3092,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openldap-2.6.13-h2f5043c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/openssl-3.6.3-hc881268_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/orc-2.3.0-h982cfee_2.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.2.3-py311hcf53e2f_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.3.3-py311hca9a5ca_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pandoc-3.10-h694c41f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pango-1.56.4-hf280016_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/pcre2-10.47-h13923f0_0.conda
@@ -3223,8 +3223,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -3654,7 +3654,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openldap-2.6.13-hf7f56bc_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openssl-3.6.3-hd24854e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/orc-2.3.0-hd11884d_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.2.3-py311hca32420_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.3.3-py311hdb8e4fa_2.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandoc-3.10-hce30654_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pango-1.56.4-hf80efc4_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pcre2-10.47-h30297fc_0.conda
@@ -3782,8 +3782,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/findlibs-0.1.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexcache-0.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/flexparser-0.4-pyhd8ed1ab_1.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-inconsolata-3.000-h77eed37_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-source-code-pro-2.038-h77eed37_0.tar.bz2
@@ -4197,7 +4197,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/openjpeg-2.5.4-h0e57b4f_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/openssl-3.6.3-hf411b9b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/orc-2.3.0-h8fc0eb6_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.2.3-py311hcf9f919_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.3.3-py311h11fd7f3_2.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pandoc-3.10-h57928b3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pcre2-10.47-hd2b5f0e_0.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/pillow-12.2.0-py311h17b8079_0.conda
@@ -7761,58 +7761,59 @@ packages:
   purls: []
   size: 1468651
   timestamp: 1773230208923
-- conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.2.3-py311h7db5c69_3.conda
-  sha256: 98cd49bfc4b803d950f9dbc4799793903aec1eaacd388c244a0b46d644159831
-  md5: c9f8fe78840d5c04e61666474bd739b2
+- conda: https://conda.anaconda.org/conda-forge/linux-64/pandas-2.3.3-py311hed34c8f_2.conda
+  sha256: a2af9dbc4827db418a73127d4001bb3c2ee19adcd2d4387d6bc049c3780d2a62
+  md5: 2366b5470cf61614c131e356efe9f74c
   depends:
   - __glibc >=2.17,<3.0.a0
-  - libgcc >=13
-  - libstdcxx >=13
-  - numpy >=1.19,<3
+  - libgcc >=14
+  - libstdcxx >=14
   - numpy >=1.22.4
+  - numpy >=1.23,<3
   - python >=3.11,<3.12.0a0
   - python-dateutil >=2.8.2
   - python-tzdata >=2022.7
   - python_abi 3.11.* *_cp311
   - pytz >=2020.1
   constrains:
-  - odfpy >=1.4.1
-  - numba >=0.56.4
-  - qtpy >=2.3.0
-  - pyarrow >=10.0.1
   - matplotlib >=3.6.3
-  - beautifulsoup4 >=4.11.2
-  - gcsfs >=2022.11.0
-  - lxml >=4.9.2
-  - bottleneck >=1.3.6
-  - tabulate >=0.9.0
-  - s3fs >=2022.11.0
-  - zstandard >=0.19.0
-  - sqlalchemy >=2.0.0
-  - xlrd >=2.0.1
-  - fastparquet >=2022.12.0
-  - numexpr >=2.8.4
-  - pyqt5 >=5.15.9
-  - pytables >=3.8.0
-  - pyreadstat >=1.2.0
   - fsspec >=2022.11.0
-  - html5lib >=1.1
+  - zstandard >=0.19.0
   - xarray >=2022.12.0
-  - blosc >=1.21.3
-  - openpyxl >=3.1.0
+  - lxml >=4.9.2
+  - pyqt5 >=5.15.9
+  - sqlalchemy >=2.0.0
   - pandas-gbq >=0.19.0
-  - tzdata >=2022.7
-  - pyxlsb >=1.0.10
   - psycopg2 >=2.9.6
+  - odfpy >=1.4.1
+  - gcsfs >=2022.11.0
+  - pyxlsb >=1.0.10
+  - qtpy >=2.3.0
+  - openpyxl >=3.1.0
+  - fastparquet >=2022.12.0
+  - beautifulsoup4 >=4.11.2
+  - html5lib >=1.1
+  - pytables >=3.8.0
+  - tabulate >=0.9.0
+  - pyarrow >=10.0.1
+  - blosc >=1.21.3
+  - pyreadstat >=1.2.0
+  - xlrd >=2.0.1
+  - numexpr >=2.8.4
+  - bottleneck >=1.3.6
   - scipy >=1.10.0
+  - tzdata >=2022.7
+  - s3fs >=2022.11.0
   - python-calamine >=0.1.7
   - xlsxwriter >=3.0.5
+  - numba >=0.56.4
   license: BSD-3-Clause
   license_family: BSD
   purls:
   - pkg:pypi/pandas?source=hash-mapping
-  size: 15689443
-  timestamp: 1744430942431
+  run_exports: {}
+  size: 15180047
+  timestamp: 1764615050121
 - conda: https://conda.anaconda.org/conda-forge/linux-64/pandoc-3.10-ha770c72_0.conda
   sha256: 2f17a165a04833bd249215336b00df912bad7f03ae445a36765b47593df34057
   md5: a4b80dd6e9e0784ba48e6803bef1e17a
@@ -10057,22 +10058,23 @@ packages:
   - pkg:pypi/flexparser?source=hash-mapping
   size: 28686
   timestamp: 1733663636245
-- conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.10.0-pyhd8ed1ab_0.conda
-  sha256: 22cb1c2b953b35c82049f60717da62d42c2345df30f3d6803ff9043084ee760f
-  md5: 7ce2679e699e54de7eb7f44fef6af238
+- conda: https://conda.anaconda.org/conda-forge/noarch/flopy-3.9.5-pyhd8ed1ab_0.conda
+  sha256: d140ffc44eb5694b928b3e72c0b74fcc1c3b01130bfafdf1734fedb0cfefa62d
+  md5: 3a985b1ac11026dd9c4881f25ab5ad39
   depends:
   - matplotlib-base >=1.4.0
-  - numpy >=1.20.3,<3.0
-  - pandas >=2.0.0,<3.0
+  - numpy >=1.20.3
+  - pandas >=2.0.0
   - python >=3.10
   license: CC0-1.0
   purls:
   - pkg:pypi/flopy?source=hash-mapping
-  size: 808834
-  timestamp: 1770456421690
-- conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.18.0-pyhd8ed1ab_1.conda
-  sha256: 6767e7924ae6481653c9690dfc3f13c3a0b20b46a95ae3ffc7bc306dd01a5fdb
-  md5: 323af3f42d2b036dc61fb91b91952b2f
+  run_exports: {}
+  size: 793384
+  timestamp: 1759354365939
+- conda: https://conda.anaconda.org/conda-forge/noarch/folium-0.20.0-pyhd8ed1ab_0.conda
+  sha256: 782fa186d7677fd3bc1ff7adb4cc3585f7d2c7177c30bcbce21f8c177135c520
+  md5: a6997a7dcd6673c0692c61dfeaea14ab
   depends:
   - branca >=0.6.0
   - jinja2 >=2.9
@@ -10084,8 +10086,9 @@ packages:
   license_family: MIT
   purls:
   - pkg:pypi/folium?source=hash-mapping
-  size: 79187
-  timestamp: 1733730997539
+  run_exports: {}
+  size: 82665
+  timestamp: 1750113928159
 - conda: https://conda.anaconda.org/conda-forge/noarch/font-ttf-dejavu-sans-mono-2.37-hab24e00_0.tar.bz2
   sha256: 58d7f40d2940dd0a8aa28651239adbf5613254df0f75789919c4e6762054403b
   md5: 0c96522c6bdaed4b1566d11387caaf45
@@ -11842,6 +11845,7 @@ packages:
   license_family: MIT
   purls:
   - pkg:pypi/plotly?source=hash-mapping
+  run_exports: {}
   size: 8022748
   timestamp: 1733733328161
 - conda: https://conda.anaconda.org/conda-forge/noarch/pluggy-1.6.0-pyhf9edf01_1.conda
@@ -13204,6 +13208,7 @@ packages:
   license_family: APACHE
   purls:
   - pkg:pypi/tenacity?source=hash-mapping
+  run_exports: {}
   size: 31404
   timestamp: 1770510172846
 - conda: https://conda.anaconda.org/conda-forge/noarch/terminado-0.18.1-pyh6dadd2b_1.conda
@@ -16630,57 +16635,58 @@ packages:
     - orc >=2.3.0,<2.3.1.0a0
   size: 551104
   timestamp: 1783199621677
-- conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.2.3-py311hcf53e2f_3.conda
-  sha256: 5a25e7353b25fcf0af48a3a127b4c204b478b2abe2f7e5b863a68ea91955328b
-  md5: f763d55519fd9595b2d0e85265810137
+- conda: https://conda.anaconda.org/conda-forge/osx-64/pandas-2.3.3-py311hca9a5ca_2.conda
+  sha256: f0dd9bca13b82972ce260941437a1e2efc1b71766b44cc73ac8b878f7d352e9c
+  md5: bd00254b6a77b575177c78f64c5fb366
   depends:
   - __osx >=10.13
-  - libcxx >=18
-  - numpy >=1.19,<3
+  - libcxx >=19
   - numpy >=1.22.4
+  - numpy >=1.23,<3
   - python >=3.11,<3.12.0a0
   - python-dateutil >=2.8.2
   - python-tzdata >=2022.7
   - python_abi 3.11.* *_cp311
   - pytz >=2020.1
   constrains:
-  - tabulate >=0.9.0
-  - zstandard >=0.19.0
-  - bottleneck >=1.3.6
-  - psycopg2 >=2.9.6
   - matplotlib >=3.6.3
-  - xarray >=2022.12.0
+  - zstandard >=0.19.0
+  - tabulate >=0.9.0
+  - pyarrow >=10.0.1
+  - fastparquet >=2022.12.0
   - openpyxl >=3.1.0
   - html5lib >=1.1
-  - pytables >=3.8.0
-  - pyxlsb >=1.0.10
+  - pyqt5 >=5.15.9
+  - odfpy >=1.4.1
+  - xlrd >=2.0.1
   - numexpr >=2.8.4
-  - pyarrow >=10.0.1
+  - xlsxwriter >=3.0.5
+  - fsspec >=2022.11.0
+  - xarray >=2022.12.0
   - pandas-gbq >=0.19.0
+  - lxml >=4.9.2
   - qtpy >=2.3.0
   - tzdata >=2022.7
-  - pyqt5 >=5.15.9
-  - sqlalchemy >=2.0.0
-  - beautifulsoup4 >=4.11.2
-  - lxml >=4.9.2
-  - s3fs >=2022.11.0
-  - numba >=0.56.4
-  - fastparquet >=2022.12.0
-  - fsspec >=2022.11.0
   - blosc >=1.21.3
+  - beautifulsoup4 >=4.11.2
+  - pyxlsb >=1.0.10
+  - pytables >=3.8.0
   - pyreadstat >=1.2.0
-  - xlsxwriter >=3.0.5
-  - python-calamine >=0.1.7
   - scipy >=1.10.0
-  - odfpy >=1.4.1
   - gcsfs >=2022.11.0
-  - xlrd >=2.0.1
+  - bottleneck >=1.3.6
+  - s3fs >=2022.11.0
+  - python-calamine >=0.1.7
+  - psycopg2 >=2.9.6
+  - sqlalchemy >=2.0.0
+  - numba >=0.56.4
   license: BSD-3-Clause
   license_family: BSD
   purls:
   - pkg:pypi/pandas?source=hash-mapping
-  size: 14756244
-  timestamp: 1744430913476
+  run_exports: {}
+  size: 14375008
+  timestamp: 1764615325020
 - conda: https://conda.anaconda.org/conda-forge/osx-64/pandoc-3.10-h694c41f_0.conda
   sha256: 713f1e020881d8ba3348d71782f6ffe549dbcfe712e3166e5054d417719fe5f2
   md5: 3147d9d8af6ecf8e4154598383d78f6f
@@ -20451,14 +20457,14 @@ packages:
   purls: []
   size: 548180
   timestamp: 1773230270828
-- conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.2.3-py311hca32420_3.conda
-  sha256: 2fedf5cec20945d5ce1a5264f06a8adf23bc6b355cef365e92241a3f1f6a6d11
-  md5: 29ae2c4e0ee3c65fa8520cafbf479ff7
+- conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandas-2.3.3-py311hdb8e4fa_2.conda
+  sha256: dd0c4ade846921acbf6ded79b7589e72f58689129dabc8290deec455539e9235
+  md5: da2e5c7c0a3061398c8a1e225f2e339e
   depends:
   - __osx >=11.0
-  - libcxx >=18
-  - numpy >=1.19,<3
+  - libcxx >=19
   - numpy >=1.22.4
+  - numpy >=1.23,<3
   - python >=3.11,<3.12.0a0
   - python >=3.11,<3.12.0a0 *_cpython
   - python-dateutil >=2.8.2
@@ -20466,43 +20472,44 @@ packages:
   - python_abi 3.11.* *_cp311
   - pytz >=2020.1
   constrains:
-  - python-calamine >=0.1.7
-  - pytables >=3.8.0
-  - s3fs >=2022.11.0
-  - openpyxl >=3.1.0
-  - pyarrow >=10.0.1
-  - tzdata >=2022.7
-  - xarray >=2022.12.0
-  - fastparquet >=2022.12.0
-  - pyqt5 >=5.15.9
-  - numba >=0.56.4
-  - pyxlsb >=1.0.10
-  - xlrd >=2.0.1
-  - bottleneck >=1.3.6
-  - matplotlib >=3.6.3
-  - xlsxwriter >=3.0.5
-  - zstandard >=0.19.0
-  - odfpy >=1.4.1
-  - qtpy >=2.3.0
-  - numexpr >=2.8.4
-  - gcsfs >=2022.11.0
-  - tabulate >=0.9.0
-  - pyreadstat >=1.2.0
-  - pandas-gbq >=0.19.0
-  - blosc >=1.21.3
-  - scipy >=1.10.0
-  - beautifulsoup4 >=4.11.2
-  - lxml >=4.9.2
-  - html5lib >=1.1
-  - fsspec >=2022.11.0
-  - psycopg2 >=2.9.6
   - sqlalchemy >=2.0.0
+  - xarray >=2022.12.0
+  - bottleneck >=1.3.6
+  - tzdata >=2022.7
+  - pyarrow >=10.0.1
+  - lxml >=4.9.2
+  - tabulate >=0.9.0
+  - matplotlib >=3.6.3
+  - qtpy >=2.3.0
+  - pytables >=3.8.0
+  - odfpy >=1.4.1
+  - html5lib >=1.1
+  - openpyxl >=3.1.0
+  - psycopg2 >=2.9.6
+  - numba >=0.56.4
+  - s3fs >=2022.11.0
+  - fastparquet >=2022.12.0
+  - gcsfs >=2022.11.0
+  - python-calamine >=0.1.7
+  - fsspec >=2022.11.0
+  - pandas-gbq >=0.19.0
+  - beautifulsoup4 >=4.11.2
+  - xlsxwriter >=3.0.5
+  - numexpr >=2.8.4
+  - pyxlsb >=1.0.10
+  - pyreadstat >=1.2.0
+  - xlrd >=2.0.1
+  - blosc >=1.21.3
+  - zstandard >=0.19.0
+  - pyqt5 >=5.15.9
+  - scipy >=1.10.0
   license: BSD-3-Clause
   license_family: BSD
   purls:
   - pkg:pypi/pandas?source=hash-mapping
-  size: 14820281
-  timestamp: 1744430962289
+  run_exports: {}
+  size: 14124254
+  timestamp: 1764615503256
 - conda: https://conda.anaconda.org/conda-forge/osx-arm64/pandoc-3.10-hce30654_0.conda
   sha256: 113acb26aa94268bff2f2b920828cdb34994d1372488264a4570aec98310e7b8
   md5: 6904ced5f85c4e1d96bc95ec423d38c1
@@ -24256,58 +24263,59 @@ packages:
   purls: []
   size: 1438607
   timestamp: 1773230254230
-- conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.2.3-py311hcf9f919_3.conda
-  sha256: 7aabb8d23a6817844a7f1b402e7e147e341cade5f470a908b8239f969c7b681c
-  md5: 84c8b4aab176baefd352cd34f7e69469
+- conda: https://conda.anaconda.org/conda-forge/win-64/pandas-2.3.3-py311h11fd7f3_2.conda
+  sha256: 7a4695b360b6a38f477c4e6deaa02e244ef77465e0c2a3b727d12c26bc0e9676
+  md5: 6d7622c147fa008da95fe7dd7431a868
   depends:
-  - numpy >=1.19,<3
   - numpy >=1.22.4
+  - numpy >=1.23,<3
   - python >=3.11,<3.12.0a0
   - python-dateutil >=2.8.2
   - python-tzdata >=2022.7
   - python_abi 3.11.* *_cp311
   - pytz >=2020.1
   - ucrt >=10.0.20348.0
-  - vc >=14.2,<15
-  - vc14_runtime >=14.29.30139
+  - vc >=14.3,<15
+  - vc14_runtime >=14.44.35208
   constrains:
-  - lxml >=4.9.2
   - pandas-gbq >=0.19.0
-  - psycopg2 >=2.9.6
-  - pyxlsb >=1.0.10
-  - python-calamine >=0.1.7
-  - html5lib >=1.1
-  - sqlalchemy >=2.0.0
-  - fastparquet >=2022.12.0
-  - xarray >=2022.12.0
-  - matplotlib >=3.6.3
-  - numexpr >=2.8.4
-  - pyqt5 >=5.15.9
   - openpyxl >=3.1.0
-  - tzdata >=2022.7
-  - bottleneck >=1.3.6
-  - tabulate >=0.9.0
+  - html5lib >=1.1
   - numba >=0.56.4
-  - scipy >=1.10.0
-  - beautifulsoup4 >=4.11.2
+  - xarray >=2022.12.0
+  - psycopg2 >=2.9.6
   - s3fs >=2022.11.0
-  - gcsfs >=2022.11.0
-  - qtpy >=2.3.0
-  - odfpy >=1.4.1
-  - pyreadstat >=1.2.0
+  - scipy >=1.10.0
   - xlrd >=2.0.1
-  - pyarrow >=10.0.1
-  - zstandard >=0.19.0
-  - blosc >=1.21.3
+  - qtpy >=2.3.0
   - fsspec >=2022.11.0
-  - pytables >=3.8.0
+  - pyxlsb >=1.0.10
+  - sqlalchemy >=2.0.0
+  - bottleneck >=1.3.6
+  - pyqt5 >=5.15.9
+  - lxml >=4.9.2
+  - zstandard >=0.19.0
+  - beautifulsoup4 >=4.11.2
+  - blosc >=1.21.3
+  - numexpr >=2.8.4
+  - tzdata >=2022.7
   - xlsxwriter >=3.0.5
+  - matplotlib >=3.6.3
+  - fastparquet >=2022.12.0
+  - pyarrow >=10.0.1
+  - pyreadstat >=1.2.0
+  - python-calamine >=0.1.7
+  - pytables >=3.8.0
+  - tabulate >=0.9.0
+  - odfpy >=1.4.1
+  - gcsfs >=2022.11.0
   license: BSD-3-Clause
   license_family: BSD
   purls:
   - pkg:pypi/pandas?source=hash-mapping
-  size: 14530915
-  timestamp: 1744431484551
+  run_exports: {}
+  size: 14211779
+  timestamp: 1764615555643
 - conda: https://conda.anaconda.org/conda-forge/win-64/pandoc-3.10-h57928b3_0.conda
   sha256: 113b65a0994f0858b60273ed4ccd2b34c71623af7263c1e79a9db7503b70598e
   md5: 279aed27b9dd4747cca81f18ab226034
