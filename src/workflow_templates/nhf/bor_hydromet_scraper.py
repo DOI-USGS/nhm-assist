@@ -18,6 +18,20 @@
 # Retrieves daily estimated unregulated flow (QU parameter) from BoR Pacific
 # Northwest Hydromet stations that fall within the model AOI.
 #
+# **What are unregulated flows?**
+# Unregulated flows are the basis for any water resources modeling study because
+# they describe the flow in the system without any influence from regulation
+# activities such as reservoir operation, diversion from the river, or return flow
+# from irrigation activities. The intent of developing unregulated flows is to
+# estimate the natural inflows to the system using measured data from the regulated
+# system ([US Bureau of Reclamation, *Technical Memorandum: Modified Flows 2020,
+# Deschutes River Basin*](https://www.bpa.gov/-/media/Aep/power/historical-streamflow-reports/reclamation-deschutes-modified-flows.pdf)).
+#
+# In the NHM-Assist workflow, these unregulated flow datasets are intended to
+# replace observations at streamflow gages that have high anthropogenic influence,
+# providing a better representation of the natural hydrologic flow regime for
+# model calibration and evaluation.
+#
 # **Outputs:**
 # - Metadata table (matches gages file format for appending to notebook 1)
 # - Daily QU values for integration into the streamflow observations workflow
