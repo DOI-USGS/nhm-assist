@@ -15,7 +15,6 @@
 
 # %%
 import sys
-import pathlib as pl
 
 #sys.path.append("../")
 
@@ -36,12 +35,11 @@ import jupyter_black
 con = Console()
 jupyter_black.load()
 
-import pathlib as pl
 import os
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
+# fallback to the package location — works for editable and non-editable installs.
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root()
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root

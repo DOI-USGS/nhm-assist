@@ -1,68 +1,193 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
 name = "nhm-assist"
-version = "0.0.0"
-description = "Notebook and helper workflows for NHM and NHF model support."
+dynamic = ["version"]
+description = "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed."
 readme = "README.md"
-requires-python = ">=3.11"
+license = "CC0-1.0"
+license-files = ["LICENSE.md"]
+authors = [
+  { name = "U.S. Geological Survey" },
+]
+maintainers = [
+  { name = "Adel Haj", email = "ahaj@usgs.gov" },
+]
+requires-python = ">=3.11, <3.14"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering",
+]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.urls]
+Homepage = "https://code.usgs.gov/wma/hytest/nhm-assist"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "2.0.0.dev0"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/assist/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/assist", "src/workflow_templates"]
 
 [tool.pixi.workspace]
-channels = ["conda-forge"]
+channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
-[tool.pixi.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
+[tool.pixi.environments]
+default = { features = ["prod"], solve-group = "default" }
+dev = { features = ["dev"], solve-group = "default" }
 
-[tool.pixi.feature.nhm]
-channels = ["conda-forge", "nodefaults"]
-
-[tool.pixi.feature.nhm.dependencies]
+[tool.pixi.dependencies]
+branca = "*"
 cdsapi = "*"
 dask = "*"
 dataretrieval = "*"
-herbie-data = "*"
-pyemu = "*"
 distributed = "*"
-folium = "==0.18"
-ipyleaflet = "==0.19.2"
-jupyter_contrib_nbextensions = "*"
-jupytext = "*"
-numpy = "<=2.2.0"
-pandas = "==2.2.3"
-pint-xarray = "*"
-pip = "*"
-plotly = "==5.24.1"
-pywatershed = ">=2.0.1"
-tobler = "==0.12.0"
-topojson = "*"
-
-[tool.pixi.feature.nhm.pypi-dependencies]
-dotenv = "*"
-hydroeval = "==0.1"
+fiona = "*"
+folium = "*"
+geopandas = "*"
+herbie-data = "*"
+ipython = "*"
+ipywidgets = "*"
+jupyterlab = "*"
 jupyter-black = "*"
-gdptools = "*"
+jupyter_contrib_nbextensions = "*"
+jupyter_server = "*"
+jupytext = "*"
+matplotlib = "*"
+netcdf4 = "*"
+networkx = "*"
+numpy = "*"
+pandas = ">=2.2,<3"
+pip = "*"
+plotly = ">=5,<6"
+pyarrow = "*"
+pydot = "*"
+pyemu = "*"
+pywatershed = ">=2.0.1,<3"
+pyyaml = "*"
+requests = "*"
+rich = "*"
+"ruamel.yaml" = "*"
+scipy = "*"
+shapely = "*"
+topojson = "*"
+tqdm = "*"
+xarray = "*"
+
+[tool.pixi.pypi-dependencies]
+dotenv = "*"
+hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
 
-[tool.pixi.environments]
-default = { features = ["nhm"], solve-group = "default" }
-nhm = { features = ["nhm"], no-default-feature = true, solve-group = "default" }
+[tool.pixi.feature.prod.pypi-dependencies]
+nhm-assist = { path = ".", editable = true }
 
-[tool.pixi.tasks]
-setup = { cmd = "python -m assist.workspace.cli setup", default-environment = "default", description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, generate notebooks, and launch JupyterLab." }
-dev = { cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} && jupyter lab --ServerApp.contents_manager_class=jupytext.TextFileContentsManager --ServerApp.root_dir=. --LabApp.default_url=/lab/tree/{{ notebook_dir }}", args = [{ arg = "workflow", default = "nhm" }, { arg = "notebook_dir", default = "notebooks" }], default-environment = "default", description = "Contributor mode: regenerate notebooks from .py templates and launch JupyterLab against the repo (not a workspace). Edits sync back to src/workflow_templates/<workflow>/*.py via jupytext." }
-notebooks-create = { cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }}", args = [{ arg = "workflow", default = "all" }], default-environment = "default", description = "Generate notebooks from .py templates into the repo's notebook directories (does not launch Jupyter)." }
-notebooks-create-project = { cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name", { arg = "workflow", default = "all" }], default-environment = "default", description = "Generate notebooks from .py templates into a project's notebook directory in the user workspace." }
-workspace-init = { cmd = "python -m assist.workspace.cli workspace-init --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default", description = "Create an empty nhm-assist workspace at <workspace_root>; idempotent if the directory already exists." }
-project-create = { cmd = "python -m assist.workspace.cli project-create --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default", description = "Create a new project under <workspace_root> with the standard project_config / models / notebooks layout." }
-project-list = { cmd = "python -m assist.workspace.cli project-list --workspace-root {{ workspace_root }}", args = ["workspace_root"], default-environment = "default", description = "List every project in <workspace_root>." }
-project-set-active-model = { cmd = "python -m assist.workspace.cli project-set-active-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}", args = ["workspace_root", "project_name", "model_name"], default-environment = "default", description = "Designate which model the project's shared notebooks read by writing project_config/active_model.yaml." }
-model-create = { cmd = "python -m assist.workspace.cli model-create --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}", args = ["workspace_root", "project_name", "model_name"], default-environment = "default", description = "Create an empty model skeleton (config/, inputs/source_data/, outputs/runtime/) under a project." }
-model-list = { cmd = "python -m assist.workspace.cli model-list --workspace-root {{ workspace_root }} --project-name {{ project_name }}", args = ["workspace_root", "project_name"], default-environment = "default", description = "List every model defined under the given project." }
-model-copy-example = { cmd = "python -m assist.workspace.cli model-copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}", args = ["workspace_root", "project_name", "model_name", "example_name"], default-environment = "default", description = "Copy a bundled example subdomain (e.g. Walla_Walla) into a project under the given model name." }
-model-import = { cmd = "python -m assist.workspace.cli model-import --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}", args = ["workspace_root", "project_name", "model_name", "source_dir"], default-environment = "default", description = "Import an existing PRMS model folder from <source_dir> into a project under the given model name." }
+[tool.pixi.feature.dev.dependencies]
+pre-commit = "*"
+pytest = "*"
+pytest-cov = "*"
+ruff = "*"
+# unused in code but perhaps aspirational for future work?
+gdptools = "*"
+ipyleaflet = "*"
+pint-xarray = "*"
+tobler = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+nhm-assist = { path = ".", editable = true }
+
+[tool.pixi.tasks.setup]
+cmd = "python -m assist.workspace.cli setup"
+default-environment = "default"
+description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, generate notebooks, and launch JupyterLab."
+
+[tool.pixi.tasks.dev]
+cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} && jupyter lab --ServerApp.contents_manager_class=jupytext.TextFileContentsManager --ServerApp.root_dir=. --LabApp.default_url=/lab/tree/{{ notebook_dir }}"
+args = [{ arg = "workflow", default = "nhm" }, { arg = "notebook_dir", default = "notebooks" }]
+default-environment = "default"
+description = "Contributor mode: regenerate notebooks from .py templates and launch JupyterLab against the repo (not a workspace). Edits sync back to src/workflow_templates/<workflow>/*.py via jupytext."
+
+[tool.pixi.tasks.notebooks-create]
+cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }}"
+args = [{ arg = "workflow", default = "all" }]
+default-environment = "default"
+description = "Generate notebooks from .py templates into the repo's notebook directories (does not launch Jupyter)."
+
+[tool.pixi.tasks.notebooks-create-project]
+cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }}"
+args = ["workspace_root", "project_name", { arg = "workflow", default = "all" }]
+default-environment = "default"
+description = "Generate notebooks from .py templates into a project's notebook directory in the user workspace."
+
+[tool.pixi.tasks.workspace-init]
+cmd = "python -m assist.workspace.cli workspace-init --workspace-root {{ workspace_root }}"
+args = ["workspace_root"]
+default-environment = "default"
+description = "Create an empty nhm-assist workspace at <workspace_root>; idempotent if the directory already exists."
+
+[tool.pixi.tasks.project-create]
+cmd = "python -m assist.workspace.cli project-create --workspace-root {{ workspace_root }} --project-name {{ project_name }}"
+args = ["workspace_root", "project_name"]
+default-environment = "default"
+description = "Create a new project under <workspace_root> with the standard project_config / models / notebooks layout."
+
+[tool.pixi.tasks.project-list]
+cmd = "python -m assist.workspace.cli project-list --workspace-root {{ workspace_root }}"
+args = ["workspace_root"]
+default-environment = "default"
+description = "List every project in <workspace_root>."
+
+[tool.pixi.tasks.project-set-active-model]
+cmd = "python -m assist.workspace.cli project-set-active-model --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}"
+args = ["workspace_root", "project_name", "model_name"]
+default-environment = "default"
+description = "Designate which model the project's shared notebooks read by writing project_config/active_model.yaml."
+
+[tool.pixi.tasks.model-create]
+cmd = "python -m assist.workspace.cli model-create --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }}"
+args = ["workspace_root", "project_name", "model_name"]
+default-environment = "default"
+description = "Create an empty model skeleton (config/, inputs/source_data/, outputs/runtime/) under a project."
+
+[tool.pixi.tasks.model-list]
+cmd = "python -m assist.workspace.cli model-list --workspace-root {{ workspace_root }} --project-name {{ project_name }}"
+args = ["workspace_root", "project_name"]
+default-environment = "default"
+description = "List every model defined under the given project."
+
+[tool.pixi.tasks.model-copy-example]
+cmd = "python -m assist.workspace.cli model-copy-example --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --example-name {{ example_name }}"
+args = ["workspace_root", "project_name", "model_name", "example_name"]
+default-environment = "default"
+description = "Copy a bundled example subdomain (e.g. Walla_Walla) into a project under the given model name."
+
+[tool.pixi.tasks.model-import]
+cmd = "python -m assist.workspace.cli model-import --workspace-root {{ workspace_root }} --project-name {{ project_name }} --model-name {{ model_name }} --source-dir {{ source_dir }}"
+args = ["workspace_root", "project_name", "model_name", "source_dir"]
+default-environment = "default"
+description = "Import an existing PRMS model folder from <source_dir> into a project under the given model name."
+
+[tool.pixi.tasks.lint]
+cmd = "ruff check . && ruff format --check ."
+default-environment = "dev"
+description = "Lint and check formatting with ruff."
+
+[tool.pixi.tasks.test]
+cmd = "pytest tests/"
+default-environment = "dev"
+description = "Run the test suite."
