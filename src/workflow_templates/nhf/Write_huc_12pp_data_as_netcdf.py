@@ -24,7 +24,6 @@ from tqdm import tqdm
 
 import sys
 import os
-import pathlib as pl
 import warnings
 
 

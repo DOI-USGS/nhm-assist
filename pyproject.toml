@@ -95,7 +95,7 @@ hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
 
 [tool.pixi.feature.prod.pypi-dependencies]
-nhm-assist = { path = "." }
+nhm-assist = { path = ".", editable = true }
 
 [tool.pixi.feature.dev.dependencies]
 pre-commit = "*"

@@ -16,7 +16,6 @@
 # %%
 import warnings
 import pandas as pd
-import pathlib as pl
 from pyPRMS.metadata.metadata import MetaData
 from pyPRMS import ParameterFile
 from contextlib import redirect_stdout

@@ -15,7 +15,6 @@
 
 # %%
 import sys
-import pathlib as pl
 
 #sys.path.append("../")
 
@@ -36,7 +35,6 @@ import jupyter_black
 con = Console()
 jupyter_black.load()
 
-import pathlib as pl
 import os
 # Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
 # fallback to the package location — works for editable and non-editable installs.
