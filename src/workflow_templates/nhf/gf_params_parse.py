@@ -81,7 +81,7 @@ from rich import pretty
 pretty.install()
 
 
-# %%
+# %% jupyter={"source_hidden": true}
 # Functions
 def check_for_disconnected_graphs(g):
     # Check for disconnected graphs within the graph object
@@ -1577,21 +1577,43 @@ else:
 # Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's FMI gages
 
 # %%
-ECY_gages_path = pl.Path(f"{parent_dir}/npoigages_data/ECY_gages/ECY_gages.csv")
-col_names = [
-    "poi_gage_id",
-    "poi_agency",
-    "poi_name",
-    "latitude",
-    "longitude",
-    "drainage_area",
-    "drainage_area_contrib",
-]
-col_types = [np.str_, np.str_, np.str_, float, float, float, float]
-cols = dict(zip(col_names, col_types))
-new_gages_df = pd.read_csv(f"{ECY_gages_path}", dtype=cols)
+# ECY_gages_path = pl.Path(f"{parent_dir}/npoigages_data/ECY_gages/ECY_gages.csv")
+STREAMFLOW_URL = "https://services.arcgis.com/6lCKYNJLvwTXqrmp/arcgis/rest/services/EAP/FeatureServer/3/query?outFields=*&where=1%3D1&f=geojson"
 
-new_gages_list = new_gages_df["poi_gage_id"].astype(str).tolist()
+print("Downloading ECY streamflow stations...")
+ECY_gage_data_gdf = gpd.read_file(STREAMFLOW_URL)
+
+rename_map = {
+    "StationCode": "poi_gage_id",
+    "StationName": "poi_name",
+    "LatitudeDecimal": "latitude",
+    "LongitudeDecimal": "longitude",
+}
+
+ECY_gage_data_gdf = ECY_gage_data_gdf[list(rename_map.keys()) + ["geometry"]].rename(
+    columns=rename_map
+)
+
+ECY_gage_data_gdf["poi_agency"] = "ECY"
+ECY_gage_data_gdf["drainage_area"] = np.nan
+ECY_gage_data_gdf["drainage_area_contrib"] = np.nan
+
+ECY_gage_data_gdf = ECY_gage_data_gdf.astype(
+    {
+        "poi_gage_id": np.str_,
+        "poi_name": np.str_,
+        "poi_agency": np.str_,
+        "latitude": float,
+        "longitude": float,
+        "drainage_area": float,
+        "drainage_area_contrib": float,
+    }
+)
+
+print(f"Downloaded {len(ECY_gage_data_gdf)} stations")
+new_gages_gdf = ECY_gage_data_gdf.to_crs(seg_child_gdf.crs)
+
+new_gages_list = new_gages_gdf["poi_gage_id"].astype(str).tolist()
 new_gages_list = [
     x
     for x in list(set(new_gages_list))
@@ -1600,12 +1622,6 @@ new_gages_list = [
 
 
 ###### Make new gages geodataframe, create needed npoigages params and concatenate to existing
-new_gages_gdf = gpd.GeoDataFrame(
-    new_gages_df,
-    geometry=gpd.points_from_xy(new_gages_df["longitude"], new_gages_df["latitude"]),
-    crs="EPSG:4326",  # WGS84 lat/lon
-).to_crs(seg_child_gdf.crs)
-print(new_gages_gdf.crs)
 new_gages_gdf["poi_type"] = 1
 new_gages_gdf = gpd.clip(new_gages_gdf, aoi_gdb)
 
@@ -1628,7 +1644,7 @@ if len(new_gages_gdf) != 0:
         "drainage_area",
         "drainage_area_contrib",
     ]
-    new_gages_info_df = new_gages_df[new_gages_df["poi_gage_id"].isin(new_gages_list)]
+    new_gages_info_df = new_gages_gdf[new_gages_gdf["poi_gage_id"].isin(new_gages_list)]
     new_gages_info_df = new_gages_info_df[info_cols]
     npoigages_info_df_temp = pd.concat(
         [npoigages_info_df, new_gages_info_df], ignore_index=True

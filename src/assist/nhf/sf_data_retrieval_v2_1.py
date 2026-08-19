@@ -6,7 +6,7 @@ import warnings
 from io import StringIO
 from urllib import request
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 import geopandas as gpd
 import netCDF4
 import numpy as np
@@ -259,6 +259,8 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
     """
     Acquires daily streamflow data from Washington Department of Ecology (ECY).
+    Downloads a zip file containing annual DSG_DV.txt files for the station,
+    extracts and parses each year's file, then cleans up the zip.
 
     Parameters
     ----------
@@ -273,80 +275,144 @@ def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
         
     Returns
     -------
-    None
+    temp_df : pandas DataFrame or None
+        Dataframe containing ECY mean daily streamflow data, or None if no data.
     
     """
-    
+    import zipfile
+    import tempfile
+    import os
+
+    # Download the zip file containing all years of DSG data
+    url = (
+        f"https://apps.ecology.wa.gov/ContinuousFlowAndWQ/StationDetails/ExportData"
+        f"?stationCD={station}&isAllYears=true&isAllParams=false"
+        f"&startYear=0&endYear=0&paramArray=_DSG&SplitWaterYears=false"
+    )
+    print(f"Downloading ECY data for station {station}...")
+    print(f"  {url}")
+
+    try:
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (nhm-assist)'})
+        with urlopen(req) as response:
+            zip_data = response.read()
+    except HTTPError as e:
+        print(f"  Failed to download zip for {station}: {e}")
+        return None
+    except Exception as e:
+        print(f"  Error downloading zip for {station}: {e}")
+        return None
+
+    # Write zip to a temp file and extract
     ecy_df_list = []
-    for ecy_year in ecy_years:
-        url = f"https://apps.ecology.wa.gov/ContinuousFlowAndWQ/StationData/Prod/{station}/{station}_{ecy_year}_DSG_DV.txt"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        zip_path = os.path.join(tmp_dir, f"{station}_DSG.zip")
+        with open(zip_path, 'wb') as f:
+            f.write(zip_data)
+
         try:
-            # The string that is to be searched
-            key = "DATE"
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # List files in the zip matching the DSG_DV pattern
+                dv_files = [
+                    name for name in zf.namelist()
+                    if '_DSG_DV.txt' in name or '_DSG_DV.TXT' in name
+                ]
+                print(f"  Found {len(dv_files)} annual DSG_DV files in zip")
 
-            # Opening the file and storing its data into the variable lines
-            with urlopen(url) as file:
-                lines = file.readlines()
+                for dv_file in dv_files:
+                    # Extract year from filename (e.g., "32B100_2002_DSG_DV.txt")
+                    try:
+                        parts = os.path.basename(dv_file).split('_')
+                        file_year = int(parts[1])
+                    except (IndexError, ValueError):
+                        continue
 
-            # Going over each line of the file
-            dateline = []
-            for number, line in enumerate(lines, 1):
+                    # Skip years outside the requested range
+                    if file_year not in ecy_years:
+                        continue
 
-                # Condition true if the key exists in the line
-                # If true then display the line number
-                if key in str(line):
-                    dateline.append(number)
-                    # print(f'{key} is at line {number}')
-            # df = pd.read_csv(url, skiprows=11, sep = '\s{3,}', on_bad_lines='skip', engine = 'python')  # looks for at least three spaces as separator
-            df = pd.read_fwf(
-                url, skiprows=dateline[0]
-            )  # seems to handle formatting for No Data and blanks together, above option is thrown off by blanks
-            # df['Day'] = pd.to_numeric(df['Day'], errors='coerce') # day col to numeric
-            # df = df[df['Day'].notna()].astype({'Day': int}) #
-            # df = df.drop('Day.1', axis=1)
-            if len(df.columns) == 3:
-                df.columns = ["time", "discharge", "Quality"]
-            elif len(df.columns) == 4:
-                df.columns = ["time", "utc", "discharge", "Quality"]
-                df.drop("utc", axis=1, inplace=True)
-            try:
-                df.drop(
-                    "Quality", axis=1, inplace=True
-                )  # drop quality for now, might use to filter later
-            except KeyError:
-                print(f"no Quality for {station} {ecy_year}")
-            df["time"] = pd.to_datetime(df["time"], errors="coerce")
-            df = df.dropna(subset=["time"])
-            df["poi_gage_id"] = station
-            df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
-            # specify data types
-            dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
-            df = df.astype(dtype_map)
+                    try:
+                        with zf.open(dv_file) as txt_file:
+                            lines = txt_file.read().decode('utf-8', errors='ignore').splitlines()
 
-            df.set_index(["poi_gage_id", "time"], inplace=True)
-            # next two lines are new if this breaks...
-            idx = pd.IndexSlice
-            df = df.loc[
-                idx[:, ecy_start_date:ecy_end_date], :
-            ]  # filters to the date range
-            df["agency_id"] = "ECY"
+                        # Find the header line containing "DATE"
+                        dateline = None
+                        for number, line in enumerate(lines):
+                            if "DATE" in line:
+                                dateline = number
+                                break
 
-            ecy_df_list.append(df)
-            print(f"good year {ecy_year}")
-            print(url)
-        except HTTPError:
-            pass
-        except ValueError as ex:
-            print(ex)
-            print(ecy_year)
-    if len(df) != 0:
+                        if dateline is None:
+                            print(f"    No DATE header found in {dv_file}")
+                            continue
+
+                        # Read header columns and all data using pd.read_fwf
+                        # This handles the variable-width columns properly
+                        from io import StringIO
+                        file_content = "\n".join(lines[dateline:])
+                        df = pd.read_fwf(StringIO(file_content))
+
+                        # Normalize column names to lowercase for matching
+                        df.columns = [c.strip().upper() for c in df.columns]
+
+                        # Keep only DATE and DISCHARGE columns (drop everything else)
+                        # Look for columns containing these keywords
+                        date_col = None
+                        discharge_col = None
+                        for col in df.columns:
+                            if "DATE" in col:
+                                date_col = col
+                            elif "DISCHARGE" in col or "VALUE" in col or "DSG" in col:
+                                discharge_col = col
+
+                        # If no discharge column found by name, take the second column
+                        if date_col is None:
+                            date_col = df.columns[0]
+                        if discharge_col is None and len(df.columns) >= 2:
+                            discharge_col = df.columns[1]
+
+                        if date_col is None or discharge_col is None:
+                            print(f"    Could not identify date/discharge columns in {dv_file} for station {station}. "
+                                  f"Available columns: {df.columns.tolist()}")
+                            continue
+
+                        df = df[[date_col, discharge_col]].copy()
+                        df.columns = ["time", "discharge"]
+
+                        df["time"] = pd.to_datetime(df["time"], errors="coerce")
+                        df = df.dropna(subset=["time"])
+                        df["poi_gage_id"] = station
+                        df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
+
+                        # Specify data types
+                        dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
+                        df = df.astype(dtype_map)
+
+                        df.set_index(["poi_gage_id", "time"], inplace=True)
+
+                        # Filter to date range
+                        idx = pd.IndexSlice
+                        df = df.loc[idx[:, ecy_start_date:ecy_end_date], :]
+                        df["agency_id"] = "ECY"
+
+                        if len(df) > 0:
+                            ecy_df_list.append(df)
+                            print(f"    {dv_file}: {len(df)} records")
+
+                    except Exception as ex:
+                        print(f"    Error parsing {dv_file}: {ex}")
+                        continue
+
+        except zipfile.BadZipFile:
+            print(f"  Downloaded file for {station} is not a valid zip")
+            return None
+
+    if ecy_df_list:
         temp_df = pd.concat(ecy_df_list)
-        # ecy_df["discharge_cfs"] = pd.to_numeric(ecy_df["discharge_cfs"], errors = 'coerce')
-        # maybe inster the rest of the df formatting here:
-
+        print(f"  Total: {len(temp_df)} records for {station}")
         return temp_df
     else:
-        print(f"No data for station {station} for data range {ecy_years}.")
+        print(f"  No data for station {station} in date range.")
         return None
 
 
