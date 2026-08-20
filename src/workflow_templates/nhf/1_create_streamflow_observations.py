@@ -243,11 +243,21 @@ xr_streamflow
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_gage_id.values[0]  # "08049300" "130875049"
-# cpoi_id = "14053000"
-print(
-    f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
-)
+# Find the first gage that has data in the simulation period
+cpoi_id = None
+for _gid in xr_streamflow.poi_gage_id.values:
+    _sub = xr_streamflow.sel(poi_gage_id=_gid, time=slice(config["start_date"], config["end_date"]))
+    if _sub["discharge"].notnull().any():
+        cpoi_id = _gid
+        break
+
+if cpoi_id is None:
+    cpoi_id = xr_streamflow.poi_gage_id.values[0]
+    print(f"No gage with data found in the simulation period. Defaulting to: {cpoi_id}")
+else:
+    print(
+        f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
+    )
 
 # control = pws.Control.load_prms(
 #     model_dir / control_file_name, warn_unused_options=False

@@ -102,7 +102,177 @@ basin_polygons["geometry"] = basin_polygons["geometry"].apply(remove_holes)
 # The child domain is then used to select hrus, segments and pois from the parent fabric and create a child fabric for each child domain. The child fabric will be used in the next notebook to create a pywatershed mode for the child domain.
 
 # %%
-basin_polygons.explore(column="basin_id")  # opens in a browser or Jupyter
+# basin_polygons.explore(column="basin_id")  # opens in a browser or Jupyter
+
+# %% jupyter={"source_hidden": true}
+# Save an interactive HTML map of all child domains to each child's hydrofabric folder
+import folium
+from folium import plugins
+
+# Reproject to WGS84 for folium
+basin_polygons_4326 = basin_polygons.to_crs(epsg=4326)
+centroid = basin_polygons_4326.geometry.union_all().centroid
+
+# Count HRUs, segments, and POIs per basin from the parent data
+source_gpkg = (
+    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
+)
+parent_segs = gpd.read_file(source_gpkg, layer="nsegment")
+parent_pois = gpd.read_file(source_gpkg, layer="npoi")
+
+# Match CRS for spatial operations
+if parent_segs.crs != basin_polygons.crs:
+    parent_segs = parent_segs.to_crs(basin_polygons.crs)
+if parent_pois.crs != basin_polygons.crs:
+    parent_pois = parent_pois.to_crs(basin_polygons.crs)
+
+# Count features per basin
+basin_stats = {}
+for _, row in basin_polygons.iterrows():
+    bid = row["basin_id"]
+    basin_geom = row["geometry"]
+
+    n_hrus = len(gdf_child_models[gdf_child_models["basin_id"] == bid])
+    n_segs = len(parent_segs[parent_segs.geometry.intersects(basin_geom)])
+    n_pois = len(parent_pois[parent_pois.geometry.within(basin_geom)])
+    basin_stats[bid] = {"n_hrus": n_hrus, "n_segments": n_segs, "n_pois": n_pois}
+
+# Add counts to the GeoDataFrame for the popup
+basin_polygons_4326["n_hrus"] = basin_polygons_4326["basin_id"].map(
+    lambda x: basin_stats[x]["n_hrus"]
+)
+basin_polygons_4326["n_segments"] = basin_polygons_4326["basin_id"].map(
+    lambda x: basin_stats[x]["n_segments"]
+)
+basin_polygons_4326["n_pois"] = basin_polygons_4326["basin_id"].map(
+    lambda x: basin_stats[x]["n_pois"]
+)
+
+# Create the folium map with basemaps matching notebook 2
+m = folium.Map(
+    location=[centroid.y, centroid.x],
+    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
+    attr="USGSHydroCached",
+    zoom_start=7,
+)
+
+folium.TileLayer(
+    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
+    attr="USGS_topo",
+    name="USGS Topography",
+    show=False,
+).add_to(m)
+
+folium.TileLayer(
+    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attr="Esri",
+    name="Esri Imagery",
+    show=False,
+).add_to(m)
+
+folium.TileLayer(
+    tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    attr="OpenTopoMap",
+    name="OpenTopoMap",
+    show=False,
+).add_to(m)
+
+# Assign a unique color to each basin for the map
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+
+n_basins = len(basin_polygons_4326)
+cmap = cm.get_cmap("tab20", n_basins)
+basin_ids = basin_polygons_4326["basin_id"].tolist()
+basin_color_map = {bid: mcolors.to_hex(cmap(i)) for i, bid in enumerate(basin_ids)}
+
+# Add basin polygons — unique color per basin, black outline
+folium.GeoJson(
+    basin_polygons_4326.to_json(),
+    name="Child Domains",
+    style_function=lambda x: {
+        "fillColor": basin_color_map[x["properties"]["basin_id"]],
+        "color": "black",
+        "weight": 2,
+        "fillOpacity": 0.3,
+    },
+    tooltip=folium.GeoJsonTooltip(
+        fields=["basin_id", "n_hrus", "n_segments", "n_pois"],
+        aliases=["Basin ID", "HRUs", "Segments", "POIs"],
+    ),
+    popup=folium.GeoJsonPopup(
+        fields=["basin_id", "n_hrus", "n_segments", "n_pois"],
+        aliases=["Basin ID", "HRUs", "Segments", "POIs"],
+    ),
+).add_to(m)
+
+# Add basin labels as a toggleable layer
+label_group = folium.FeatureGroup(name="Basin Labels", show=False)
+for _, row in basin_polygons_4326.iterrows():
+    centroid_pt = row["geometry"].representative_point()
+    folium.Marker(
+        location=[centroid_pt.y, centroid_pt.x],
+        icon=folium.DivIcon(
+            html=f'<div style="font-size:20px; font-weight:bold; '
+            f"white-space:nowrap; color:black; "
+            f"text-shadow: -1px -1px 0 white, 1px -1px 0 white, "
+            f'-1px 1px 0 white, 1px 1px 0 white;">'
+            f'{row["basin_id"]}</div>',
+            icon_size=(0, 0),
+            icon_anchor=(0, 0),
+        ),
+    ).add_to(label_group)
+label_group.add_to(m)
+
+# Add scale bar and layer control
+from folium.plugins import MeasureControl
+
+m.add_child(MeasureControl(position="bottomright"))
+folium.LayerControl().add_to(m)
+plugins.MiniMap(tile_layer="OpenStreetMap", position="topleft").add_to(m)
+
+# Add collapsible legend
+from branca.element import MacroElement, Template
+
+legend_items = "".join(
+    f'<li><span style="background:{color};width:18px;height:18px;'
+    f'display:inline-block;margin-right:8px;border:1px solid black;"></span>{bid}</li>'
+    for bid, color in basin_color_map.items()
+)
+legend_html = f"""
+{{% macro html(this, kwargs) %}}
+<div id="basin-legend" style="position:fixed; bottom:30px; left:30px; z-index:1000;
+            background:white; padding:10px; border:2px solid grey;
+            border-radius:5px; font-size:12px; max-height:400px;
+            overflow-y:auto;">
+    <b style="cursor:pointer;" onclick="
+        var content = document.getElementById('basin-legend-content');
+        if (content.style.display === 'none') {{
+            content.style.display = 'block';
+        }} else {{
+            content.style.display = 'none';
+        }}
+    ">Child Domains &#9660;</b>
+    <ul id="basin-legend-content" style="list-style:none; padding:0; margin:5px 0 0 0;">
+        {legend_items}
+    </ul>
+</div>
+{{% endmacro %}}
+"""
+legend = MacroElement()
+legend._template = Template(legend_html)
+m.get_root().add_child(legend)
+
+# Save a copy of the map to each child domain's hydrofabric folder
+for _, row in basin_polygons_4326.iterrows():
+    basin_id = row["basin_id"]
+    child_dir = root_dir / f"nhf_assist/hydrofabric_domain_data/{basin_id}"
+    child_dir.mkdir(parents=True, exist_ok=True)
+    map_path = child_dir / "child_domains_map.html"
+    m.save(str(map_path))
+
+print(f"Saved child domains map to {len(basin_polygons_4326)} child model folders.")
+m
 
 # %% [markdown]
 # ### Write each child domain as a layer in a geopackage
@@ -465,5 +635,7 @@ if seg_overlaps:
         print(f"    model_seg_idx {seg_idx}: {basins}")
 else:
     print("  [PASS] No segment overlap between child domains.")
+
+# %%
 
 # %%
