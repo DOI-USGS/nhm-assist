@@ -151,13 +151,42 @@ for file in model_file_list:
 # import pathlib as pl
 
 # %% [markdown]
-# ### Read `prior_mc.pst`
+# # Add Localization Matrix for PEST++ IES
+#
+# This notebook constructs a localization matrix (`loc.mat`) that restricts which
+# parameters can be updated by which observations during the PEST++ IES ensemble
+# update step. Localization prevents spurious correlations between physically
+# unrelated parameter-observation pairs from degrading the estimation.
+#
+# **Output files:**
+# - `loc.mat` — The localization matrix in PEST++ ASCII matrix format.
+# - `prior_mc_loc.pst` — Updated control file that references the localization matrix.
+# - `localization_group_lookup.csv` — Human-readable mapping of parameter/observation
+#   group assignments for documentation.
+#
+# **How localization works in PEST++ IES:**
+# The localization matrix is a binary (0/1) matrix where rows are observation groups
+# and columns are parameter groups. A value of 1 means that observation group can
+# inform that parameter group during the ensemble update. A value of 0 blocks the
+# update pathway, preventing physically implausible correlations from influencing
+# parameter adjustments.
+#
+# **Workflow steps:**
+# 1. Load the existing control file (`prior_mc.pst`).
+# 2. Read the base localization configuration from `localization_groups.csv`.
+# 3. Identify unique parameter-observation group combinations.
+# 4. Reassign parameter group names based on their localization behavior.
+# 5. Build the localization matrix and write to `loc.mat`.
+# 6. Update the control file with the localizer reference and write `prior_mc_loc.pst`.
+
+# %% [markdown]
+# ## Load the Control File
 
 # %%
 pst = pyemu.Pst(str(pestpp_model_dir / "prior_mc.pst"))
 
 # %% [markdown]
-# ### Make parameter (pars) and observation (obs) data objects
+# ### Extract parameter and observation data from the PST object
 
 # %%
 pars = pst.parameter_data
@@ -170,7 +199,9 @@ obs = pst.observation_data
 pst.obs_groups
 
 # %% [markdown]
-# ### Read in the base localization matrix
+# ## Read the Base Localization Configuration
+# The `localization_groups.csv` defines which parameter types are informed by which
+# observation groups (1 = allowed, 0 = blocked).
 
 # %%
 base_loc = pd.read_csv(ancillary_dir / "localization_groups.csv", index_col=0)
@@ -186,8 +217,9 @@ base_loc = base_loc.loc[
 print(base_loc)
 
 # %% [markdown]
-# ### Find the unique combinations of observations
-# Get a little creative with transposes and add a row with the combos of obs
+# ## Identify Unique Parameter-Observation Combinations
+# Parameters that share the same set of informing observation groups are placed
+# into a common "super-group" for localization purposes.
 
 # %%
 base_loc = base_loc.T
@@ -204,13 +236,13 @@ for i in base_loc.par_obs_combo.values:
         all_combos.append(i)
 
 # %% [markdown]
-# ### now just make par group names according to combinations of obs
+# ### Assign group names to parameter-observation combinations
 
 # %%
 group_lookup = {f"obs_combo_{i+1}": j for i, j in enumerate(all_combos)}
 
 # %% [markdown]
-# ### assign the group names to the parameter base types according to the cols of the base localization matrix
+# ### Map parameter types to their localization group
 
 # %%
 base_loc["par_obs_group"] = [
@@ -218,7 +250,7 @@ base_loc["par_obs_group"] = [
 ]
 
 # %% [markdown]
-# ### now we have a list of groups for parameters
+# ### Build the parameter group name mapping
 
 # %%
 new_par_groups = dict(
@@ -226,7 +258,7 @@ new_par_groups = dict(
 )  # mapping a new group name for each par type.
 
 # %% [markdown]
-# ### set up mapping for localization groups
+# ### Create descriptive group labels and export lookup table
 
 # %%
 # assign meaningful descriptive names to the parameter supergroups
@@ -272,13 +304,13 @@ loc_mapping = pd.DataFrame(
 loc_mapping.to_csv(pestpp_model_dir / "localization_group_lookup.csv")
 
 # %% [markdown]
-# ### and we can cast the base_loc matrix back to original orientation and drop these names
+# ### Reset the base localization matrix orientation
 
 # %%
 base_loc = base_loc.drop(columns=["par_obs_combo", "par_obs_group"]).T
 
 # %% [markdown]
-# ### so, update the parameter groupnames
+# ### Update parameter group names in the PST object
 
 # %%
 for k, v in new_par_groups.items():
@@ -289,7 +321,7 @@ pars.pargp.unique()
 
 
 # %% [markdown]
-# ### make sure we didn't miss any parameters in the groupings
+# ### Verify no parameters were left ungrouped
 
 # %%
 assert "pargp" not in pars.pargp.unique()
@@ -298,13 +330,13 @@ assert "pargp" not in pars.pargp.unique()
 base_loc.columns
 
 # %% [markdown]
-# ### make the final localization matrix
+# ## Build the Final Localization Matrix
 
 # %%
 locmat = pd.DataFrame(0, base_loc.index, group_lookup.keys())
 
 # %% [markdown]
-# ### loop over the groups and assign 1s where obs line up with par groups
+# ### Populate the matrix (1 where obs group informs parameter group)
 
 # %%
 for k, v in group_lookup.items():
@@ -315,13 +347,15 @@ for k, v in group_lookup.items():
 locmat
 
 # %% [markdown]
-# ### finally save it out to a text format
+# ### Write `loc.mat` in PEST++ ASCII matrix format
 
 # %%
 pyemu.Matrix.from_dataframe(locmat).to_ascii(str(pestpp_model_dir / "loc.mat"))
 
 # %% [markdown]
-# ### and refer to it in the PST file (TODO: add writing out the PST file)
+# ## Write Updated Control File and Run Verification
+# Add the localizer reference to the PST and write `prior_mc_loc.pst`.
+# Run with `noptmax=0` to verify everything is consistent.
 
 # %%
 pst.pestpp_options["ies_localizer"] = "loc.mat"

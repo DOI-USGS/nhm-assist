@@ -29,17 +29,42 @@ pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+# Find and set the "nhm-assist" root directory
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+
+
+from assist.nhf.nhm_hydrofabric_v2 import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+
+from assist.nhf.nhm_assist_utilities_v2 import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
+
+from assist.nhf import efc
+
+# import topojson
+
+
+config = load_subdomain_config(root_dir)
+# con.print(config)
+
 
 import pandas as pd
-import shutil
-import pywatershed as pws
 import xarray as xr
 import numpy as np
 import datetime
+import shutil
 
-# import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -50,20 +75,19 @@ with redirect_stdout(f):
 # Find and set the "nhm-assist" root directory
 # Find the repo root via the editable-installed `assist` package — robust
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
-from assist.workspace.bridge import resolve_project_notebook_context
-from assist.workspace.service import get_active_model_root
 
-project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
-if project_context:
-    active_model_root = get_active_model_root(
-        project_context["workspace_root"], project_context["project_root"].name
-    )
-    config_root = active_model_root / "config"
-else:
-    config_root = root_dir
+# from assist.workspace.bridge import resolve_project_notebook_context
+# from assist.workspace.service import get_active_model_root
+
+# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+# if project_context:
+#     active_model_root = get_active_model_root(
+#         project_context["workspace_root"], project_context["project_root"].name
+#     )
+#     config_root = active_model_root / "config"
+# else:
+#     config_root = root_dir
 
 from dotenv import load_dotenv
 
@@ -75,13 +99,113 @@ else:
 
 load_dotenv(dotenv_path=dotenv_path)
 
-###########################################################################
+############################################
 
 
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
-from assist.nhm import efc
+# from assist.nhm.nhm_assist_utilities import load_subdomain_config
+# from assist.nhm import efc
 
 config = load_subdomain_config(root_dir)
+
+# import sys
+# import os
+# import pathlib as pl
+# import warnings
+
+# import pandas as pd
+# import xarray as xr
+# import numpy as np
+# import datetime
+
+# import shutil
+
+# warnings.filterwarnings("ignore")
+# from rich.console import Console
+
+# con = Console()
+# from rich import pretty
+
+# pretty.install()
+# import jupyter_black
+# from contextlib import redirect_stdout
+# import io
+
+# f = io.StringIO()
+# with redirect_stdout(f):
+#     import pywatershed as pws
+
+# jupyter_black.load()
+# # Find and set the "nhm-assist" root directory
+# # Find the repo root via the editable-installed `assist` package — robust
+# # against sibling clones, cwd quirks, and arbitrary checkout directory names.
+# import assist as _assist_pkg
+
+# root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+
+
+# from assist.nhf.nhm_hydrofabric_v2 import (
+#     make_hf_map_elements,
+#     evaluate_and_fix_nhru_geometry,
+# )
+# from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+
+# from assist.nhf.nhm_assist_utilities_v2 import (
+#     load_subdomain_config,
+#     find_missing_gage_info,
+#     fetch_non_ref_npoigages_info,
+#     fetch_ref_npoigages_info,
+# )
+
+# from assist.nhf import efc
+
+# # import topojson
+
+
+# config = load_subdomain_config(root_dir)
+# # con.print(config)
+
+# from dotenv import load_dotenv
+
+# # Use home directory for Nebari, otherwise use repo root_dir
+# if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+#     dotenv_path = pl.Path.home() / ".env"
+# else:
+#     dotenv_path = root_dir / ".env"
+
+# load_dotenv(dotenv_path=dotenv_path)
+
+# ############################################
+
+# import assist as _assist_pkg
+
+# root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+
+# from assist.workspace.bridge import resolve_project_notebook_context
+# from assist.workspace.service import get_active_model_root
+
+# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+# if project_context:
+#     active_model_root = get_active_model_root(
+#         project_context["workspace_root"], project_context["project_root"].name
+#     )
+#     config_root = active_model_root / "config"
+# else:
+#     config_root = root_dir
+
+# from dotenv import load_dotenv
+
+# # Use home directory for Nebari, otherwise use repo root_dir
+# if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+#     dotenv_path = pl.Path.home() / ".env"
+# else:
+#     dotenv_path = root_dir / ".env"
+
+# load_dotenv(dotenv_path=dotenv_path)
+
+# ###########################################################################
+
+# %%
+root_dir
 
 # %% [markdown]
 # # Prepare Observations for PEST++ IES Parameter Estimation
@@ -122,7 +246,7 @@ config = load_subdomain_config(root_dir)
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = root_dir / "pestpp_ies_calibration"
+pestpp_dir = pl.Path("../").resolve()
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -244,6 +368,8 @@ ofp = open(
 # in the pest observation file (notebook 3)
 ofp = open(pestpp_model_dir / "allobs_bounds.dat", "w")
 
+# %%
+
 # %% [markdown]
 # ## Format HRU Observations
 # The following cells read each observation NetCDF file, construct structured
@@ -257,22 +383,31 @@ ofp = open(pestpp_model_dir / "allobs_bounds.dat", "w")
 # %%
 cdat = xr.open_dataset(obsdir / "AET_monthly.nc")
 # set up the indices in sequence
+cdat
+
+# %%
+cdat = xr.open_dataset(obsdir / "AET_monthly.nc")
+# set up the indices in sequence
 inds = [
     f"actet_mon:{i.year}_{i.month}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
 
 # Write the observations to the observations.dat file for use in creating the instruction file
-actet_mon = (cdat.aet_max + cdat.aet_min) / 2
+actet_mon = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(actet_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     ofp.write("obsname    obsval\n")  # writing a header for the file
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 
-obsvals_max = np.ravel(cdat.aet_max, order="C")  # flattens the 2D array to a 1D array
-obsvals_min = np.ravel(cdat.aet_min, order="C")  # flattens the 2D array to a 1D array
+obsvals_max = np.ravel(
+    cdat.upper_bound, order="C"
+)  # flattens the 2D array to a 1D array
+obsvals_min = np.ravel(
+    cdat.lower_bound, order="C"
+)  # flattens the 2D array to a 1D array
 obs_bounds_df = pd.DataFrame(
     {
         "obsname": inds,
@@ -280,6 +415,9 @@ obs_bounds_df = pd.DataFrame(
         "greater_than": obsvals_min,
     }
 )
+
+# %%
+obs_bounds_df
 
 # %% [markdown]
 # ### AET — Mean Monthly (climatological average by month)
@@ -290,17 +428,21 @@ cdat = xr.open_dataset(obsdir / "AET_mean_monthly.nc")
 inds = [
     f"actet_mean_mon:{i}:{j}"
     for i in cdat.indexes["month"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
 
-actet_mean_mon = (cdat.aet_max + cdat.aet_min) / 2
+actet_mean_mon = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(actet_mean_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 
-obsvals_max = np.ravel(cdat.aet_max, order="C")  # flattens the 2D array to a 1D array
-obsvals_min = np.ravel(cdat.aet_min, order="C")  # flattens the 2D array to a 1D array
+obsvals_max = np.ravel(
+    cdat.upper_bound, order="C"
+)  # flattens the 2D array to a 1D array
+obsvals_min = np.ravel(
+    cdat.lower_bound, order="C"
+)  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
     {
@@ -324,19 +466,19 @@ cdat = xr.open_dataset(obsdir / "RCH_annual.nc")
 inds = [
     f"recharge_ann:{i.year}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
 
-recharge_ann = (cdat.recharge_max_norm + cdat.recharge_min_norm) / 2
+recharge_ann = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(recharge_ann, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 obsvals_max = np.ravel(
-    cdat.recharge_max_norm, order="C"
+    cdat.upper_bound, order="C"
 )  # flattens the 2D array to a 1D array
 obsvals_min = np.ravel(
-    cdat.recharge_min_norm, order="C"
+    cdat.lower_bound, order="C"
 )  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
@@ -358,20 +500,20 @@ cdat = xr.open_dataset(obsdir / "Soil_Moisture_monthly.nc")
 inds = [
     f"soil_moist_mon:{i.year}_{i.month}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
 
-soil_moist_mon = (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
+soil_moist_mon = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(soil_moist_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 
 obsvals_max = np.ravel(
-    cdat.soil_moist_max_norm, order="C"
+    cdat.upper_bound, order="C"
 )  # flattens the 2D array to a 1D array
 obsvals_min = np.ravel(
-    cdat.soil_moist_min_norm, order="C"
+    cdat.lower_bound, order="C"
 )  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
@@ -393,19 +535,19 @@ cdat = xr.open_dataset(obsdir / "Soil_Moisture_annual.nc")
 inds = [
     f"soil_moist_ann:{i.year}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
 
-soil_moist_ann = (cdat.soil_moist_max_norm + cdat.soil_moist_min_norm) / 2
+soil_moist_ann = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(soil_moist_ann, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 obsvals_max = np.ravel(
-    cdat.soil_moist_max_norm, order="C"
+    cdat.upper_bound, order="C"
 )  # flattens the 2D array to a 1D array
 obsvals_min = np.ravel(
-    cdat.soil_moist_min_norm, order="C"
+    cdat.lower_bound, order="C"
 )  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
@@ -426,18 +568,18 @@ cdat = xr.open_dataset(obsdir / "hru_streamflow_monthly.nc")
 inds = [
     f"runoff_mon:{i.year}_{i.month}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
-runoff_mon = (cdat.runoff_max + cdat.runoff_min) / 2
+runoff_mon = (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
 obsvals_max = np.ravel(
-    cdat.runoff_max, order="C"
+    cdat.upper_bound, order="C"
 )  # flattens the 2D array to a 1D array
 obsvals_min = np.ravel(
-    cdat.runoff_min, order="C"
+    cdat.lower_bound, order="C"
 )  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
@@ -450,27 +592,35 @@ obs_bounds_df_new = pd.DataFrame(
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 
 # %% [markdown]
-# ### Snow Covered Area (SCA) — Daily
-# NaN values from cloud-filtered pixels are filled with -9999 (a PEST++ no-data
-# sentinel). These observations will be zero-weighted in the PEST++ control file
-# where the sentinel value appears.
+# ### Snow Water Equivalent (SWE) — 5-day Average
+# NaN values are filled with -9999 (a PEST++ no-data sentinel). These
+# observations will be zero-weighted in the PEST++ control file where the
+# sentinel value appears.
 
 # %%
-cdat = xr.open_dataset(obsdir / "SCA_daily.nc")
+cdat = xr.open_dataset(obsdir / "SWE_5day_avg.nc")
+cdat
+
+# %%
+cdat = xr.open_dataset(obsdir / "SWE_5day_avg.nc")
 cdat = cdat.fillna(-9999)
 # set up the indices in sequence
 inds = [
-    f"sca_daily:{i.year}_{i.month}_{i.day}:{j}"
+    f"swe_5day:{i.year}_{i.month}_{i.day}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhru"]
+    for j in cdat.indexes["nhm_id"]
 ]
-sca_daily = (cdat.SCA_max + cdat.SCA_min) / 2
-varvals = np.ravel(sca_daily, order="C")  # flattens the 2D array to a 1D array
+swe_5day = (cdat.upper_bound + cdat.lower_bound) / 2
+varvals = np.ravel(swe_5day, order="C")  # flattens the 2D array to a 1D array
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
 
-obsvals_max = np.ravel(cdat.SCA_max, order="C")  # flattens the 2D array to a 1D array
-obsvals_min = np.ravel(cdat.SCA_min, order="C")  # flattens the 2D array to a 1D array
+obsvals_max = np.ravel(
+    cdat.upper_bound, order="C"
+)  # flattens the 2D array to a 1D array
+obsvals_min = np.ravel(
+    cdat.lower_bound, order="C"
+)  # flattens the 2D array to a 1D array
 
 obs_bounds_df_new = pd.DataFrame(
     {
@@ -481,6 +631,7 @@ obs_bounds_df_new = pd.DataFrame(
 )
 
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
+cdat.close()
 
 # %%
 # Write the bounds_df
@@ -500,20 +651,96 @@ obs_bounds_df.to_csv(pestpp_model_dir / "allobs_bounds.dat", index=False)
 # to create the `sf_efc.nc` file with EFC codes.
 
 # %%
-seg_outflow_start = "1999-10-01"
-seg_outflow_end = "2010-09-30"
+_sf_efc_raw = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc")
+_sf_efc_raw
+
+# %%
+# Summary table: for each gage in sf_efc.nc, show the begin/end dates of
+# available discharge data, the count of valid (non-NaN) values, the
+# number of days with no data in that range, and whether it is a calibration gage.
+_sf_efc_raw = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc")
+
+# Load calibration gage info from the metadata spreadsheet
+_metadata_dir = config["model_dir"] / "metadata"
+_xls_path = _metadata_dir / f"npoigages_cal_list_{config['subdomain']}.xlsx"
+if not _xls_path.exists():
+    _xls_path = _metadata_dir / f"npoigages_cal_list_{config['subdomain']}.xls"
+if _xls_path.exists():
+    _cal_df = pd.read_excel(_xls_path, dtype={"poi_gage_id": str})
+    # Ensure poi_gage_id is clean strings
+    _cal_df["poi_gage_id"] = _cal_df["poi_gage_id"].str.strip()
+    # Build a lookup dict: poi_gage_id -> ohm_cal value
+    _cal_lookup = dict(
+        zip(
+            _cal_df["poi_gage_id"],
+            _cal_df["ohm_cal"].astype(str).str.strip().str.lower(),
+        )
+    )
+else:
+    _cal_lookup = {}
+    print(f"Warning: calibration spreadsheet not found at {_xls_path}")
+
+_summary_rows = []
+for poi in _sf_efc_raw.poi_gage_id.values:
+    _poi_str = str(poi).strip()
+    _discharge = _sf_efc_raw["discharge"].sel(poi_gage_id=poi)
+    _valid_mask = _discharge.notnull()
+    _valid_times = _discharge.time.where(_valid_mask, drop=True)
+    _is_cal = _cal_lookup.get(_poi_str, "no")
+    if _valid_times.size == 0:
+        _summary_rows.append(
+            {
+                "poi_gage_id": _poi_str,
+                "begin_date": None,
+                "end_date": None,
+                "n_valid": 0,
+                "n_missing": int(_discharge.time.size),
+                "calibration_gage": _is_cal,
+            }
+        )
+    else:
+        _begin = pd.to_datetime(_valid_times.min().values)
+        _end = pd.to_datetime(_valid_times.max().values)
+        _n_valid = int(_valid_mask.sum().values)
+        _total_days = (_end - _begin).days + 1
+        _n_missing = _total_days - _n_valid
+        _summary_rows.append(
+            {
+                "poi_gage_id": _poi_str,
+                "begin_date": _begin.strftime("%Y-%m-%d"),
+                "end_date": _end.strftime("%Y-%m-%d"),
+                "n_valid": _n_valid,
+                "n_missing": _n_missing,
+                "calibration_gage": _is_cal,
+            }
+        )
+
+_sf_efc_raw.close()
+gage_summary_df = pd.DataFrame(_summary_rows)
+gage_summary_df
+
+# %%
+cal_gages = list(
+    gage_summary_df.loc[gage_summary_df["calibration_gage"] == "yes", "poi_gage_id"]
+)
+cal_gages
+
+# %%
+# These can be tailored for any specific model
+seg_outflow_start = "2000-01-01"
+seg_outflow_end = "2021-12-31"
 
 # seg_outflow_start = "2011-01-01"  # Note: For ease, the start and end dates must be same as those designated in
 # seg_outflow_end = "2022-12-31"  #    "the Create_pest_model_observation_file."
 
 ## Set up validation years
-start_water_year = pd.to_datetime(seg_outflow_start).year + 1
-end_water_year = pd.to_datetime(seg_outflow_end).year
-streamflow_water_years = np.array(range(start_water_year, end_water_year + 1))
+start_year = pd.to_datetime(seg_outflow_start).year
+end_year = pd.to_datetime(seg_outflow_end).year
+streamflow_years = np.array(range(start_year, end_year))
 
 ## We will choose even years as validation
-val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
-cal_water_years = [i for i in streamflow_water_years if i % 2 != 0]
+val_years = [i for i in streamflow_years if i % 2 == 0]
+cal_years = [i for i in streamflow_years if i % 2 != 0]
 
 # read in param file
 param_file = config["model_dir"] / "myparam.param"
@@ -523,15 +750,76 @@ paramfile_poi_gage_id_list = pardat.parameters.get("poi_gage_id").tolist()
 
 
 cdat = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc").sel(
-    time=slice(seg_outflow_start, seg_outflow_end),
+    time=slice(seg_outflow_start, seg_outflow_end)
 )
-cdat = cdat.sel(poi_id=cdat.poi_id.isin(paramfile_poi_gage_id_list))
-cdat = cdat.reindex(poi_id=paramfile_poi_gage_id_list)
+
+cdat = cdat.sel(poi_gage_id=cdat.poi_gage_id.isin(cal_gages))
+cdat = cdat.reindex(poi_gage_id=cal_gages)
 
 cdat = cdat[["discharge", "efc", "high_low"]]
 
+# %% [markdown]
+# ## Make 5-day averages for streamflow values
+#
+# Non-overlapping 5-day resampling (`resample(time="5D")`) is applied to the
+# daily streamflow observations, matching the same averaging approach used for
+# SWE in the `00_Subset_NHM_baselines_gfv2` notebook. Each 5-day bin produces
+# a single value; the 2 days before and 2 days after are consumed into the bin
+# (not retained as separate timesteps).
+#
+# - **Discharge:** The mean of each 5-day bin. If any day in the bin has a
+#   NaN, the bin result is NaN (skipna=False).
+# - **EFC and high_low:** The most frequent (mode) classification value in
+#   each 5-day bin.
+# - **NaN handling:** Any 5-day bin containing a NaN in discharge is dropped
+#   from all three variables (discharge, efc, high_low) so they stay aligned.
+
 # %%
-cdat
+# Discharge: 5-day resample mean — do not skip NaN so incomplete bins produce NaN
+cdat_5day_discharge = cdat["discharge"].resample(time="5D").mean(skipna=False)
+
+# Create a mask of valid (non-NaN) 5-day discharge averages
+_valid_mask = cdat_5day_discharge.notnull()
+
+
+# efc and high_low: 5-day resample mode (most frequent value in each bin)
+def _resample_mode(da):
+    """Resample a DataArray to 5-day bins using the mode (most frequent value)."""
+    df = da.to_dataframe().unstack("poi_gage_id")
+    df.columns = df.columns.droplevel(0)
+
+    def _mode_agg(group):
+        return group.apply(
+            lambda col: col.mode().iloc[0] if not col.mode().empty else np.nan
+        )
+
+    resampled = df.resample("5D").apply(_mode_agg)
+
+    # Convert back to xarray
+    stacked = resampled.stack(dropna=False)
+    stacked.index.names = ["time", "poi_gage_id"]
+    return stacked.to_xarray()
+
+
+_efc_5day_da = _resample_mode(cdat["efc"])
+_hl_5day_da = _resample_mode(cdat["high_low"])
+
+# Combine into a single dataset and apply the discharge validity mask so that
+# any 5-day bin containing a NaN in discharge is dropped from all variables.
+cdat_5day = xr.Dataset(
+    {
+        "discharge": cdat_5day_discharge,
+        "efc": _efc_5day_da,
+        "high_low": _hl_5day_da,
+    }
+)
+
+# Apply the discharge validity mask to efc and high_low
+cdat_5day["efc"] = cdat_5day["efc"].where(_valid_mask)
+cdat_5day["high_low"] = cdat_5day["high_low"].where(_valid_mask)
+
+# Drop time steps where any gage has NaN (incomplete 5-day bins)
+cdat_5day = cdat_5day.dropna(dim="time", how="any")
 
 # %%
 moo = cdat.discharge.to_dataframe()
@@ -541,9 +829,12 @@ obs_poi_list = moo.index.get_level_values(0).unique().tolist()
 # %%
 # Creates a dataframe time series of monthly values (average daily rate for the month)
 cdat_monthly = cdat.resample(time="ME").mean(skipna=True)
-cdat_monthly["wateryear"] = [
-    (i + pd.DateOffset(30 + 31 + 31)).year for i in cdat_monthly.time.values
-]
+cdat_monthly
+
+# %%
+# Creates a dataframe time series of monthly values (average daily rate for the month)
+cdat_monthly = cdat.resample(time="ME").mean(skipna=True)
+cdat_monthly["year"] = [pd.to_datetime(i).year for i in cdat_monthly.time.values]
 
 # %%
 # Creates dataframe time series of mean monthly (mean of all jan, feb, mar....) for parameter estimation and validation
@@ -553,12 +844,12 @@ cdat_monthly["wateryear"] = [
 # pro-tip - gotta use sel with two conditions, but .values breaks the connection to the index using
 #           a boolean based on one condition to subset another
 cdat_monthly_val = cdat_monthly.sel(
-    time=cdat_monthly.wateryear.isin(val_water_years).values,
-    wateryear=cdat_monthly.wateryear.isin(val_water_years),
+    time=cdat_monthly.year.isin(val_years).values,
+    year=cdat_monthly.year.isin(val_years),
 )
 cdat_monthly_cal = cdat_monthly.sel(
-    time=cdat_monthly.wateryear.isin(cal_water_years).values,
-    wateryear=cdat_monthly.wateryear.isin(cal_water_years),
+    time=cdat_monthly.year.isin(cal_years).values,
+    year=cdat_monthly.year.isin(cal_years),
 )
 
 cdat_mean_monthly_cal = cdat_monthly_cal.groupby("time.month").mean(skipna=True)
@@ -568,7 +859,7 @@ cdat_mean_monthly_val = cdat_monthly_val.groupby("time.month").mean(skipna=True)
 cdat_mean_monthly_cal = cdat_mean_monthly_cal.fillna(-9999)
 cdat_mean_monthly_val = cdat_mean_monthly_val.fillna(-9999)
 cdat_monthly = cdat_monthly.fillna(-9999)
-cdat = cdat.fillna(-9999)
+cdat_5day = cdat_5day.fillna(-9999)
 
 # %%
 # streamflow_daily is followed by a suffix: "efc"_"high_low" integers
@@ -577,15 +868,17 @@ cdat = cdat.fillna(-9999)
 
 # set up the indices in sequence
 inds = [
-    f'_{int(cdat["efc"].sel(poi_id=j, time=i).item())}_{int(cdat["high_low"].sel(poi_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
-    for j in cdat.indexes["poi_id"]
-    for i in cdat.indexes["time"]
+    f'_{int(cdat_5day["efc"].sel(poi_gage_id=j, time=i).item())}_{int(cdat_5day["high_low"].sel(poi_gage_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
+    for j in cdat_5day.indexes["poi_gage_id"]
+    for i in cdat_5day.indexes["time"]
 ]
 
 # get the variable names
-# dvs = list(cdat.keys())
+# dvs = list(cdat_5day.keys())
 
-varvals = np.ravel(cdat["discharge"], order="C")  # flattens the 2D array to a 1D array
+varvals = np.ravel(
+    cdat_5day["discharge"], order="C"
+)  # flattens the 2D array to a 1D array
 
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [
@@ -597,7 +890,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # Now write to the pest obs file
 inds = [
     f"{i.year}_{i.month}:{j}"
-    for j in cdat_monthly.indexes["poi_id"]
+    for j in cdat_monthly.indexes["poi_gage_id"]
     for i in cdat_monthly.indexes["time"]
 ]  # set up the indices in sequence
 varvals = np.ravel(
@@ -613,7 +906,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_cal.indexes["poi_id"]
+    for j in cdat_mean_monthly_cal.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_cal.indexes["month"]
 ]
 varvals = np.ravel(
@@ -629,7 +922,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_val.indexes["poi_id"]
+    for j in cdat_mean_monthly_val.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_val.indexes["month"]
 ]
 varvals = np.ravel(
