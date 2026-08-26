@@ -674,6 +674,7 @@ def create_waterdata_sf_df(
         waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
+        poi_df=poi_df,
     )
 
     if waterdata_cache_file.exists():
