@@ -51,7 +51,6 @@ jobs:
       fail-fast: false
       matrix:
         os: ["macos-latest", "windows-latest", "ubuntu-latest"]
-        python-version: ["3.11"] #  "3.11"]
 
     defaults:
       run:
@@ -61,12 +60,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup micromamba
-        uses: mamba-org/setup-micromamba@v1
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0
         with:
-          environment-file: environment.yaml
-          cache-environment: true
-          cache-downloads: true
+          environment: dev
+          cache: true
 
       # Osx and Linux start with nearly the same speed, Windows is slower.
       - name: Scheduled - delay Linux to not hit ORDWR servers simultaneously
@@ -74,7 +72,5 @@ jobs:
         run: |
           python -c "import time; time.sleep(210)"
 
-      - name: Test notebooks
-        working-directory: .github/scripts
-        run: |
-          python test_notebooks.py
+      - name: Run tests
+        run: pixi run test
