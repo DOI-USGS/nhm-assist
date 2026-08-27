@@ -36,7 +36,15 @@ maintainer's action.
 
 ## CI
 
-CI is in transition between GitHub Actions (`.github/workflows/`) and
-GitLab CI. Don't assume either is the current, authoritative, passing gate
-without checking this branch and its target — the two have drifted out of
-sync with each other across recent branches.
+CI currently runs on GitHub Actions (`.github/workflows/ci.yaml`): pixi +
+the `tests/` suite. This only fires on pushes to the read-only GitHub
+mirror (`github.com/DOI-USGS/nhm-assist`) — GitLab, where development
+actually happens, does not read `.github/workflows/*` at all, so merge
+requests on `code.usgs.gov` currently get no CI signal.
+
+A GitLab CI migration is designed but not yet implemented — see
+`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md` for the
+design and its open questions. Don't delete or "fix" the GitHub Actions
+workflow to work around this gap; the plan is to replace it with
+`.gitlab-ci.yml` once that design is implemented, not to patch around GitLab
+not reading it.

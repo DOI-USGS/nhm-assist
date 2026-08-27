@@ -1,3 +1,14 @@
+# Primary development, issues, and merge review for this repository now
+# happen on GitLab (code.usgs.gov/wma/hytest/nhm-assist). GitLab does not
+# read this file at all -- it only ever executes .gitlab-ci.yml -- so this
+# workflow only fires on pushes to the read-only GitHub mirror
+# (github.com/DOI-USGS/nhm-assist), not on GitLab merge requests.
+#
+# A GitLab CI migration is designed but not yet implemented; see
+# docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md for the
+# design and its open questions. Until that lands, this workflow is kept
+# as the real, working CI (pixi + pytest) rather than deleted, so its
+# schedule/matrix/logic aren't lost as reference.
 name: NHM-Assist continuous integration
 on:
   # run at 6 AM UTC every day
