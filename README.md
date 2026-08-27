@@ -1,4 +1,4 @@
-<img src="./doc/assets/nhm-assist-logo.jpg" width="100" align="left">
+<img src="./docs/assets/nhm-assist-logo.jpg" width="100" align="left">
 
 # nhm-assist
 
@@ -123,8 +123,8 @@ In workspace mode, notebook runtime files are written under:
 
 The shared project notebooks resolve the active model from `project_config/active_model.yaml`, then write generated gage files, model outputs, and exported HTML maps and plots into that model's runtime area.
 
-Detailed NHM workspace instructions are in [doc/pixi.md](./doc/pixi.md).
-Contributor onboarding for the new structure is in [doc/pixi-developer-guide.md](./doc/pixi-developer-guide.md).
+Detailed NHM workspace instructions are in [docs/pixi.md](./docs/pixi.md).
+Contributor onboarding for the new structure is in [docs/pixi-developer-guide.md](./docs/pixi-developer-guide.md).
 
 ## Developing nhm-assist notebooks
 

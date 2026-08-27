@@ -483,10 +483,9 @@ data_dependencies/usgs_nldi_gages.gpkg
 
 CLAUDE.md
 .worktrees/
-doc/*.md
-docs/
+# doc/*.md
+# docs/
 tests/
-.DS_Store
 /nhf_assist/notebook_scripts
 /nhf_assist/src
 /notebook_scripts
