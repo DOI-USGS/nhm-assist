@@ -42,6 +42,24 @@ Finally, no pixi task should launch Jupyter Lab itself anymore (previously
 and print instructions for the user to open Jupyter themselves (in whatever
 tool they use — CLI, VS Code, Kiro).
 
+**Update (2026-08-28):** `pyproject.toml` has changed since this design was
+drafted, but nothing below needs revision as a result. `[project.dependencies]`
+is now the single authoritative runtime contract in PyPI names (commit
+`4cacd6d`, 2026-08-21), with `[tool.pixi.dependencies]` trimmed to just the
+conda-sourced compiled packages; `jupytext`, `jupyterlab`, `jupyter-server`,
+`ipython`, and `ipywidgets` moved into that PyPI list, reaching both the
+`default` and `dev` pixi environments via each feature's editable
+`nhm-assist` self-install (the `prod` feature's self-install also became
+`editable = true` in `bfa17d9`, matching what `dev` already had). `ipykernel`
+is still pulled in transitively via `jupyterlab` in both environments, so
+Design section 4's "no new dependency required" still holds. Separately, CI
+was migrated off `environment.yaml` onto pixi (`c9d6620`, 2026-08-27; see
+`docs/superpowers/specs/2026-08-21-ci-pixi-migration-design.md`), and a
+GitLab CI migration is in flight
+(`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md`). Neither
+touches the notebook/jupytext workflow this design covers. The `[tool.pixi.tasks.*]`
+table format this design's `dev-mode` snippet relies on is unchanged.
+
 ## Goals
 
 1. Contributors dogfood the real end-user workflow (`setup` /
