@@ -1540,6 +1540,29 @@ def fetch_FMI_npoigages_info(root_dir, model_dir, gages_df):
 
         #### READ FMI table (.csv) for selected gages
         fmi_df_file = root_dir / "data_dependencies" / "TableA2_FlowManagementIndex.csv"
+
+        if not fmi_df_file.exists():
+            # Neither the per-model cache nor the source FMI table is available,
+            # so there are no flow-management gages to report. Mirrors the skip
+            # in 2_model_hydrofabric_visualization_FMI.py rather than raising.
+            print(
+                f"  [SKIP] neither {fmi_gages_child_info_file_path.name} nor "
+                f"{fmi_df_file.name} found for this model \u2014 skipping FMI gages."
+            )
+            return pd.DataFrame(
+                columns=[
+                    "poi_agency",
+                    "poi_gage_id",
+                    "storage_index",
+                    "use_index",
+                    "flow_management_index",
+                    "poi_name",
+                    "latitude",
+                    "longitude",
+                    "drainage_area",
+                    "drainage_area_contrib",
+                ]
+            )
         
         cols = {"gageid": np.str_,
                 "name": np.str_,
