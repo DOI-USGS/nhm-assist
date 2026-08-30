@@ -20,6 +20,13 @@ import pathlib as pl
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# Provide a display() fallback when running outside Jupyter
+try:
+    display
+except NameError:
+    display = print
+
 from rich.console import Console
 
 con = Console()
@@ -34,6 +41,7 @@ jupyter_black.load()
 # Find the repo root via the editable-installed `assist` package — robust
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
+
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 # from assist.nhf.sf_data_retrieval_v2_1 import fetch_single_nwis_gage
@@ -611,7 +619,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Rogue_River"  # Powder_River, John_Day_River
+child_name = "UmatillaRiver"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -1563,6 +1571,87 @@ else:
     print(
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
+
+# %% [markdown]
+# ##### Add ECY streamflow gages
+# Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's FMI gages
+
+# %%
+# ECY_gages_path = pl.Path(f"{parent_dir}/npoigages_data/ECY_gages/ECY_gages.csv")
+STREAMFLOW_URL = "https://services.arcgis.com/6lCKYNJLvwTXqrmp/arcgis/rest/services/EAP/FeatureServer/3/query?outFields=*&where=1%3D1&f=geojson"
+
+print("Downloading ECY streamflow stations...")
+ECY_gage_data_gdf = gpd.read_file(STREAMFLOW_URL)
+
+rename_map = {
+    "StationCode": "poi_gage_id",
+    "StationName": "poi_name",
+    "LatitudeDecimal": "latitude",
+    "LongitudeDecimal": "longitude",
+}
+
+ECY_gage_data_gdf = ECY_gage_data_gdf[list(rename_map.keys()) + ["geometry"]].rename(
+    columns=rename_map
+)
+
+ECY_gage_data_gdf["poi_agency"] = "ECY"
+ECY_gage_data_gdf["drainage_area"] = np.nan
+ECY_gage_data_gdf["drainage_area_contrib"] = np.nan
+
+ECY_gage_data_gdf = ECY_gage_data_gdf.astype(
+    {
+        "poi_gage_id": np.str_,
+        "poi_name": np.str_,
+        "poi_agency": np.str_,
+        "latitude": float,
+        "longitude": float,
+        "drainage_area": float,
+        "drainage_area_contrib": float,
+    }
+)
+
+print(f"Downloaded {len(ECY_gage_data_gdf)} stations")
+new_gages_gdf = ECY_gage_data_gdf.to_crs(seg_child_gdf.crs)
+
+new_gages_list = new_gages_gdf["poi_gage_id"].astype(str).tolist()
+new_gages_list = [
+    x
+    for x in list(set(new_gages_list))
+    if x not in list(npoigages_params_df.poi_gage_id)
+]
+
+
+###### Make new gages geodataframe, create needed npoigages params and concatenate to existing
+new_gages_gdf["poi_type"] = 1
+new_gages_gdf = gpd.clip(new_gages_gdf, aoi_gdb)
+
+if len(new_gages_gdf) != 0:
+    new_npoigages_params = find_nearest_endpoint(
+        new_gages_gdf, seg_child_gdf, line_id_col="nhm_seg_id"
+    )
+    npoigages_params_df_temp = pd.concat(
+        [npoigages_params_df, new_npoigages_params], ignore_index=True
+    )
+    npoigages_params_df = npoigages_params_df_temp.copy()
+
+    ######## Make npoigages_info_df and concatenate to existing
+    info_cols = [
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+        "drainage_area",
+        "drainage_area_contrib",
+    ]
+    new_gages_info_df = new_gages_gdf[new_gages_gdf["poi_gage_id"].isin(new_gages_list)]
+    new_gages_info_df = new_gages_info_df[info_cols]
+    npoigages_info_df_temp = pd.concat(
+        [npoigages_info_df, new_gages_info_df], ignore_index=True
+    )
+    npoigages_info_df = npoigages_info_df_temp.copy()
+else:
+    print("There are no ECY gages that intersect the child domain.")
 
 # %%
 npoigages_info_df

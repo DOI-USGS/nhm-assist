@@ -228,6 +228,7 @@ selected_output_variables = [
     "net_ppt",
     "net_rain",
     "net_snow",
+    "pkwater_equiv",
     "recharge",
     "seg_outflow",
     "snowmelt",

@@ -497,3 +497,7 @@ pestpp_ies_calibration/parameters.json
 
 # .kiro files
 .kiro/
+
+# Personal issue tracking
+issues_for_eddie.md
+/hydrofabric_domain_data

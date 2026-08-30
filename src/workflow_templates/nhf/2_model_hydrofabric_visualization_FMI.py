@@ -166,21 +166,22 @@ con.print(
 poi_df
 
 # %%
-map_file = make_hf_map(
-    root_dir=root_dir,
-    hru_gdf=hru_gdf,
-    # HW_basins_gdf=HW_basins_gdf,
-    # HW_basins=HW_basins,
-    poi_df=poi_df,
-    poi_gage_id_sel="",
-    seg_gdf=seg_gdf,
-    waterdata_gages_aoi=waterdata_gages_aoi,
-    gages_df=gages_df,
-    html_maps_dir=config["html_maps_dir"],
-    Folium_maps_dir=config["Folium_maps_dir"],
-    param_filename=config["param_filename"],
-    subdomain=config["subdomain"],
-)
+if not os.environ.get("NHM_BATCH_MODE"):
+    map_file = make_hf_map(
+        root_dir=root_dir,
+        hru_gdf=hru_gdf,
+        # HW_basins_gdf=HW_basins_gdf,
+        # HW_basins=HW_basins,
+        poi_df=poi_df,
+        poi_gage_id_sel="",
+        seg_gdf=seg_gdf,
+        waterdata_gages_aoi=waterdata_gages_aoi,
+        gages_df=gages_df,
+        html_maps_dir=config["html_maps_dir"],
+        Folium_maps_dir=config["Folium_maps_dir"],
+        param_filename=config["param_filename"],
+        subdomain=config["subdomain"],
+    )
 
 # %%
 poi_df
@@ -326,43 +327,46 @@ cols = dict(
     zip(col_names, col_types)
 )  # Creates a dictionary of column header and datatype called below.
 
-fmi_df = pd.read_csv(
-    fmi_df_file,
-    dtype=cols,
-    usecols=[
+try:
+    fmi_df = pd.read_csv(
+        fmi_df_file,
+        dtype=cols,
+        usecols=[
+            "storage_index",
+            "use_index",
+            "flow_management_index",
+            "poi_gage_id",
+        ],
+    )
+
+    npoigages_df = fmi_df.merge(
+        npoigages_df,
+        left_on="poi_gage_id",
+        right_on="poi_gage_id",
+        how="outer",
+    )
+    npoigages_df["ohm_cal"] = "no"
+    cols = [
+        "huc10",
+        "poi_gage_id",
+        "ohm_cal",
+        "gagesII",
+        "flow_management_index",
         "storage_index",
         "use_index",
-        "flow_management_index",
-        "poi_gage_id",
-    ],
-)
-
-npoigages_df = fmi_df.merge(
-    npoigages_df,
-    left_on="poi_gage_id",
-    right_on="poi_gage_id",
-    how="outer",
-)
-npoigages_df["ohm_cal"] = "no"
-cols = [
-    "huc10",
-    "poi_gage_id",
-    "ohm_cal",
-    "gagesII",
-    "flow_management_index",
-    "storage_index",
-    "use_index",
-    "poi_agency",
-    "poi_name",
-    "latitude",
-    "longitude",
-]
-npoigages_df = npoigages_df[cols]
-npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+    ]
+    npoigages_df = npoigages_df[cols]
+    npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
 
 
-npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
-npoigages_df.to_csv(npoigages_info_file_path, index=False)
+    npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
+    npoigages_df.to_csv(npoigages_info_file_path, index=False)
+except FileNotFoundError:
+    print(f"  [SKIP] fmi_gages_info.csv not found for this model — skipping FMI merge.")
 
 # %%
 

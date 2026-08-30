@@ -124,8 +124,10 @@ highlight_function_seg_map = lambda x: {
 }
 
 popup_seg = folium.GeoJsonPopup(
-    fields=["segment_id", "tosegment", "huc12_pp"],
-    aliases=["segment", "flows to segment", "huc12_pp"],
+    fields=["segment_id", "tosegment", #"huc12_pp"
+           ],
+    aliases=["segment", "flows to segment", #"huc12_pp"
+            ],
     labels=True,
     localize=False,
 )
@@ -158,6 +160,7 @@ def make_webbrowser_map(map_file):
     
     If running in Nebari, print the URL to open the map.
     If running in WSL, convert the path to a Windows path before opening it.
+    If NHM_BATCH_MODE is set, skip opening the browser (HTML is already saved).
 
     Parameters
     ----------
@@ -169,6 +172,8 @@ def make_webbrowser_map(map_file):
     None
         This function does not return anything.
     """
+    if os.environ.get("NHM_BATCH_MODE"):
+        return
 
     # create string of map file path
     map_file_str = f"{map_file}"
@@ -1811,52 +1816,58 @@ def make_hf_map(
     hru_simple = hru_simple.to_crs(crs)
     hru_map = create_hru_map(hru_simple)
 
-    huc10_map = gpd.read_file(
-        root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
-    ).to_crs(epsg=4326)
-    huc10_map =huc10_map[["huc10","geometry"]]
-    #huc10_map = gpd.clip(huc10_map, hru_map)
-    from shapely import make_valid
-    hru_simple["geometry"] = hru_simple.geometry.apply(
-        lambda g: make_valid(g) if g is not None and not g.is_empty else g
-    )
-    hru_union = hru_simple.geometry.union_all()
+    try:
+        huc10_map = gpd.read_file(
+            root_dir / "data_dependencies/huc10/HUC_10_boundaries.shp"
+        ).to_crs(epsg=4326)
+        huc10_map =huc10_map[["huc10","geometry"]]
+        #huc10_map = gpd.clip(huc10_map, hru_map)
+        from shapely import make_valid
+        hru_simple["geometry"] = hru_simple.geometry.apply(
+            lambda g: make_valid(g) if g is not None and not g.is_empty else g
+        )
+        hru_union = hru_simple.geometry.union_all()
 
-    # Compute centroids and select HUC10s whose centroids fall within HRU union
-    huc10_centroids = huc10_map.copy()
-    huc10_centroids["geometry"] = huc10_centroids.geometry.centroid
+        # Compute centroids and select HUC10s whose centroids fall within HRU union
+        huc10_centroids = huc10_map.copy()
+        huc10_centroids["geometry"] = huc10_centroids.geometry.centroid
 
-    huc10_in_hru = huc10_map[huc10_centroids.within(hru_union)]
+        huc10_in_hru = huc10_map[huc10_centroids.within(hru_union)]
 
-    huc10_map_layer = folium.GeoJson(
-        huc10_in_hru,
-        style_function= lambda x:{
-            "opacity": 1,
-            "fillColor": "#00000000",  #'goldenrod',
-            "color": "black",
-            "weight": 2,
-            },
-        name="HUC-10 basins",
-        # tooltip=tooltip_hru,
-        popup=folium.GeoJsonPopup(
-            fields=["huc10"],
-            aliases=["HUC-10"],
-            labels=True,
-            localize=False,
-            style=(
-                "font-size: 16px;"
-            ),  # Note that this tooltip style sets the style for all tool_tips.
-            # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
-        ),
-            )
-    
-    huc12_pp_map = gpd.read_file(
+        if huc10_in_hru.empty:
+            huc10_map_layer = None
+        else:
+            huc10_map_layer = folium.GeoJson(
+                huc10_in_hru,
+                style_function= lambda x:{
+                    "opacity": 1,
+                    "fillColor": "#00000000",  #'goldenrod',
+                    "color": "black",
+                    "weight": 2,
+                    },
+                name="HUC-10 basins",
+                # tooltip=tooltip_hru,
+                popup=folium.GeoJsonPopup(
+                    fields=["huc10"],
+                    aliases=["HUC-10"],
+                    labels=True,
+                    localize=False,
+                    style=(
+                        "font-size: 16px;"
+                    ),  # Note that this tooltip style sets the style for all tool_tips.
+                    # background-color: #F0EFEF;border: 2px solid black;font-family: arial; padding: 10px; background-color: #F0EFEF;
+                ),
+                    )
+    except Exception:
+        huc10_map_layer = None
+    try:
+        huc12_pp_map = gpd.read_file(
         root_dir / "domain_data" / subdomain / "GIS" / "model_layers.gpkg",
         layer="huc12_pp",
     ).to_crs(epsg=4326)
     
     
-    huc12_layer = folium.GeoJson(
+        huc12_layer = folium.GeoJson(
         huc12_pp_map,
         name="HUC12 points",
         show=False,
@@ -1864,10 +1875,12 @@ def make_hf_map(
         #tooltip=folium.GeoJsonTooltip(fields=["hl_link", "segment_id"]),
         #popup=folium.GeoJsonPopup(fields=["hl_link", "segment_id"]),
     )
+        huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
+        seg_gdf["huc12_pp"] = "none"
+        seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
 
-    huc_mapping = huc12_pp_map[["segment_id","hl_link"]].set_index("segment_id")["hl_link"]
-    seg_gdf["huc12_pp"] = "none"
-    seg_gdf["huc12_pp"] = seg_gdf["segment_id"].map(huc_mapping)
+    except:
+        pass
         
     seg_map_show = create_segment_map_show(seg_gdf)
 
@@ -1931,10 +1944,14 @@ def make_hf_map(
 
 
     hru_map.add_to(m2)
-    huc10_map_layer.add_to(m2)
+    if huc10_map_layer is not None:
+        huc10_map_layer.add_to(m2)
     
     seg_map_show.add_to(m2)
-    huc12_layer.add_to(m2)
+    try:
+        huc12_layer.add_to(m2)
+    except:
+        pass
 
     ref_poi_marker_cluster.add_to(m2)
     ref_poi_marker_cluster_label.add_to(m2)
@@ -1976,6 +1993,23 @@ def make_hf_map(
     m2.add_child(legend_image)
     
     m2.get_root().html.add_child(Element(title_html))
+
+    # Add drawing tools for annotation (lines, polygons, markers)
+    from folium.plugins import Draw
+
+    Draw(
+        export=True,
+        position="topright",
+        draw_options={
+            "polyline": {"shapeOptions": {"color": "red", "weight": 3}},
+            "polygon": {"shapeOptions": {"color": "blue"}},
+            "marker": True,
+            "circlemarker": False,
+            "rectangle": True,
+            "circle": False,
+        },
+        edit_options={"edit": True, "remove": True},
+    ).add_to(m2)
 
     map_file = f"{html_maps_dir}/hydrofabric_map.html"
     m2.save(map_file)
@@ -2549,9 +2583,12 @@ def create_poi_obs_marker_cluster(
         #for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
         obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
-        # Read ploty plot of each poi
-        with open(obs_plot_file, "r") as f:
-            div_txt = f.read()
+        # Read ploty plot of each poi — skip if file doesn't exist (e.g., batch mode)
+        if not obs_plot_file.exists():
+            div_txt = f"<p>No observation plot available for {poi_gage_id}</p>"
+        else:
+            with open(obs_plot_file, "r") as f:
+                div_txt = f.read()
     
         # Create html code to insert the plotly plot to the folium pop up
         html = (
