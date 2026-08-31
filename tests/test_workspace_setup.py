@@ -198,25 +198,25 @@ class WorkspaceSetupTests(unittest.TestCase):
 
     def test_prompt_workspace_root_uses_default_on_blank_input(self):
         printed: list[str] = []
-        default_target = self.tmp_path / "default_workspace"
+        default_target = setup.default_workspace_root(self.repo_root)
 
-        with patch.object(
-            setup,
-            "DEFAULT_WORKSPACE_ROOT",
-            default_target,
-        ):
-            result = setup.prompt_workspace_root(
-                self.repo_root,
-                print_func=printed.append,
-                input_func=lambda *_: "",
-            )
+        result = setup.prompt_workspace_root(
+            self.repo_root,
+            print_func=printed.append,
+            input_func=lambda *_: "",
+        )
 
-        self.assertEqual(result, default_target.expanduser().resolve())
+        self.assertEqual(result, default_target)
         self.assertTrue(result.is_dir())
         self.assertTrue(
-            any(str(default_target.expanduser().resolve()) in line for line in printed),
+            any(str(default_target) in line for line in printed),
             f"expected default path in guidance lines, got: {printed}",
         )
+
+    def test_default_workspace_root_is_sibling_of_repo(self):
+        result = setup.default_workspace_root(self.repo_root)
+
+        self.assertEqual(result, self.repo_root.parent / "nhm-workspace")
 
     def test_prompt_workspace_root_warns_when_inside_repo_and_re_prompts_on_no(self):
         printed: list[str] = []

@@ -57,7 +57,7 @@ pixi run setup
 
 Drops you into a guided menu. Just work through the top four options in order:
 
-1. Set the workspace root (defaults to `~/nhm-workspace`, outside the repo)
+1. Set the workspace root (defaults to `nhm-workspace` alongside the cloned repo, outside it)
 2. Create a project
 3. Copy an example model (automatically set as the active model)
 4. Show the notebook folder and the command to open it (generates the NHM notebooks first if needed)
@@ -83,7 +83,7 @@ command to open it, so you can use JupyterLab, VS Code, Kiro, or anything else.
 
 The Pixi workspace flow lets you keep your projects, models, generated notebooks, and outputs **outside the cloned repository**. In this mode:
 
-- the repository remains the source of code, notebook templates, and shared `data_dependencies`
+- the repository remains the source of code, notebook templates, and `data_dependencies` that are commonly shared among multiple projects.
 - a workspace contains one or more projects
 - each project contains one or more models
 - generated NHM notebooks live once per project

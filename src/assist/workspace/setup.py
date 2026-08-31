@@ -129,7 +129,8 @@ def get_active_model_name_for_state(state: SetupState) -> str | None:
         return None
 
 
-DEFAULT_WORKSPACE_ROOT = Path("~/nhm-workspace")
+def default_workspace_root(repo_root: Path) -> Path:
+    return (repo_root.parent / "nhm-workspace").resolve()
 
 
 def _is_under_repo(workspace_root: Path, repo_root: Path) -> bool:
@@ -146,7 +147,7 @@ def prompt_workspace_root(
     print_func=print,
     input_func=input,
 ) -> Path:
-    default_root = DEFAULT_WORKSPACE_ROOT.expanduser().resolve()
+    default_root = default_workspace_root(repo_root)
     print_func(
         "Your workspace folder holds projects, models, generated notebooks, and outputs."
     )
