@@ -125,6 +125,30 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertTrue((paths["project"] / "project_config").is_dir())
             self.assertTrue((paths["project"] / "notebooks").is_dir())
 
+    def test_create_project_writes_a_jupytext_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            config = workspace_root / "Project_A" / "jupytext.toml"
+            self.assertEqual(paths["jupytext_config"], config)
+            self.assertTrue(config.is_file())
+            self.assertIn('formats = "ipynb,py:percent"', config.read_text())
+
+    def test_create_project_never_overwrites_an_existing_jupytext_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            project_dir = workspace_root / "Project_A"
+            project_dir.mkdir(parents=True)
+            config = project_dir / "jupytext.toml"
+            custom = 'formats = "ipynb,scripts//py:light"\n'
+            config.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(config.read_text(), custom)
+
     def test_create_model_does_not_require_model_local_notebooks_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_root = Path(tmpdir).resolve()

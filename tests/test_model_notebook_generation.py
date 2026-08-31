@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from assist.workspace import bridge, service
+import jupytext
+from jupytext.paired_paths import paired_paths
+
+from assist.workspace import bridge, kernels, service
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -56,6 +60,162 @@ class ProjectNotebookGenerationTests(unittest.TestCase):
         self.assertEqual(args.workspace_root, "/tmp/workspace")
         self.assertEqual(args.project_name, "Project_A")
         self.assertFalse(hasattr(args, "model_name"))
+
+    def test_repo_relative_notebook_helpers_are_gone(self):
+        self.assertFalse(hasattr(bridge, "REPO_NOTEBOOK_DIRS"))
+        self.assertFalse(hasattr(bridge, "get_workflow_notebooks_dir"))
+
+    def test_convert_workflow_requires_a_project(self):
+        with self.assertRaises(TypeError):
+            notebook_builder.convert_workflow("nhm")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError):
+                notebook_builder.convert_workflow(
+                    "nhm",
+                    workspace_root=Path(tmpdir).resolve(),
+                    project_name="",
+                )
+
+
+class PairingModeTests(unittest.TestCase):
+    def setUp(self):
+        # dev pairing is a relative path, so the workspace has to share a
+        # parent with the repo. The platform temp directory does not on macOS
+        # (/var/folders/... vs /Users/...), so anchor the temp workspace beside
+        # the repo instead of wherever tempfile would default to.
+        repo_root = notebook_builder.TEMPLATES_ROOT.parents[1]
+        self._tmpdir = tempfile.TemporaryDirectory(dir=repo_root.parent)
+        self.addCleanup(self._tmpdir.cleanup)
+        self.workspace_root = Path(self._tmpdir.name).resolve()
+        service.create_project(self.workspace_root, "Project_A")
+        self.notebook_dir = bridge.get_project_workflow_notebooks_dir(
+            "nhm", self.workspace_root, "Project_A"
+        )
+
+    def _generate(self, pairing_mode):
+        return notebook_builder.convert_workflow(
+            "nhm",
+            workspace_root=self.workspace_root,
+            project_name="Project_A",
+            pairing_mode=pairing_mode,
+            print_func=lambda *_: None,
+        )
+
+    def test_dev_pairing_formats_is_relative_and_resolves_to_the_template(self):
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+
+        formats = notebook_builder.dev_pairing_formats(
+            template_dir, self.notebook_dir
+        )
+
+        prefix = formats.split(",", 1)[1]
+        self.assertFalse(
+            prefix.startswith("/"),
+            "jupytext concatenates the prefix onto the notebook dir, so an "
+            "absolute path resolves to a nonsense location",
+        )
+        self.assertTrue(prefix.endswith("//py:percent"))
+
+        # Ask jupytext itself where the pairing lands. Resolving this with
+        # os.path semantics instead would pass even when jupytext gets it
+        # wrong, which is exactly how this bug went unnoticed.
+        paired = [
+            path
+            for path, fmt in paired_paths(
+                str(self.notebook_dir / "probe.ipynb"), "ipynb", formats
+            )
+            if fmt.get("extension") == ".py"
+        ]
+        self.assertEqual([Path(p) for p in paired], [template_dir / "probe.py"])
+
+    def test_local_mode_embeds_no_formats_but_stamps_the_default_kernel(self):
+        created = self._generate("local")
+
+        self.assertTrue(created)
+        notebook = jupytext.read(created[0])
+        self.assertIsNone(notebook.metadata.get("jupytext", {}).get("formats"))
+        self.assertEqual(
+            notebook.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
+        )
+
+    def test_dev_mode_embeds_formats_pointing_at_the_repo_template(self):
+        created = self._generate("dev")
+
+        notebook = jupytext.read(created[0])
+        formats = notebook.metadata["jupytext"]["formats"]
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+        self.assertEqual(
+            formats,
+            notebook_builder.dev_pairing_formats(template_dir, self.notebook_dir),
+        )
+        self.assertEqual(
+            notebook.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
+        )
+
+    def test_dev_mode_never_rewrites_existing_cell_content(self):
+        created = self._generate("local")
+        target = created[0]
+
+        notebook = jupytext.read(target)
+        notebook.cells[0].source = "# EDITED BY THE USER"
+        jupytext.write(notebook, target)
+
+        self._generate("dev")
+
+        reread = jupytext.read(target)
+        self.assertEqual(reread.cells[0].source, "# EDITED BY THE USER")
+        self.assertIn("jupytext", reread.metadata)
+        self.assertEqual(
+            reread.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
+        )
+
+    def test_dev_mode_is_idempotent(self):
+        self._generate("dev")
+        second = {path: path.read_bytes() for path in self.notebook_dir.rglob("*.ipynb")}
+
+        self._generate("dev")
+        third = {path: path.read_bytes() for path in self.notebook_dir.rglob("*.ipynb")}
+
+        self.assertEqual(second.keys(), third.keys())
+        for path, payload in second.items():
+            self.assertEqual(payload, third[path], f"{path} changed on a repeat run")
+
+    def test_dev_pairing_rejects_a_workspace_it_cannot_reach(self):
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+        # Only common ancestor with the repo is the filesystem root, so
+        # jupytext would silently resolve the pairing into the current working
+        # directory instead of the repo.
+        unreachable = Path(os.sep) / "nhm_probe" / "notebooks" / "nhm"
+
+        with self.assertRaises(ValueError) as ctx:
+            notebook_builder.dev_pairing_formats(template_dir, unreachable)
+
+        message = str(ctx.exception)
+        self.assertIn("cannot reach the nhm-assist repo", message)
+        self.assertIn(str(unreachable), message)
+
+    def test_convert_workflow_rejects_an_unknown_pairing_mode(self):
+        with self.assertRaises(ValueError):
+            self._generate("sideways")
+
+    def test_parse_args_defaults_to_local_pairing(self):
+        args = notebook_builder.parse_args(
+            ["--workspace-root", "/tmp/ws", "--project-name", "Project_A"]
+        )
+        self.assertEqual(args.pairing_mode, "local")
+
+        dev_args = notebook_builder.parse_args(
+            [
+                "--workspace-root",
+                "/tmp/ws",
+                "--project-name",
+                "Project_A",
+                "--pairing-mode",
+                "dev",
+            ]
+        )
+        self.assertEqual(dev_args.pairing_mode, "dev")
 
 
 if __name__ == "__main__":
