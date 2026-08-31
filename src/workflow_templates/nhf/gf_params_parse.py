@@ -619,7 +619,7 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "UmatillaRiver"  # Powder_River, John_Day_River
+child_name = "DeschutesRiver"  # Powder_River, John_Day_River
 child_path = f"hydrofabric_domain_data/{child_name}"
 child_hf_dir = root_dir / child_path
 if child_hf_dir.is_dir():
@@ -1652,6 +1652,66 @@ if len(new_gages_gdf) != 0:
     npoigages_info_df = npoigages_info_df_temp.copy()
 else:
     print("There are no ECY gages that intersect the child domain.")
+
+# %%
+npoigages_info_df
+
+# %% [markdown]
+# ##### Add BOR Hydromet unregulated flow (QU) gages
+# Bureau of Reclamation Pacific Northwest Hydromet stations that report
+# Estimated Average Unregulated Flow (QU parameter). These are intended to
+# supplement observations at gages with high anthropogenic influence.
+#
+# Reads the global `hydromet_all_stations.csv` from `data_dependencies/`,
+# filters to stations with QU data (qu_days > 0), clips to the child domain,
+# and writes a child-specific `BOR_HM_gages.csv`. These gages are NOT added
+# to npoigages (they share segments with existing USGS gages).
+
+# %%
+bor_all_stations_file = root_dir / "data_dependencies" / "hydromet_all_stations.csv"
+
+if bor_all_stations_file.exists():
+    bor_all_df = pd.read_csv(bor_all_stations_file)
+    # Filter to only stations with QU data
+    bor_qu_df = bor_all_df[bor_all_df["qu_days"] > 0].copy()
+    print(f"BOR Hydromet stations with QU data: {len(bor_qu_df)}")
+
+    # Build GeoDataFrame from lat/lon
+    bor_qu_gdf = gpd.GeoDataFrame(
+        bor_qu_df,
+        geometry=gpd.points_from_xy(bor_qu_df["longitude"], bor_qu_df["latitude"]),
+        crs="EPSG:4326",
+    )
+
+    # Clip to child model AOI
+    bor_qu_gdf = bor_qu_gdf.to_crs(aoi_gdb.crs)
+    bor_qu_child = gpd.clip(bor_qu_gdf, aoi_gdb)
+    bor_qu_child = bor_qu_child.to_crs("EPSG:4326")
+
+    if len(bor_qu_child) > 0:
+        print(f"  BOR-QU gages in child domain: {len(bor_qu_child)}")
+
+        # Rename to match expected format for notebook 1
+        bor_child_out = bor_qu_child.drop(columns=["geometry"]).rename(
+            columns={"cbtt": "poi_gage_id", "name": "poi_name"}
+        )
+        bor_child_out["poi_agency"] = "BOR-HM"
+
+        # Write child-domain BOR-HM file (used by notebook 1 for QU retrieval)
+        bor_child_path = child_hf_dir / "GIS" / "BOR_HM_gages.csv"
+        bor_child_out.to_csv(bor_child_path, index=False)
+        print(f"  Saved: {bor_child_path}")
+        display(
+            bor_child_out[
+                ["poi_gage_id", "poi_name", "qu_days", "nearest_poi_id", "dist_m"]
+            ]
+        )
+    else:
+        print("  No BOR-QU gages intersect the child domain.")
+else:
+    print(
+        f"  hydromet_all_stations.csv not found at {bor_all_stations_file} — skipping."
+    )
 
 # %%
 npoigages_info_df

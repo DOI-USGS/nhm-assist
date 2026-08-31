@@ -692,7 +692,20 @@ def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium
 
         return f"{cpoi} plot created."
 
-    poi_list = gages_df.index.tolist()
+    # gages_df is normally indexed by poi_gage_id (see read_gages_file), but be
+    # robust to a poi_gage_id column too (e.g. after a reset_index upstream).
+    if "poi_gage_id" in gages_df.columns:
+        poi_list = gages_df["poi_gage_id"].tolist()
+    else:
+        poi_list = gages_df.index.tolist()
+
+    # Only plot gages that actually exist in xr_streamflow; skip the rest so one
+    # missing station doesn't fail the whole batch.
+    available = set(xr_streamflow.poi_gage_id.values.tolist())
+    missing = [p for p in poi_list if p not in available]
+    if missing:
+        print(f"make_obs_plot_files: skipping {len(missing)} gage(s) not in xr_streamflow: {missing}")
+    poi_list = [p for p in poi_list if p in available]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_make_single_plot, cpoi): cpoi for cpoi in poi_list}

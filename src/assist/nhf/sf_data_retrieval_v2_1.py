@@ -990,9 +990,15 @@ def create_sf_efc_df(
         if bor_df is not None and not bor_df.empty:
             streamflow_df = pd.concat([streamflow_df, bor_df])
             streamflow_df = streamflow_df[~streamflow_df.index.duplicated(keep="last")]
+
+        # Ensure gages_df is indexed by poi_gage_id to match streamflow_df
+        gages_for_xr = gages_df.copy()
+        if "poi_gage_id" in gages_for_xr.columns:
+            gages_for_xr = gages_for_xr.drop_duplicates(subset="poi_gage_id", keep="first")
+            gages_for_xr = gages_for_xr.set_index("poi_gage_id")
             
         xr_station_info = xr.Dataset.from_dataframe(
-            gages_df
+            gages_for_xr
         )  # gages_df is the new source of gage metadata
         xr_streamflow_only = xr.Dataset.from_dataframe(streamflow_df)
         xr_streamflow = xr.merge(
