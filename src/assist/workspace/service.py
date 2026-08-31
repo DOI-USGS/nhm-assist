@@ -1,4 +1,6 @@
+import json
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -38,6 +40,55 @@ _PROJECT_MARKER_CONTENT = (
 )
 
 
+JUPYTEXT_CONFIG_FILENAME = "jupytext.toml"
+
+_JUPYTEXT_CONFIG_CONTENT = (
+    "# Pair every notebook under this project to a same-directory .py file.\n"
+    "# jupytext walks up from each notebook to find this file, so it covers the\n"
+    "# generated workflow notebooks and any sandbox notebook you create yourself.\n"
+    'formats = "ipynb,py:percent"\n'
+    "\n"
+    "# Keep the paired .py files free of jupytext's own YAML header, so a\n"
+    "# reviewer sees only code and markdown, not kernelspec/version churn.\n"
+    'notebook_metadata_filter = "-all"\n'
+)
+
+
+VSCODE_SETTINGS_FILENAME = ".vscode/settings.json"
+VSCODE_EXTENSIONS_FILENAME = ".vscode/extensions.json"
+
+JUPYTEXT_SYNC_EXTENSION_ID = "caenrigen.jupytext-sync"
+
+def _vscode_settings_content() -> str:
+    # Pinned to the extension's own current defaults, rather than just the
+    # two event flags we care about: VS Code replaces object-typed settings
+    # wholesale per scope instead of merging keys, so a partial override here
+    # could silently blank out other keys a user set globally.
+    #
+    # pythonExecutable is stamped to the interpreter running this call rather
+    # than left for the extension's own auto-discovery: jupytext lives only
+    # inside nhm-assist's pixi environments, which auto-discovery (the
+    # ms-python.python extension's selected interpreter, venv/conda scanning,
+    # then `python`/`python3` on PATH) cannot reach.
+    payload = {
+        "jupytextSync.pythonExecutable": sys.executable,
+        "jupytextSync.syncDocuments": {
+            "onNotebookDocumentOpen": False,
+            "onNotebookDocumentSave": True,
+            "onNotebookDocumentClose": False,
+            "onTextDocumentOpen": False,
+            "onTextDocumentSave": True,
+            "onTextDocumentClose": False,
+        },
+    }
+    return json.dumps(payload, indent=2) + "\n"
+
+
+_VSCODE_EXTENSIONS_CONTENT = (
+    json.dumps({"recommendations": [JUPYTEXT_SYNC_EXTENSION_ID]}, indent=2) + "\n"
+)
+
+
 def create_project(workspace_root: str | Path, project_name: str) -> dict[str, Path]:
     project_dir = get_project_dir(workspace_root, project_name)
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -56,6 +107,23 @@ def create_project(workspace_root: str | Path, project_name: str) -> dict[str, P
     notebooks_dir = project_dir / "notebooks"
     notebooks_dir.mkdir(parents=True, exist_ok=True)
     paths["notebooks"] = notebooks_dir
+
+    jupytext_config_path = project_dir / JUPYTEXT_CONFIG_FILENAME
+    if not jupytext_config_path.exists():
+        jupytext_config_path.write_text(_JUPYTEXT_CONFIG_CONTENT, encoding="utf-8")
+    paths["jupytext_config"] = jupytext_config_path
+
+    vscode_settings_path = project_dir / VSCODE_SETTINGS_FILENAME
+    vscode_settings_path.parent.mkdir(parents=True, exist_ok=True)
+    if not vscode_settings_path.exists():
+        vscode_settings_path.write_text(_vscode_settings_content(), encoding="utf-8")
+    paths["vscode_settings"] = vscode_settings_path
+
+    vscode_extensions_path = project_dir / VSCODE_EXTENSIONS_FILENAME
+    if not vscode_extensions_path.exists():
+        vscode_extensions_path.write_text(_VSCODE_EXTENSIONS_CONTENT, encoding="utf-8")
+    paths["vscode_extensions"] = vscode_extensions_path
+
     return paths
 
 

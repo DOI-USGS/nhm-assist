@@ -158,19 +158,13 @@ nhm-assist = { path = ".", editable = true }
 [tool.pixi.tasks.setup]
 cmd = "python -m assist.workspace.cli setup"
 default-environment = "default"
-description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, generate notebooks, and launch JupyterLab."
+description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, and generate notebooks. Prints how to open Jupyter; does not launch it."
 
-[tool.pixi.tasks.dev]
-cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} && jupyter lab --ServerApp.contents_manager_class=jupytext.TextFileContentsManager --ServerApp.root_dir=. --LabApp.default_url=/lab/tree/{{ notebook_dir }}"
-args = [{ arg = "workflow", default = "nhm" }, { arg = "notebook_dir", default = "notebooks" }]
-default-environment = "default"
-description = "Contributor mode: regenerate notebooks from .py templates and launch JupyterLab against the repo (not a workspace). Edits sync back to src/workflow_templates/<workflow>/*.py via jupytext."
-
-[tool.pixi.tasks.notebooks-create]
-cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }}"
-args = [{ arg = "workflow", default = "all" }]
-default-environment = "default"
-description = "Generate notebooks from .py templates into the repo's notebook directories (does not launch Jupyter)."
+[tool.pixi.tasks.dev-mode]
+cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }} --pairing-mode dev"
+args = ["workspace_root", "project_name", { arg = "workflow", default = "nhm" }]
+default-environment = "dev"
+description = "Contributor mode: generate a project's notebooks paired back to src/workflow_templates/<workflow>/*.py, so editing them in Jupyter edits the templates. Does not launch Jupyter."
 
 [tool.pixi.tasks.notebooks-create-project]
 cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }}"
