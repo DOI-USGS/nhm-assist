@@ -101,9 +101,9 @@ else:
     exe_name = "pestpp-ies"
 
 # %% [markdown]
-# # Workspace Setup
-# ## Create `pestpp_ies` folder in the model directory
-# All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
+# ## Workspace Setup
+# Create the `pestpp_ies/` directory structure and copy ancillary configuration
+# files and model input files needed for PEST++ IES runs.
 
 # %%
 if not (config["model_dir"] / "pestpp_ies").exists():
@@ -150,11 +150,26 @@ for file in model_file_list:
     shutil.copy2(source, destination)
 
 # %% [markdown]
-# <!-- ## Create PEST instruction file `.ins`
-# Map observation name from allobs.dat (created in notebook 01_Create_allobs_dat) to the instruction file `modelobs.dat.ins` -->
-
-# %% [markdown]
-# # Create PEST control file object with `pyemu`
+# # Set Up the PEST++ Control File
+#
+# This notebook assembles the PEST++ control file (`prior_mc.pst`) which defines
+# the complete parameter estimation problem: parameters, observations, weights,
+# bounds, and algorithmic settings for PEST++ IES.
+#
+# **Output file:**
+# - `prior_mc.pst` — The PEST++ control file that ties together the template file,
+#   instruction file, forward run script, observation values/weights, and parameter
+#   values/bounds into a single configuration.
+#
+# **Workflow steps:**
+# 1. Create the PST object from template (`.tpl`) and instruction (`.ins`) files using `pyemu`.
+# 2. Populate observation values from `allobs.dat` and set observation bounds from `allobs_bounds.dat`.
+# 3. Assign observation group names (`obgnme`) based on variable type and EFC classification.
+# 4. Split streamflow observations into parameter estimation and validation sets by water year.
+# 5. Set observation weights and standard deviations from the ancillary configuration file.
+# 6. Populate parameter starting values and bounds from `starting_par_vals.dat`.
+# 7. Configure PEST++ IES algorithmic options (ensemble size, lambda, localization, etc.).
+# 8. Write the control file and run an initial `noptmax=0` check.
 
 # %%
 pst = pyemu.Pst.from_io_files(
@@ -172,14 +187,18 @@ pst = pyemu.Pst.from_io_files(
 # %%
 
 # %% [markdown]
-# # Direct editing PEST++ files using pyemu
+# ## Direct Editing of the PEST++ Control Object
+# The following sections modify the PST object in memory before writing the
+# final control file.
 
 # %% [markdown]
-# ### Set obsval value and ranges
-# In PEST++ `pst.observation_data`, the values for obsval are inherited from `modelobs.dat` and are not the "observation" values from allobs.dat, so the values in `pst.observation_data` need to be overwritten with the observation values.
+# ### Set observation values and bounds
+# The `obsval` column in `pst.observation_data` is initially populated from
+# `modelobs.dat` (model output). We overwrite it with the true observation values
+# from `allobs.dat`.
 
 # %% [markdown]
-# #### Read in the observation file, `allobs.dat`
+# #### Read `allobs.dat`
 
 # %%
 obsvals = pd.read_csv(pestpp_model_dir / "allobs.dat", delim_whitespace=True)
@@ -208,8 +227,9 @@ obs.loc[obsvals.obsname, "obsval"] = (
 # pst_obj.observation_data = self._update_observation_data(pst_obj.observation_data, obs_df)
 
 # %% [markdown]
-# #### Set obsval ranges (not single value) for observations
-# PEST++ now allows for ranges to be set for observations. This best replicates the approach in Hay and others (2023).
+# #### Set observation bounds (inequality constraints)
+# PEST++ supports range-based observations where the target is a band rather than
+# a single value. This replicates the approach in Hay and others (2023).
 
 # %% [markdown]
 # Read `allobs_bounds.dat`
@@ -242,15 +262,17 @@ obs.loc[:, "less_than"] = obs.loc[:, "obsnme"].map(less_than_dict)
 obs.loc[:, "greater_than"] = obs.loc[:, "obsnme"].map(greater_than_dict)
 
 # %% [markdown]
-# ## Create PEST++ **obs**ervation** g**roup **n**a**me**s (**obsgnme**)
-# Obervation criteria noted in the obsnme were used to create observation group names.
+# ## Assign Observation Group Names (`obgnme`)
+# Observation groups control how PEST++ aggregates phi (objective function)
+# contributions. Groups are assigned based on variable type, temporal resolution,
+# and EFC flow classification.
 
 # %%
 obs.obgnme = "obgnme"
 print(f"The default value of obgnme is set to {list(set(obs['obgnme']))}.")
 
 # %% [markdown]
-# #### Create observation groups for hru observations. No validation groups were made for these targets.
+# #### HRU observation groups (no validation split for these targets)
 
 # %%
 obs.loc[obs.obsnme.str.startswith("actet_mon"), "obgnme"] = "actet_mon"
@@ -268,7 +290,9 @@ obs.loc[obs.obsnme.str.startswith("runoff_mon"), "obgnme"] = "runoff_mon"
 obs.loc[obs.obsnme.str.startswith("sca_daily"), "obgnme"] = "sca_daily"
 
 # %% [markdown]
-# #### Create observation groups for streamflow observations.
+# #### Streamflow observation groups (by EFC classification and hydrograph position)
+# EFC codes: 1=Large flood, 2=Small flood, 3=High flow pulse, 4=Low flow, 5=Extreme low flow.
+# Hydrograph position: 1=Low flow, 2=Ascending limb, 3=Descending limb.
 
 # %%
 obs.loc[obs.obsnme.str.startswith("streamflow_daily_1_2"), "obgnme"] = (
@@ -305,8 +329,9 @@ obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_val"), "obgnme"] = (
 )
 
 # %% [markdown]
-# No streamflow observation group "streamflow_nodata"
-#
+# #### Handle no-data streamflow observations
+# Observations with -9999 (no data) are moved to the `streamflow_nodata` group
+# and will be zero-weighted.
 
 # %%
 obs_group = "streamflow_nodata"
@@ -321,7 +346,9 @@ print(
 )
 
 # %% [markdown]
-# Special group for daily streamflow with missing EFC code/code component
+# #### Handle missing EFC classifications
+# Observations with valid streamflow but missing EFC codes (-1) are moved to
+# the no-data group to avoid contaminating EFC-based groups.
 
 # %%
 obs_group = "streamflow_nodata"
@@ -343,9 +370,9 @@ else:
     )
 
 # %% [markdown]
-# Correct default EFC for first day of flow
-# A small bug is present in the EFC code, where if the first few days of observations are "0" flow, the EFC vale for the first day is "3_2".
-# This code block checks for "0" flow values that are not assiged to group "streamflow_daily_ex_low" and reassigns them to that group.
+# #### Fix EFC assignment for zero-flow days
+# The EFC algorithm may incorrectly assign the first zero-flow day to a non-low-flow
+# group. Any observation with discharge = 0 should be in `streamflow_daily_ex_low`.
 
 # %%
 obs_group = "streamflow_daily_ex_low"
@@ -370,13 +397,16 @@ else:
 obgnme_list
 
 # %% [markdown]
-# #### Create validation observation groups for streamflow observations.
-# Hay and others (2023) used streamflow observation data during odd water years from 1980 to 2010 to calibrate the model and observations during even water years to validate the model. This section calculates the water year for streamflow_daily and streamflow_monthly observations using the observation name. The streamflow_ann (annual) observations are already in water years if water years were selected in notebook 0_workspace_setup.ipynb.
+# #### Split streamflow into parameter estimation and validation sets
+# Following Hay and others (2023), odd water years are used for parameter estimation
+# and even water years for validation. Validation observations receive `_val` suffix
+# on their group name and are zero-weighted.
 #
-# Note: **streamflow_mean_mon_val** and **streamflow_mean_mon_cal** validation/calibration observations were created in notebook 02_.ipynb.*
+# Note: `streamflow_mean_mon_val` and `streamflow_mean_mon_cal` groups were already
+# created in notebook 01.
 
 # %% [markdown]
-# Determine "wateryear" for validation groups
+# #### Determine water year for each observation
 
 # %%
 # "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
@@ -477,9 +507,9 @@ obs.loc[mask_daily, "wateryear"] = dates_daily.year + (dates_daily.month >= 10).
 # ).year
 
 # %% [markdown]
-# Set time period for model calibration
-# The model calibration period for Fienen and others (2025) was truncated to 1999 through 2010. 
-# The calibration period can be edited below.
+# #### Define the parameter estimation period
+# The parameter estimation period for Fienen and others (2025) was 1999-2010.
+# Edit the start/end dates below to adjust.
 
 # %%
 cal_ts_start = "1999-10-01"  # (Eddie) We should check these dates against the control file dates with at least one year for spin up,
@@ -497,7 +527,7 @@ val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
 val_water_years
 
 # %% [markdown]
-# Append "_val" to observations in validation years data and assign groups to indicate "validation" for these
+# #### Assign validation group suffix to even water year observations
 
 # %%
 val_mask = obs.wateryear.isin(val_water_years) & obs.obsnme.str.startswith("streamflow")
@@ -523,13 +553,18 @@ obs.loc[(obs.obsval <= 1) & (obs.obgnme.str.startswith("stream"))]
 # obs.loc[obs.obgnme.str.startswith('streamflow')
 
 # %% [markdown]
-# ## now we flip these weights back to standard deviation for the noise ensemble and then do not revisit STD, although we will adjust weights to rebalance PHI--Retooled
+# ## Set Standard Deviations for Observation Noise Ensemble
+# Standard deviations define the noise added to observations when generating the
+# observation noise ensemble. Values are computed as a fraction of the observation
+# value, with the fraction specified per group in `Observation_standard_deviation.csv`.
 
 # %%
 # obs.loc[:,'standard_deviation'] = [1/w if w!=0 else 1e-6 for w in obs.weight]
 
 # %% [markdown]
-# ## Set SD and bounds for obs from file "Observation_standard_deviation.csv" in Supporting Information folder; if you want to change bounds and SD, change values in the .csv file. Primarily to make sure values during the prior don't go negative.
+# ## Read Observation SD and Bounds Configuration
+# Standard deviations and weight percentages are defined per observation group in
+# `Observation_standard_deviation.csv`. Edit that file to change noise/weight behavior.
 
 # %%
 obs_sdbnds_path = pestpp_model_dir / "ancillary/Observation_standard_deviation.csv"
@@ -582,7 +617,7 @@ for cn, _ in obs.groupby("obgnme"):
 obs.loc[obs.obgnme.str.startswith("streamflow_daily_low")]
 
 # %% [markdown]
-# #### Set SD for observations using group noise percent and observation value
+# #### Compute standard deviation per observation
 
 # %%
 # tt = obs.groupby("obgnme")
@@ -615,7 +650,11 @@ obs.loc[obs.standard_deviation == np.nan]
 # But, to read in the "other" SD, the SD for the value, not the noise.
 
 # %% [markdown]
-# ## Set weight for observations for streamflow using group wt_percent and observation value; for all others using group wt percent
+# ## Set Observation Weights
+# Weights control the relative influence of each observation on the objective function.
+# Streamflow weights are inversely proportional to flow magnitude (per gage), while
+# HRU observations use a flat group-level weight. Validation observations and
+# no-data observations receive zero weight.
 
 # %%
 obs["poi_group"] = obs["obsnme"].str.rsplit(":", n=1).str[-1]
@@ -714,7 +753,7 @@ print(
 )
 
 # %% [markdown]
-# Assign "0" weights to streamflow observations for validation years
+# #### Zero-weight validation observations
 
 # %%
 # # unweight the validation data and assign groups to indicate "validation" for these
@@ -737,7 +776,7 @@ print(
 # ]
 
 # %% [markdown]
-# #### Check weights for errors
+# #### Validate weights (check for negatives, NaN, inf)
 
 # %%
 if not obs.loc[obs.weight < 0].empty:
@@ -808,7 +847,8 @@ print(
 )
 
 # %% [markdown]
-# ### Direct Editing of Params
+# ### Populate Parameter Values and Bounds
+# Copy starting values and bounds from `starting_par_vals.dat` into the PST object.
 
 # %%
 par_starting_vals = pd.read_csv(
@@ -819,7 +859,7 @@ par_starting_vals = pd.read_csv(
 par_starting_vals
 
 # %% [markdown]
-# ### Copy parval1, upper bound and lower bound from "par_starting_vals" to pars.parval1 
+# #### Transfer parval1, parubnd, parlbnd to PST parameter_data
 
 # %%
 pars = pst.parameter_data
@@ -841,13 +881,13 @@ pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals[
 pars.sample(50)
 
 # %% [markdown]
-# ### we can't log transform negative parameter values
+# #### Disable log-transformation for parameters with non-positive lower bounds
 
 # %%
 pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
 
 # %% [markdown]
-# ### and set the consolidated forward_run.py file to the pst object
+# #### Set the forward model command
 
 # %%
 pst.model_command = ["python forward_run.py"]
@@ -856,7 +896,8 @@ pst.model_command = ["python forward_run.py"]
 pst.control_data.noptmax = 0  # or -1 later, 0 at first
 
 # %% [markdown]
-# ### set some PEST++ specific parmeters
+# ### Configure PEST++ IES Options
+# Key algorithmic settings for the iterative ensemble smoother.
 
 # %%
 pst.pestpp_options["ies_num_reals"] = 500
@@ -895,7 +936,7 @@ pst.parameter_data = pst.parameter_data[
 ]
 
 # %% [markdown]
-# ### special case for just this one value with busted bounds 
+# ### Special case: fix individual parameter bounds if needed
 
 # %%
 # pst.parameter_data.loc['smidx_exp:hru_84017']
@@ -949,7 +990,9 @@ pst.observation_data.loc[pst.observation_data.obgnme == "sca_daily", "weight"] =
 pst.write(os.path.join(pestpp_model_dir, "prior_mc.pst"), version=2)
 
 # %% [markdown]
-# ## now run with noptmax=0
+# ## Write the Control File and Run Initial Check (`noptmax=0`)
+# Writing with `noptmax=0` runs a single forward model evaluation to verify that
+# all files are consistent before launching the full ensemble run.
 
 # %%
 pestpp_model_dir

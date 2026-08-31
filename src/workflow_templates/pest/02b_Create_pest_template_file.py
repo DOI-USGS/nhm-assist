@@ -101,9 +101,9 @@ else:
     exe_name = "pestpp-ies"
 
 # %% [markdown]
-# # Workspace Setup
-# ## Create `pestpp_ies` folder in the model directory
-# All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
+# ## Workspace Setup
+# Create the `pestpp_ies/` directory structure and copy ancillary configuration
+# files and model input files needed for PEST++ IES runs.
 
 # %%
 if not (config["model_dir"] / "pestpp_ies").exists():
@@ -150,8 +150,34 @@ for file in model_file_list:
     shutil.copy2(source, destination)
 
 # %% [markdown]
-# # Read NHM subbasin model parameter file `.param`
-# The following cell reads the parameter file, `.param`, and convert to a Json-style file, `parameters.json` and reads `parameters.json`. Values in this parameter file are used to set "starting values" for the pestpp-ies calibration.
+# # Create PEST++ Template File
+#
+# This notebook creates the PEST++ template file (`parameters.json.tpl`) that defines
+# which model parameters PEST++ IES will adjust during parameter estimation, along with
+# their starting values and bounds.
+#
+# **Output files:**
+# - `parameters.json.tpl` — The PEST++ template file. A JSON-formatted parameter file
+#   where adjustable parameter values are replaced with PEST++ placeholder tokens.
+# - `starting_par_vals.dat` — A table of parameter names, starting values, and
+#   upper/lower bounds in PEST++ format.
+#
+# **How PEST++ uses the template file:**
+# Before each forward model run, PEST++ reads the template file, substitutes the
+# placeholder tokens with parameter values from the current realization, and writes
+# the filled `parameters.json` that `forward_run.py` uses to run pywatershed.
+#
+# **Workflow steps:**
+# 1. Load the PRMS parameter file and export to JSON format.
+# 2. Identify which parameters PEST++ will estimate (the "adjustable" parameter list).
+# 3. Set starting values from the current parameter file.
+# 4. Assign parameter bounds using one of three methods (percent, range, or unbounded).
+# 5. Write the template file and starting parameter values table.
+
+# %% [markdown]
+# ## Read the NHM Parameter File
+# Load `myparam.param`, convert to JSON format (`parameters.json`), and reload.
+# The JSON format is what `forward_run.py` reads during PEST++ runs.
 
 # %%
 param_file = config["model_dir"] / "myparam.param"
@@ -163,7 +189,7 @@ pardat = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
 
 
 # %% [markdown]
-# ### List parameters in the parameter file `.param`
+# ### List parameters in the parameter file
 
 # %%
 pars = pardat.parameters
@@ -178,7 +204,9 @@ con.print(pars.keys())
 # segs = list(pars["nhm_seg"])  # Make a list of segment id's from "pars"
 
 # %% [markdown]
-# ### List parameters needed to run NHM subbasin model using pyWatershed
+# ### List parameters required by pywatershed
+# These are all parameters needed across the eight PRMS process modules. Any
+# parameter in this list that is also in the adjustable list will be estimated.
 
 # %%
 nhm_processes = [
@@ -197,7 +225,8 @@ for proc in nhm_processes:
     pw_params += proc.get_parameters()
 
 # %% [markdown]
-# ### Parameter file check
+# ### Parameter file completeness check
+# Verify the parameter file contains all parameters required by pywatershed.
 
 # %%
 missing_params = set(list(pw_params)) - set(list(pw_params))
@@ -216,20 +245,25 @@ if extra_params:
     )
 
 # %% [markdown]
-# # Create a PEST template file
-# The template file, `parameters.json.tpl` is a json-style version of `myparam.param` with paramterter starting values. In this section, a dataframe of starting parameter values and parameter bounds is created, `par_starting_vals`, and used to write the template file. 
+# ## Build the Template File
+# The template file `parameters.json.tpl` is a JSON-formatted version of the parameter
+# file where adjustable parameter values are replaced with PEST++ placeholder tokens.
+# This section builds the `par_starting_vals` dataframe that defines parameter names,
+# starting values, and bounds for the template.
 
 # %% [markdown]
-# Create `par_starting_vals` dataframe
-# This dataframe has **PEST++ specified column names**: **parname** (parameter name), **parval1** (starting value), **parubnd** (upper bound value), **parlbnd** (lower bound value).
+# ### Initialize `par_starting_vals`
+# This dataframe uses PEST++ column conventions: `parname` (parameter name),
+# `parval1` (starting value), `parubnd` (upper bound), `parlbnd` (lower bound).
 
 # %%
 par_starting_vals = pd.DataFrame(columns=["parname", "parval1", "parubnd", "parlbnd"])
 # par_starting_vals
 
 # %% [markdown]
-# ### Make a list of parameters for PEST++ to calibrate.
-# Commonly calibrated parameter sets may be found in published PRMS models. In this approach we have selected paramteters used in the calibration of the National Hydrologic Model version 1.1
+# ### Define adjustable parameters
+# These parameters will be estimated by PEST++ IES. The list follows the parameter
+# set used in the NHM v1.1 parameter estimation (Hay and others, 2023).
 
 # %% jupyter={"source_hidden": true}
 cal_par_list = [
@@ -263,26 +297,17 @@ cal_par_list = [
 ]
 
 # %% [markdown]
-# Notes
-# These "were" calibrated back in the day:
-# dprst_depth_avg (use prms default range),
-# dprst_flow_coef,
-# dprst_seep_rate_open,
-# op_flow_thres,
-# sro_to_dprst_imperv,
-# sro_to_dprst_perv,
-# va_open_exp,
-#
-#
-# Ones we are adding:
-# dprst_frac -- For WI we decided to set at 0.1 and let vary from 0.8 to 1.2,
-# dprst_et_coef -- range 0.5 to 1.5, default of 1.0,
-# dprst_frac_open,
-# dprst_seep_rate_clos,
+# ### Additional parameters under consideration
+# These parameters were historically estimated or are candidates for future inclusion:
+# - Depression storage: `dprst_depth_avg`, `dprst_flow_coef`, `dprst_seep_rate_open`,
+#   `op_flow_thres`, `sro_to_dprst_imperv`, `sro_to_dprst_perv`, `va_open_exp`
+# - New additions: `dprst_frac` (set at 0.1, vary 0.8-1.2), `dprst_et_coef` (range 0.5-1.5),
+#   `dprst_frac_open`, `dprst_seep_rate_clos`
 
 # %% [markdown]
-# ### Stage starting parameter values in `par_starting_vals`
-# Using the function pars_to_tpl_entries(), write parameter values that PEST++ will be calibrating from the parameter file, `myparam.param`, to `par_starting_vals`
+# ### Populate starting values from the parameter file
+# Extract current parameter values from `myparam.param` for each adjustable parameter
+# and write them to `par_starting_vals`.
 
 # %%
 par_starting_vals = pd.DataFrame(columns=["parname", "parval1", "parubnd", "parlbnd"])
@@ -300,15 +325,16 @@ par_starting_vals
 # xx
 
 # %% [markdown]
-# ### Stage parameter bounds in `par_starting_vals`
-# The NHM used three methods to set parameter bounds:
-# 1) "not used", paramter values were unbound and able to move in the full prms parmeter value range.
-# 2) "range", parameter values were bounded using ranges in table 1 (Hay and others, 2023). Matt will make table to insert here.
-# 3) "percent" parameter values were bounded using a range of +/- 20% of the starting parameter value.
+# ### Assign parameter bounds
+# The NHM v1.1 used three methods to define parameter bounds:
+# 1. **Percent** — bounds are +/- 20% of the starting parameter value.
+# 2. **Range** — bounds are fixed values from published ranges (Hay and others, 2023).
+# 3. **Not used** — parameter is unbounded (full PRMS valid range).
+#
+# Bounds are read from `par_cal_bounds_use.csv` in the ancillary directory.
 
 # %% [markdown]
-# #### Read parameter bounds
-# Paramter bounds from Hay and others (2023) are listed in `par_cal_bounds_use.csv` in the ancillary directory,
+# #### Read parameter bounds from ancillary file
 
 # %%
 bnds_file = "par_cal_bounds_use.csv"
@@ -317,13 +343,14 @@ bnds = pd.read_csv(bnds_path)  # Creates a data frame of the bounds for par cata
 bnds.set_index("parameter_name", inplace=True, drop=False)
 
 # %% [markdown]
-# #### Verify all parmeters have bounds
+# #### Verify all adjustable parameters have defined bounds
 
 # %%
 check_par_bounds(par_starting_vals, bnds, bnds_path=bnds_file)
 
 # %% [markdown]
 # #### Set bounds for parameters
+# Separate parameters by bounding method and apply the appropriate bounds.
 
 # %% [markdown]
 # Create the lists (pd.series) of parameters for the calibration methods
@@ -337,7 +364,7 @@ range_list = bnds.loc[bnds.HRU_cal_method == "Range", "parameter_name"]
 not_used_list = bnds.loc[bnds.HRU_cal_method == "Not used", "parameter_name"]
 
 # %% [markdown]
-# Assign bounds for percent method parameters 
+# #### Assign bounds — Percent method (+/- 20% of starting value)
 
 # %%
 for cp in percent_list:
@@ -352,7 +379,7 @@ for cp in percent_list:
     )
 
 # %% [markdown]
-# Assign bounds for range parameters 
+# #### Assign bounds — Range method (fixed upper/lower from literature)
 
 # %%
 for cp in range_list:
@@ -364,13 +391,15 @@ for cp in range_list:
 
 
 # %% [markdown]
-# Review `par_starting_vals`
+# #### Review final `par_starting_vals`
 
 # %%
 par_starting_vals
 
 # %% [markdown]
-# ### Write pestpp-ies template file `parameters.json.tpl`
+# ### Write the template file and starting values
+# Write `parameters.json.tpl` (the PEST++ template) and `starting_par_vals.dat`
+# (the parameter table with names, values, and bounds).
 
 # %%
 # pars = pardat.parameters
