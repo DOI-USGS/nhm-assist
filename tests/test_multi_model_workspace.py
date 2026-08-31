@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -148,6 +149,64 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             service.create_project(workspace_root, "Project_A")
 
             self.assertEqual(config.read_text(), custom)
+
+    def test_create_project_writes_vscode_jupytext_sync_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
+            self.assertEqual(paths["vscode_settings"], settings_path)
+            settings = json.loads(settings_path.read_text())
+            self.assertEqual(
+                settings["jupytextSync.syncDocuments"],
+                {
+                    "onNotebookDocumentOpen": False,
+                    "onNotebookDocumentSave": True,
+                    "onNotebookDocumentClose": False,
+                    "onTextDocumentOpen": False,
+                    "onTextDocumentSave": True,
+                    "onTextDocumentClose": False,
+                },
+            )
+
+    def test_create_project_never_overwrites_existing_vscode_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            vscode_dir = workspace_root / "Project_A" / ".vscode"
+            vscode_dir.mkdir(parents=True)
+            settings_path = vscode_dir / "settings.json"
+            custom = '{"editor.formatOnSave": true}'
+            settings_path.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(settings_path.read_text(), custom)
+
+    def test_create_project_writes_vscode_extension_recommendation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            extensions_path = workspace_root / "Project_A" / ".vscode" / "extensions.json"
+            self.assertEqual(paths["vscode_extensions"], extensions_path)
+            extensions = json.loads(extensions_path.read_text())
+            self.assertIn("caenrigen.jupytext-sync", extensions["recommendations"])
+
+    def test_create_project_never_overwrites_existing_vscode_extensions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            vscode_dir = workspace_root / "Project_A" / ".vscode"
+            vscode_dir.mkdir(parents=True)
+            extensions_path = vscode_dir / "extensions.json"
+            custom = '{"recommendations": ["ms-python.python"]}'
+            extensions_path.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(extensions_path.read_text(), custom)
 
     def test_create_model_does_not_require_model_local_notebooks_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,3 +1,4 @@
+import json
 import shutil
 from pathlib import Path
 
@@ -48,6 +49,37 @@ _JUPYTEXT_CONFIG_CONTENT = (
 )
 
 
+VSCODE_SETTINGS_FILENAME = ".vscode/settings.json"
+VSCODE_EXTENSIONS_FILENAME = ".vscode/extensions.json"
+
+JUPYTEXT_SYNC_EXTENSION_ID = "caenrigen.jupytext-sync"
+
+# Pinned to the extension's own current defaults, rather than just the two
+# event flags we care about: VS Code replaces object-typed settings wholesale
+# per scope instead of merging keys, so a partial override here could
+# silently blank out other keys a user set globally.
+_VSCODE_SETTINGS_CONTENT = (
+    json.dumps(
+        {
+            "jupytextSync.syncDocuments": {
+                "onNotebookDocumentOpen": False,
+                "onNotebookDocumentSave": True,
+                "onNotebookDocumentClose": False,
+                "onTextDocumentOpen": False,
+                "onTextDocumentSave": True,
+                "onTextDocumentClose": False,
+            }
+        },
+        indent=2,
+    )
+    + "\n"
+)
+
+_VSCODE_EXTENSIONS_CONTENT = (
+    json.dumps({"recommendations": [JUPYTEXT_SYNC_EXTENSION_ID]}, indent=2) + "\n"
+)
+
+
 def create_project(workspace_root: str | Path, project_name: str) -> dict[str, Path]:
     project_dir = get_project_dir(workspace_root, project_name)
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -71,6 +103,18 @@ def create_project(workspace_root: str | Path, project_name: str) -> dict[str, P
     if not jupytext_config_path.exists():
         jupytext_config_path.write_text(_JUPYTEXT_CONFIG_CONTENT, encoding="utf-8")
     paths["jupytext_config"] = jupytext_config_path
+
+    vscode_settings_path = project_dir / VSCODE_SETTINGS_FILENAME
+    vscode_settings_path.parent.mkdir(parents=True, exist_ok=True)
+    if not vscode_settings_path.exists():
+        vscode_settings_path.write_text(_VSCODE_SETTINGS_CONTENT, encoding="utf-8")
+    paths["vscode_settings"] = vscode_settings_path
+
+    vscode_extensions_path = project_dir / VSCODE_EXTENSIONS_FILENAME
+    if not vscode_extensions_path.exists():
+        vscode_extensions_path.write_text(_VSCODE_EXTENSIONS_CONTENT, encoding="utf-8")
+    paths["vscode_extensions"] = vscode_extensions_path
+
     return paths
 
 

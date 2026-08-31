@@ -88,6 +88,7 @@ The Pixi workspace flow lets you keep your projects, models, generated notebooks
 - each project contains one or more models
 - generated NHM notebooks live once per project
 - each project gets a `jupytext.toml` pairing every notebook to a same-directory `.py`, so your work is reviewable in git
+- each project also gets a `.vscode/` folder recommending the [Jupytext Sync](https://open-vsx.org/extension/caenrigen/jupytext-sync) extension and preconfiguring it to sync on save — works in both VS Code and Kiro, since Kiro is Code OSS-based and installs Open VSX extensions
 - each project records one active model for the shared notebook session
 - notebook and model outputs are written to model-local runtime folders instead of back into the repository
 - the commands are designed to work on macOS, Windows, and Linux
