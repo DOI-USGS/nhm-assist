@@ -6,6 +6,7 @@ docs/superpowers/specs/2026-08-30-helper-unification-design.md.
 """
 from __future__ import annotations
 
+import os
 import pathlib as pl
 
 import yaml
@@ -64,3 +65,54 @@ def load_subdomain_config(root_dir: pl.Path) -> dict:
 
     config.setdefault("resource_gages_file", None)
     return config
+
+
+def delete_notebook_output_files(
+    *,
+    notebook_output_dir: pl.Path,
+    model_dir: pl.Path,
+) -> None:
+    """Clear prior notebook output so a rerun starts clean."""
+    notebook_output_dir = pl.Path(notebook_output_dir)
+    model_dir = pl.Path(model_dir)
+
+    subfolders = ["Folium_maps", "html_maps", "html_plots", "nc_files"]
+    deleted_by_subfolder: dict[str, int] = {}
+    for subfolder in subfolders:
+        folder_path = notebook_output_dir / subfolder
+        if not folder_path.exists():
+            continue
+        count = 0
+        for file_name in os.listdir(folder_path):
+            file_path = folder_path / file_name
+            if file_path.is_file():
+                os.remove(file_path)
+                count += 1
+        if count:
+            deleted_by_subfolder[subfolder] = count
+
+    deleted_model_files = 0
+    files = [
+        "default_gages.csv",
+        "append_gages_to_param_file.csv",
+        "default_gages_file.csv",
+        "NWISgages.csv",
+    ]
+    for file_name in files:
+        target = model_dir / file_name
+        if target.exists():
+            os.remove(target)
+            deleted_model_files += 1
+
+    metadata_files = ["WaterDataGages.csv"]
+    for file_name in metadata_files:
+        target = model_dir / "metadata" / file_name
+        if target.exists():
+            os.remove(target)
+            deleted_model_files += 1
+
+    total = sum(deleted_by_subfolder.values()) + deleted_model_files
+    if total == 0:
+        print("No prior notebook output files to delete.")
+    else:
+        print(f"Deleted {total} prior notebook output file(s).")
