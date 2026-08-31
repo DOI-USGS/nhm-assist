@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
 import shlex
-import subprocess
-import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +8,11 @@ from dotenv import dotenv_values, set_key, unset_key
 
 from assist.workspace import bridge, service
 from assist.workspace.examples import list_available_example_names
+from assist.workspace.kernels import (
+    DEFAULT_KERNEL_DISPLAY_NAME,
+    DEFAULT_KERNEL_NAME,
+    ensure_kernel_registered,
+)
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -410,11 +411,13 @@ def generate_nhm_notebooks(
     print_func=print,
 ) -> list[Path]:
     workspace_root = require_workspace_root(state)
+    ensure_kernel_registered(DEFAULT_KERNEL_NAME, DEFAULT_KERNEL_DISPLAY_NAME)
     created = notebook_builder.convert_workflow(
         "nhm",
         workspace_root=workspace_root,
         project_name=state.current_project,
         dry_run=False,
+        print_func=lambda *_: None,
     )
     notebook_dir = bridge.get_project_workflow_notebooks_dir(
         "nhm",
@@ -460,97 +463,35 @@ def action_generate_nhm_notebooks(
     return generate_nhm_notebooks(state, print_func=print_func)
 
 
-JUPYTER_STARTUP_PROBE_SECONDS = 0.75
-
-
-def _default_jupyter_readiness_probe(project_root: Path) -> bool:
-    try:
-        from jupyter_server.serverapp import list_running_servers
-    except Exception:
-        return True
-    target = str(Path(project_root).resolve())
-    for server in list_running_servers():
-        root = server.get("root_dir") or server.get("notebook_dir") or ""
-        if root and str(Path(root).resolve()) == target:
-            return True
-    return False
-
-
-def action_launch_jupyter(
+def action_show_notebook_location(
     state: SetupState,
     *,
     print_func=print,
-    startup_probe_seconds: float = JUPYTER_STARTUP_PROBE_SECONDS,
-    readiness_probe=None,
-    readiness_timeout_seconds: float = 30.0,
-    readiness_poll_seconds: float = 0.5,
-    sleep_func=time.sleep,
 ) -> Path | None:
     if not require_current_project(state, print_func=print_func):
         return None
 
     workspace_root = require_workspace_root(state)
-    project_root = bridge.get_project_dir(
+
+    if nhm_notebooks_need_generation(state):
+        print_func("Generating NHM notebooks first…")
+        generate_nhm_notebooks(state, print_func=print_func)
+
+    notebook_dir = bridge.get_project_workflow_notebooks_dir(
+        "nhm",
         workspace_root,
         state.current_project,
     )
 
-    if nhm_notebooks_need_generation(state):
-        print_func("Generating NHM notebooks before launch…")
-        generate_nhm_notebooks(state, print_func=print_func)
-
-    command = [sys.executable, "-m", "jupyter", "lab", str(project_root)]
-    pretty_command = " ".join(shlex.quote(part) for part in command)
-
-    if importlib.util.find_spec("jupyterlab") is None:
-        print_func("Error: JupyterLab is not installed in the current environment.")
-        print_func(f"Command attempted: {pretty_command}")
-        print_func("Install JupyterLab in this Pixi environment, then try again.")
-        return None
-
-    print_func(f"Launching: {pretty_command}")
-    try:
-        proc = subprocess.Popen(command, cwd=project_root)
-    except (OSError, FileNotFoundError) as exc:
-        print_func(f"Error: failed to start Jupyter: {exc}")
-        print_func(f"Command attempted: {pretty_command}")
-        return None
-
-    sleep_func(startup_probe_seconds)
-    return_code = proc.poll()
-    if return_code is not None:
-        print_func(f"Error: Jupyter exited immediately with code {return_code}.")
-        print_func(f"Command attempted: {pretty_command}")
-        print_func("Check the output above for the underlying error.")
-        return None
-
-    if readiness_probe is None:
-        readiness_probe = lambda: _default_jupyter_readiness_probe(project_root)
-
-    print_func("Loading JupyterLab…")
-    elapsed = 0.0
-    ready = False
-    while elapsed < readiness_timeout_seconds:
-        if readiness_probe():
-            ready = True
-            break
-        if proc.poll() is not None:
-            print_func(
-                f"Error: Jupyter exited while starting with code {proc.returncode}."
-            )
-            print_func("Check the output above for the underlying error.")
-            return None
-        sleep_func(readiness_poll_seconds)
-        elapsed += readiness_poll_seconds
-
-    if ready:
-        print_func(f"JupyterLab is ready for {project_root} (PID {proc.pid}).")
-        print_func("Open the URL printed above in your browser.")
-    else:
-        print_func(
-            "JupyterLab is still starting — its URL will appear above shortly."
-        )
-    return project_root
+    quoted = shlex.quote(str(notebook_dir))
+    print_func("")
+    print_func(f"Your NHM notebooks are in: {notebook_dir}")
+    print_func("Open them yourself with whichever tool you use:")
+    print_func(f"  jupyter lab {quoted}")
+    print_func(f"  code {quoted}")
+    print_func(f"Then select the '{DEFAULT_KERNEL_DISPLAY_NAME}' kernel.")
+    print_func("Run 0_workspace_setup.ipynb first.")
+    return notebook_dir
 
 
 def action_show_current_setup(
@@ -635,7 +576,7 @@ def print_main_menu(state: SetupState, *, print_func=print) -> None:
     print_func("  1. Set workspace root")
     print_func("  2. Create project")
     print_func("  3. Copy example model")
-    print_func("  4. Launch Jupyter")
+    print_func("  4. Show notebook folder and how to open it")
     print_func("")
     print_func("  -- More options --")
     print_func("  5. Open existing project")
@@ -704,7 +645,7 @@ def run_setup(
                         input_func=input_func,
                     )
                 elif choice == 4:
-                    action_launch_jupyter(state, print_func=print_func)
+                    action_show_notebook_location(state, print_func=print_func)
                 elif choice == 5:
                     action_open_project(
                         state,

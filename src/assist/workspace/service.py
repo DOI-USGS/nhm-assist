@@ -38,6 +38,16 @@ _PROJECT_MARKER_CONTENT = (
 )
 
 
+JUPYTEXT_CONFIG_FILENAME = "jupytext.toml"
+
+_JUPYTEXT_CONFIG_CONTENT = (
+    "# Pair every notebook under this project to a same-directory .py file.\n"
+    "# jupytext walks up from each notebook to find this file, so it covers the\n"
+    "# generated workflow notebooks and any sandbox notebook you create yourself.\n"
+    'formats = "ipynb,py:percent"\n'
+)
+
+
 def create_project(workspace_root: str | Path, project_name: str) -> dict[str, Path]:
     project_dir = get_project_dir(workspace_root, project_name)
     project_dir.mkdir(parents=True, exist_ok=True)
@@ -56,6 +66,11 @@ def create_project(workspace_root: str | Path, project_name: str) -> dict[str, P
     notebooks_dir = project_dir / "notebooks"
     notebooks_dir.mkdir(parents=True, exist_ok=True)
     paths["notebooks"] = notebooks_dir
+
+    jupytext_config_path = project_dir / JUPYTEXT_CONFIG_FILENAME
+    if not jupytext_config_path.exists():
+        jupytext_config_path.write_text(_JUPYTEXT_CONFIG_CONTENT, encoding="utf-8")
+    paths["jupytext_config"] = jupytext_config_path
     return paths
 
 

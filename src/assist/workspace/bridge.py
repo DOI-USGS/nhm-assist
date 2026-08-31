@@ -4,11 +4,6 @@ from typing import Mapping
 
 
 WORKFLOW_NAMES = ("nhm", "nhf", "pest")
-REPO_NOTEBOOK_DIRS = {
-    "nhm": Path("notebooks"),
-    "nhf": Path("nhf_assist") / "notebooks",
-    "pest": Path("pestpp_ies_calibration") / "notebooks",
-}
 MODEL_SUBDIRS = ("config", "inputs", "outputs")
 PROJECT_MARKER_FILENAME = ".nhm-assist-project"
 
@@ -48,16 +43,6 @@ def ensure_workspace_root(
 
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
-
-
-def get_workflow_notebooks_dir(
-    workflow: str,
-    *,
-    env: Mapping[str, str] | None = None,
-) -> Path:
-    if workflow not in WORKFLOW_NAMES:
-        raise ValueError(f"unsupported workflow: {workflow}")
-    return resolve_repo_root(env=env) / REPO_NOTEBOOK_DIRS[workflow]
 
 
 def get_project_dir(
