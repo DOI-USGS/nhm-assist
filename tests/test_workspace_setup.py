@@ -174,12 +174,14 @@ class WorkspaceSetupTests(unittest.TestCase):
             current_project="Project_A",
         )
 
+        menu_print_func = lambda *_: None
+
         with patch.object(
             setup.notebook_builder,
             "convert_workflow",
             return_value=[],
         ) as mock_convert:
-            setup.action_generate_nhm_notebooks(state, print_func=lambda *_: None)
+            setup.action_generate_nhm_notebooks(state, print_func=menu_print_func)
 
         mock_convert.assert_called_once()
         args, kwargs = mock_convert.call_args
@@ -187,8 +189,26 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertEqual(kwargs["workspace_root"], self.workspace_root)
         self.assertEqual(kwargs["project_name"], "Project_A")
         self.assertFalse(kwargs["dry_run"])
-        # The menu prints its own one-line summary, so per-file output is muted.
-        self.assertIn("print_func", kwargs)
+        # Per-file status ("created"/"already configured"/"metadata updated")
+        # is the only way the menu shows a mode switch happened, so it must
+        # flow through to convert_workflow rather than being muted.
+        self.assertIs(kwargs["print_func"], menu_print_func)
+
+    def test_action_generate_nhm_notebooks_prints_per_file_status(self):
+        service.create_project(self.workspace_root, "Project_A")
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+
+        first_run: list[str] = []
+        setup.action_generate_nhm_notebooks(state, print_func=first_run.append)
+        self.assertTrue(any("created:" in line for line in first_run))
+
+        second_run: list[str] = []
+        setup.action_generate_nhm_notebooks(state, print_func=second_run.append)
+        self.assertTrue(any("already configured:" in line for line in second_run))
 
     def test_build_parser_supports_setup_command(self):
         parser = cli.build_parser()

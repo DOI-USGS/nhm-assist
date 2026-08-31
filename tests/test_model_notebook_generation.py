@@ -225,6 +225,83 @@ class PairingModeTests(unittest.TestCase):
             reread.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
         )
 
+    def test_switching_to_local_mode_preserves_cell_content(self):
+        # Regression: regenerating in local mode over an existing notebook
+        # used to always re-read the repo template and overwrite cells,
+        # silently discarding anything not yet synced back to the template
+        # -- whether that notebook came from dev mode or was hand-edited
+        # in local mode. This is also what nhm_notebooks_need_generation's
+        # mtime check triggers automatically after a `git pull`.
+        created = self._generate("dev")
+        target = created[0]
+
+        notebook = jupytext.read(target)
+        notebook.cells[0].source = "# UNSYNCED EDIT MADE IN DEV MODE"
+        jupytext.write(notebook, target)
+
+        self._generate("local")
+
+        reread = jupytext.read(target)
+        self.assertEqual(reread.cells[0].source, "# UNSYNCED EDIT MADE IN DEV MODE")
+
+    def test_switching_to_local_mode_clears_dev_pairing_metadata(self):
+        self._generate("dev")
+        target = self.notebook_dir / "0_workspace_setup.ipynb"
+
+        self._generate("local")
+
+        reread = jupytext.read(target)
+        self.assertIsNone(reread.metadata.get("jupytext", {}).get("formats"))
+        self.assertIsNone(
+            reread.metadata.get("jupytext", {}).get("notebook_metadata_filter")
+        )
+        self.assertEqual(
+            reread.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
+        )
+
+    def test_local_mode_regeneration_preserves_existing_cell_edits(self):
+        created = self._generate("local")
+        target = created[0]
+
+        notebook = jupytext.read(target)
+        notebook.cells[0].source = "# HAND EDIT IN LOCAL MODE"
+        jupytext.write(notebook, target)
+
+        self._generate("local")
+
+        reread = jupytext.read(target)
+        self.assertEqual(reread.cells[0].source, "# HAND EDIT IN LOCAL MODE")
+
+    def test_local_mode_regeneration_does_not_require_a_reachable_repo(self):
+        # Local mode's own pairing comes from the project's jupytext.toml,
+        # not from the repo, so regenerating over an existing notebook must
+        # not need dev_pairing_formats' repo-reachability at all -- unlike a
+        # dev-mode workspace, a real end user's workspace has no relationship
+        # to the nhm-assist repo path whatsoever.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            service.create_project(workspace_root, "Project_A")
+            notebook_dir = bridge.get_project_workflow_notebooks_dir(
+                "nhm", workspace_root, "Project_A"
+            )
+
+            notebook_builder.convert_workflow(
+                "nhm",
+                workspace_root=workspace_root,
+                project_name="Project_A",
+                pairing_mode="local",
+                print_func=lambda *_: None,
+            )
+            notebook_builder.convert_workflow(
+                "nhm",
+                workspace_root=workspace_root,
+                project_name="Project_A",
+                pairing_mode="local",
+                print_func=lambda *_: None,
+            )
+
+            self.assertTrue(any(notebook_dir.rglob("*.ipynb")))
+
     def test_dev_mode_is_idempotent(self):
         self._generate("dev")
         second = {path: path.read_bytes() for path in self.notebook_dir.rglob("*.ipynb")}

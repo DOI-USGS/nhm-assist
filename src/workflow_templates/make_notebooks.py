@@ -119,6 +119,7 @@ def _apply_pairing(
     else:
         # Pairing comes from the project's jupytext.toml, not from the file.
         jupytext_meta.pop("formats", None)
+        jupytext_meta.pop("notebook_metadata_filter", None)
     if not jupytext_meta:
         notebook.metadata.pop("jupytext", None)
 
@@ -139,7 +140,15 @@ def _patch_existing_notebook(
     """Bring an existing notebook's metadata in line without touching its cells."""
     notebook = jupytext.read(output_path)
     kernel_name, _ = PAIRING_MODE_KERNELS[pairing_mode]
-    wanted_formats = dev_pairing_formats(py_file.parent, output_path.parent)
+    if pairing_mode == "dev":
+        wanted_formats = dev_pairing_formats(py_file.parent, output_path.parent)
+        wanted_metadata_filter = "-all"
+    else:
+        # Local mode needs no relationship to the repo path at all -- a real
+        # end user's workspace has none -- so this must not call
+        # dev_pairing_formats, which requires the repo to be reachable.
+        wanted_formats = None
+        wanted_metadata_filter = None
 
     current_jupytext_meta = notebook.metadata.get("jupytext", {})
     current_formats = current_jupytext_meta.get("formats")
@@ -147,10 +156,10 @@ def _patch_existing_notebook(
     current_kernel = (notebook.metadata.get("kernelspec") or {}).get("name")
     if (
         current_formats == wanted_formats
-        and current_metadata_filter == "-all"
+        and current_metadata_filter == wanted_metadata_filter
         and current_kernel == kernel_name
     ):
-        return "already dev-configured"
+        return "already configured"
 
     if not dry_run:
         _apply_pairing(
@@ -193,7 +202,7 @@ def convert_workflow(
         output_path = output_folder / relative_path.with_suffix(".ipynb")
         created_paths.append(output_path)
 
-        if pairing_mode == "dev" and output_path.exists():
+        if output_path.exists():
             status = _patch_existing_notebook(
                 output_path,
                 py_file,

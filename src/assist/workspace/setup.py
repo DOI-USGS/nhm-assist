@@ -418,7 +418,7 @@ def generate_nhm_notebooks(
         workspace_root=workspace_root,
         project_name=state.current_project,
         dry_run=False,
-        print_func=lambda *_: None,
+        print_func=print_func,
     )
     notebook_dir = bridge.get_project_workflow_notebooks_dir(
         "nhm",
