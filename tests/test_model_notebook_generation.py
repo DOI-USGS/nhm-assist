@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import jupytext
 from jupytext.paired_paths import paired_paths
+from nbformat.v4 import new_code_cell
 
 from assist.workspace import bridge, kernels, service
 from workflow_templates import make_notebooks as notebook_builder
@@ -151,6 +156,56 @@ class PairingModeTests(unittest.TestCase):
         )
         self.assertEqual(
             notebook.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
+        )
+
+    def test_dev_mode_writes_a_header_free_template(self):
+        # Regression: without notebook_metadata_filter, syncing a dev-mode
+        # notebook stamps the workspace's own relative formats path and local
+        # jupytext_version into the shared, committed repo template, churning
+        # on every contributor's save. Generates against a scratch copy of
+        # the template dir so the sync-triggered write never touches the
+        # real, tracked template.
+        scratch_template_dir = self.workspace_root / "template_scratch" / "nhm"
+        shutil.copytree(notebook_builder.WORKFLOW_INPUT_DIRS["nhm"], scratch_template_dir)
+
+        with patch.dict(
+            notebook_builder.WORKFLOW_INPUT_DIRS, {"nhm": scratch_template_dir}
+        ):
+            created = self._generate("dev")
+            target = created[0]
+
+            notebook = jupytext.read(target)
+            self.assertEqual(
+                notebook.metadata["jupytext"]["notebook_metadata_filter"], "-all"
+            )
+
+            notebook.cells.append(new_code_cell("print('synced from the workspace')"))
+            jupytext.write(notebook, target)
+            subprocess.run(
+                [sys.executable, "-m", "jupytext", "--sync", str(target)],
+                check=True,
+            )
+
+        template_path = scratch_template_dir / target.relative_to(
+            self.notebook_dir
+        ).with_suffix(".py")
+        template_text = template_path.read_text()
+        self.assertFalse(template_text.startswith("# ---"))
+        self.assertIn("synced from the workspace", template_text)
+
+    def test_dev_mode_repairs_notebooks_missing_the_metadata_filter(self):
+        created = self._generate("dev")
+        target = created[0]
+
+        notebook = jupytext.read(target)
+        del notebook.metadata["jupytext"]["notebook_metadata_filter"]
+        jupytext.write(notebook, target)
+
+        self._generate("dev")
+
+        reread = jupytext.read(target)
+        self.assertEqual(
+            reread.metadata["jupytext"]["notebook_metadata_filter"], "-all"
         )
 
     def test_dev_mode_never_rewrites_existing_cell_content(self):

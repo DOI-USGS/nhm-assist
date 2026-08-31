@@ -110,6 +110,12 @@ def _apply_pairing(
     jupytext_meta = notebook.metadata.setdefault("jupytext", {})
     if pairing_mode == "dev":
         jupytext_meta["formats"] = dev_pairing_formats(template_dir, notebook_dir)
+        # Without this, every sync stamps the workspace's own relative
+        # formats path and local jupytext_version into the shared, committed
+        # repo template, churning on every contributor's save. The .ipynb
+        # (never committed to nhm-assist) keeps full metadata regardless, so
+        # pairing and the kernel selection are unaffected.
+        jupytext_meta["notebook_metadata_filter"] = "-all"
     else:
         # Pairing comes from the project's jupytext.toml, not from the file.
         jupytext_meta.pop("formats", None)
@@ -135,9 +141,15 @@ def _patch_existing_notebook(
     kernel_name, _ = PAIRING_MODE_KERNELS[pairing_mode]
     wanted_formats = dev_pairing_formats(py_file.parent, output_path.parent)
 
-    current_formats = notebook.metadata.get("jupytext", {}).get("formats")
+    current_jupytext_meta = notebook.metadata.get("jupytext", {})
+    current_formats = current_jupytext_meta.get("formats")
+    current_metadata_filter = current_jupytext_meta.get("notebook_metadata_filter")
     current_kernel = (notebook.metadata.get("kernelspec") or {}).get("name")
-    if current_formats == wanted_formats and current_kernel == kernel_name:
+    if (
+        current_formats == wanted_formats
+        and current_metadata_filter == "-all"
+        and current_kernel == kernel_name
+    ):
         return "already dev-configured"
 
     if not dry_run:

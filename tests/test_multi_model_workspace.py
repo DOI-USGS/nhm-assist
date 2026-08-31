@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -136,6 +137,9 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertEqual(paths["jupytext_config"], config)
             self.assertTrue(config.is_file())
             self.assertIn('formats = "ipynb,py:percent"', config.read_text())
+            self.assertIn(
+                'notebook_metadata_filter = "-all"', config.read_text()
+            )
 
     def test_create_project_never_overwrites_an_existing_jupytext_config(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -169,6 +173,9 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
                     "onTextDocumentSave": True,
                     "onTextDocumentClose": False,
                 },
+            )
+            self.assertEqual(
+                settings["jupytextSync.pythonExecutable"], sys.executable
             )
 
     def test_create_project_never_overwrites_existing_vscode_settings(self):
