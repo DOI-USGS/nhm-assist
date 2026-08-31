@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,133 +174,41 @@ class WorkspaceSetupTests(unittest.TestCase):
             current_project="Project_A",
         )
 
+        menu_print_func = lambda *_: None
+
         with patch.object(
             setup.notebook_builder,
             "convert_workflow",
             return_value=[],
         ) as mock_convert:
-            setup.action_generate_nhm_notebooks(state, print_func=lambda *_: None)
+            setup.action_generate_nhm_notebooks(state, print_func=menu_print_func)
 
-        mock_convert.assert_called_once_with(
-            "nhm",
-            workspace_root=self.workspace_root,
-            project_name="Project_A",
-            dry_run=False,
-        )
+        mock_convert.assert_called_once()
+        args, kwargs = mock_convert.call_args
+        self.assertEqual(args, ("nhm",))
+        self.assertEqual(kwargs["workspace_root"], self.workspace_root)
+        self.assertEqual(kwargs["project_name"], "Project_A")
+        self.assertFalse(kwargs["dry_run"])
+        # Per-file status ("created"/"already configured"/"metadata updated")
+        # is the only way the menu shows a mode switch happened, so it must
+        # flow through to convert_workflow rather than being muted.
+        self.assertIs(kwargs["print_func"], menu_print_func)
 
-    def test_action_launch_jupyter_uses_project_root(self):
+    def test_action_generate_nhm_notebooks_prints_per_file_status(self):
+        service.create_project(self.workspace_root, "Project_A")
         state = setup.SetupState(
             repo_root=self.repo_root,
             workspace_root=self.workspace_root,
             current_project="Project_A",
         )
 
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.poll.return_value = None
-            mock_popen.return_value.pid = 12345
-            setup.action_launch_jupyter(
-                state,
-                print_func=lambda *_: None,
-                startup_probe_seconds=0,
-                readiness_probe=lambda: True,
-                sleep_func=lambda *_: None,
-            )
+        first_run: list[str] = []
+        setup.action_generate_nhm_notebooks(state, print_func=first_run.append)
+        self.assertTrue(any("created:" in line for line in first_run))
 
-        command = mock_popen.call_args.args[0]
-        self.assertEqual(
-            command,
-            [
-                sys.executable,
-                "-m",
-                "jupyter",
-                "lab",
-                str(self.workspace_root / "Project_A"),
-            ],
-        )
-
-    def test_action_launch_jupyter_reports_when_jupyterlab_missing(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-        printed: list[str] = []
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch(
-            "assist.workspace.setup.importlib.util.find_spec",
-            return_value=None,
-        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            result = setup.action_launch_jupyter(
-                state,
-                print_func=printed.append,
-                startup_probe_seconds=0,
-                sleep_func=lambda *_: None,
-            )
-
-        self.assertIsNone(result)
-        mock_popen.assert_not_called()
-        self.assertTrue(
-            any("JupyterLab is not installed" in line for line in printed),
-            f"expected missing-jupyterlab message, got: {printed}",
-        )
-
-    def test_action_launch_jupyter_reports_when_process_exits_immediately(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-        printed: list[str] = []
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.poll.return_value = 1
-            mock_popen.return_value.returncode = 1
-            mock_popen.return_value.pid = 12345
-            result = setup.action_launch_jupyter(
-                state,
-                print_func=printed.append,
-                startup_probe_seconds=0,
-                sleep_func=lambda *_: None,
-            )
-
-        self.assertIsNone(result)
-        self.assertTrue(
-            any("exited immediately with code 1" in line for line in printed),
-            f"expected immediate-exit message, got: {printed}",
-        )
-
-    def test_action_launch_jupyter_reports_when_popen_raises(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-        printed: list[str] = []
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch(
-            "assist.workspace.setup.subprocess.Popen",
-            side_effect=FileNotFoundError("python not found"),
-        ):
-            result = setup.action_launch_jupyter(
-                state,
-                print_func=printed.append,
-                startup_probe_seconds=0,
-                sleep_func=lambda *_: None,
-            )
-
-        self.assertIsNone(result)
-        self.assertTrue(
-            any("failed to start Jupyter" in line for line in printed),
-            f"expected popen-failure message, got: {printed}",
-        )
+        second_run: list[str] = []
+        setup.action_generate_nhm_notebooks(state, print_func=second_run.append)
+        self.assertTrue(any("already configured:" in line for line in second_run))
 
     def test_build_parser_supports_setup_command(self):
         parser = cli.build_parser()
@@ -311,25 +218,25 @@ class WorkspaceSetupTests(unittest.TestCase):
 
     def test_prompt_workspace_root_uses_default_on_blank_input(self):
         printed: list[str] = []
-        default_target = self.tmp_path / "default_workspace"
+        default_target = setup.default_workspace_root(self.repo_root)
 
-        with patch.object(
-            setup,
-            "DEFAULT_WORKSPACE_ROOT",
-            default_target,
-        ):
-            result = setup.prompt_workspace_root(
-                self.repo_root,
-                print_func=printed.append,
-                input_func=lambda *_: "",
-            )
+        result = setup.prompt_workspace_root(
+            self.repo_root,
+            print_func=printed.append,
+            input_func=lambda *_: "",
+        )
 
-        self.assertEqual(result, default_target.expanduser().resolve())
+        self.assertEqual(result, default_target)
         self.assertTrue(result.is_dir())
         self.assertTrue(
-            any(str(default_target.expanduser().resolve()) in line for line in printed),
+            any(str(default_target) in line for line in printed),
             f"expected default path in guidance lines, got: {printed}",
         )
+
+    def test_default_workspace_root_is_sibling_of_repo(self):
+        result = setup.default_workspace_root(self.repo_root)
+
+        self.assertEqual(result, self.repo_root.parent / "nhm-workspace")
 
     def test_prompt_workspace_root_warns_when_inside_repo_and_re_prompts_on_no(self):
         printed: list[str] = []
@@ -561,92 +468,6 @@ class WorkspaceSetupTests(unittest.TestCase):
 
         self.assertTrue(setup.nhm_notebooks_need_generation(state))
 
-    def test_action_launch_jupyter_generates_notebooks_when_needed(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=True
-        ), patch.object(
-            setup, "generate_nhm_notebooks", return_value=[]
-        ) as mock_gen, patch(
-            "assist.workspace.setup.subprocess.Popen"
-        ) as mock_popen:
-            mock_popen.return_value.poll.return_value = None
-            mock_popen.return_value.pid = 111
-            setup.action_launch_jupyter(
-                state,
-                print_func=lambda *_: None,
-                startup_probe_seconds=0,
-                readiness_probe=lambda: True,
-                sleep_func=lambda *_: None,
-            )
-
-        mock_gen.assert_called_once()
-
-    def test_action_launch_jupyter_prints_loading_before_ready(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-        printed: list[str] = []
-        calls = {"n": 0}
-
-        def probe():
-            calls["n"] += 1
-            return calls["n"] >= 3
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.poll.return_value = None
-            mock_popen.return_value.pid = 222
-            result = setup.action_launch_jupyter(
-                state,
-                print_func=printed.append,
-                startup_probe_seconds=0,
-                readiness_probe=probe,
-                sleep_func=lambda *_: None,
-            )
-
-        self.assertEqual(result, self.workspace_root / "Project_A")
-        loading_idx = next(i for i, l in enumerate(printed) if "Loading JupyterLab" in l)
-        ready_idx = next(i for i, l in enumerate(printed) if "is ready" in l)
-        self.assertLess(loading_idx, ready_idx)
-
-    def test_action_launch_jupyter_reports_timeout_when_never_ready(self):
-        state = setup.SetupState(
-            repo_root=self.repo_root,
-            workspace_root=self.workspace_root,
-            current_project="Project_A",
-        )
-        printed: list[str] = []
-
-        with patch.object(
-            setup, "nhm_notebooks_need_generation", return_value=False
-        ), patch("assist.workspace.setup.subprocess.Popen") as mock_popen:
-            mock_popen.return_value.poll.return_value = None
-            mock_popen.return_value.pid = 333
-            result = setup.action_launch_jupyter(
-                state,
-                print_func=printed.append,
-                startup_probe_seconds=0,
-                readiness_probe=lambda: False,
-                readiness_timeout_seconds=1.0,
-                readiness_poll_seconds=0.5,
-                sleep_func=lambda *_: None,
-            )
-
-        self.assertEqual(result, self.workspace_root / "Project_A")
-        self.assertTrue(
-            any("still starting" in line for line in printed),
-            f"expected timeout message, got: {printed}",
-        )
-
     def test_print_main_menu_lists_guided_then_more_options(self):
         state = setup.SetupState(
             repo_root=self.repo_root,
@@ -661,7 +482,7 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertIn("1. Set workspace root", text)
         self.assertIn("2. Create project", text)
         self.assertIn("3. Copy example model", text)
-        self.assertIn("4. Launch Jupyter", text)
+        self.assertIn("4. Show notebook folder and how to open it", text)
         self.assertIn("More options", text)
         self.assertIn("5. Open existing project", text)
         self.assertIn("6. Import model folder", text)
@@ -672,7 +493,8 @@ class WorkspaceSetupTests(unittest.TestCase):
         self.assertIn("0. Exit", text)
         self.assertLess(text.index("Guided setup"), text.index("More options"))
         self.assertLess(
-            text.index("4. Launch Jupyter"), text.index("5. Open existing project")
+            text.index("4. Show notebook folder"),
+            text.index("5. Open existing project"),
         )
 
     def _run_setup_once(self, choice, action_name):
@@ -691,7 +513,7 @@ class WorkspaceSetupTests(unittest.TestCase):
         cases = {
             2: "action_create_project",
             3: "action_copy_example_model",
-            4: "action_launch_jupyter",
+            4: "action_show_notebook_location",
             5: "action_open_project",
             6: "action_import_model",
             7: "action_set_active_model",
@@ -703,6 +525,63 @@ class WorkspaceSetupTests(unittest.TestCase):
             with self.subTest(choice=choice):
                 mock_action = self._run_setup_once(choice, action_name)
                 mock_action.assert_called_once()
+
+
+class NotebookLocationActionTests(unittest.TestCase):
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        self.tmp_path = Path(self._tmpdir.name).resolve()
+        self.workspace_root = self.tmp_path / "workspace"
+        service.create_project(self.workspace_root, "Project_A")
+        self.state = setup.SetupState(
+            repo_root=self.tmp_path / "repo",
+            workspace_root=self.workspace_root,
+            current_project="Project_A",
+        )
+        kernel_patcher = patch.object(
+            setup, "ensure_kernel_registered", return_value=False
+        )
+        kernel_patcher.start()
+        self.addCleanup(kernel_patcher.stop)
+
+    def test_prints_the_path_and_the_command_without_spawning_anything(self):
+        lines = []
+        with patch("subprocess.Popen") as mock_popen:
+            result = setup.action_show_notebook_location(
+                self.state, print_func=lines.append
+            )
+
+        mock_popen.assert_not_called()
+        output = "\n".join(lines)
+        self.assertEqual(result.name, "nhm")
+        self.assertIn(str(result), output)
+        self.assertIn("jupyter lab", output)
+        self.assertIn(setup.DEFAULT_KERNEL_DISPLAY_NAME, output)
+
+    def test_generates_notebooks_first_when_they_are_missing(self):
+        with patch.object(setup, "generate_nhm_notebooks") as mock_generate:
+            setup.action_show_notebook_location(
+                self.state, print_func=lambda *_: None
+            )
+
+        mock_generate.assert_called_once()
+
+    def test_returns_none_without_a_current_project(self):
+        self.state.current_project = None
+
+        result = setup.action_show_notebook_location(
+            self.state, print_func=lambda *_: None
+        )
+
+        self.assertIsNone(result)
+
+
+class LauncherRemovalTests(unittest.TestCase):
+    def test_jupyter_launcher_is_gone(self):
+        self.assertFalse(hasattr(setup, "action_launch_jupyter"))
+        self.assertFalse(hasattr(setup, "_default_jupyter_readiness_probe"))
+        self.assertFalse(hasattr(setup, "JUPYTER_STARTUP_PROBE_SECONDS"))
 
 
 if __name__ == "__main__":

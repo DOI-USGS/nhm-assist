@@ -57,32 +57,45 @@ pixi run setup
 
 Drops you into a guided menu. Just work through the top four options in order:
 
-1. Set the workspace root (defaults to `~/nhm-workspace`, outside the repo)
+1. Set the workspace root (defaults to `nhm-workspace` alongside the cloned repo, outside it)
 2. Create a project
 3. Copy an example model (automatically set as the active model)
-4. Launch JupyterLab (generates the NHM notebooks first if needed)
+4. Show the notebook folder and the command to open it (generates the NHM notebooks first if needed)
 
 See the "Pixi Workspace for NHM" section below for the layout details.
 
 ## Pixi task cheat sheet
 
-| Workflow | Generate notebooks | Open in Jupyter |
-| --- | --- | --- |
-| NHM | `pixi run notebooks-create nhm` | `pixi run jupyter lab notebooks` |
-| NHF | `pixi run notebooks-create nhf` | `cd nhf_assist && pixi run jupyter lab notebooks` |
-| PEST | `pixi run notebooks-create pest` | `cd pestpp_ies_calibration && pixi run jupyter lab notebooks` |
-| All workflows | `pixi run notebooks-create all` | Open the workflow-specific notebook directory you want |
+Notebooks are always generated into a project inside your workspace; there is no
+notebook directory inside the repository.
 
-(The pixi `notebooks-create` task wraps `python -m workflow_templates.make_notebooks`; it generates `.ipynb` files but does not launch Jupyter.)
+| Goal | Command |
+| --- | --- |
+| Generate one workflow's notebooks | `pixi run notebooks-create-project <workspace-root> <project-name> nhm` |
+| Generate every workflow's notebooks | `pixi run notebooks-create-project <workspace-root> <project-name> all` |
+| Open them in JupyterLab | `jupyter lab <workspace-root>/<project-name>/notebooks/nhm` |
+| Open them in VS Code | `code <workspace-root>/<project-name>/notebooks/nhm` |
+
+Each generation command prints the
+folder it wrote to, so you can open it with any of the above or with Kiro, so just launch the IDE, add the project folder to your workspace, and browse to the notebook.
+
+This command is safe to re-run on notebooks that already exist: cell content is
+always preserved, and only pairing metadata and the kernel are brought in line.
+
+Contributing edits back to the notebook templates? See
+["Developing nhm-assist notebooks"](#developing-nhm-assist-notebooks) below for
+dev mode and switching a project back out of it.
 
 ## Pixi Workspace for NHM
 
 The Pixi workspace flow lets you keep your projects, models, generated notebooks, and outputs **outside the cloned repository**. In this mode:
 
-- the repository remains the source of code, notebook templates, and shared `data_dependencies`
+- the repository remains the source of code, notebook templates, and `data_dependencies` that are commonly shared among multiple projects.
 - a workspace contains one or more projects
 - each project contains one or more models
 - generated NHM notebooks live once per project
+- each project gets a `jupytext.toml` pairing every notebook to a same-directory `.py`, so your work is reviewable in git
+- each project also gets a `.vscode/` folder recommending the [Jupytext Sync](https://open-vsx.org/extension/caenrigen/jupytext-sync) extension and preconfiguring it to sync on save — works in both VS Code and Kiro, since Kiro is Code OSS-based and installs Open VSX extensions
 - each project records one active model for the shared notebook session
 - notebook and model outputs are written to model-local runtime folders instead of back into the repository
 - the commands are designed to work on macOS, Windows, and Linux
@@ -96,8 +109,10 @@ pixi run project-create <workspace-root> <project-name>
 pixi run model-copy-example <workspace-root> <project-name> <model-name> Walla_Walla
 pixi run project-set-active-model <workspace-root> <project-name> <model-name>
 pixi run notebooks-create-project <workspace-root> <project-name> nhm
-pixi run jupyter lab <workspace-root>/<project-name>/notebooks/nhm
 ```
+
+The last command prints the notebook folder and the command to open it. Open that
+folder however you like, and select the **Python (nhm-assist)** kernel.
 
 Run `0_workspace_setup.ipynb` first from the project notebook directory.
 
@@ -125,40 +140,97 @@ The shared project notebooks resolve the active model from `project_config/activ
 
 ## Developing nhm-assist notebooks
 
-The workspace flow above is for **using** nhm-assist against your own models. If you are a **contributor** working on the notebook templates themselves (`src/workflow_templates/<workflow>/*.py`), use the dev task instead:
+Contributors use the **same** workspace flow as everyone else. There is no
+separate in-repo notebook directory and no contributor-only Jupyter launcher —
+you work against your own project, exactly like a user would, so the path you
+exercise is the path they get.
+
+Set up a project once:
 
 ```bash
-pixi run dev
+pixi run project-create <workspace-root> my-test-project
+pixi run model-copy-example <workspace-root> my-test-project Walla_Walla Walla_Walla
+pixi run project-set-active-model <workspace-root> my-test-project Walla_Walla
+```
+
+Then generate the notebooks in **dev mode**:
+
+```bash
+pixi run dev-mode <workspace-root> my-test-project nhm
 ```
 
 That command:
 
-1. Regenerates the NHM notebooks from `src/workflow_templates/nhm/*.py` into `notebooks/` via `make_notebooks.py`.
-2. Launches `jupyter lab` against `notebooks/`, NOT against a workspace.
-3. The repo-root `jupytext.toml` keeps the `.ipynb` files paired with the `.py` source — when you save a notebook in JupyterLab, the corresponding `.py` template updates so your edits land in git.
+1. Generates `<workspace-root>/my-test-project/notebooks/nhm/*.ipynb` — the same
+   location a real user sees.
+2. Pairs each notebook back to its real source template in
+   `src/workflow_templates/nhm/*.py` via jupytext metadata, so **saving the
+   notebook writes your edit straight into the repo**, where git can see it.
+3. Registers and stamps the `Python (nhm-assist dev)` kernel, so the notebook
+   opens against the `dev` pixi environment without you picking it each time.
+4. Prints the folder and the command to open it. It does **not** start Jupyter.
 
-The `notebooks/*.ipynb` outputs are gitignored (`*.ipynb` rule in `.gitignore`); only the `.py` templates get committed.
+Re-running `dev-mode` is safe: it never rewrites the content of a notebook that
+already exists. It only repairs pairing or kernel metadata that has drifted, and
+tells you which of "created", "already configured", or "metadata updated"
+applied to each file.
+
+Only the `.py` templates are committed — `*.ipynb` is gitignored.
+
+### Switching a project back to local mode
+
+Run the ordinary local-mode command over a project that's currently in dev mode:
+
+```bash
+pixi run notebooks-create-project <workspace-root> my-test-project nhm
+```
+
+This is cell-safe too — it never rewrites notebook content, only pairing
+metadata and the kernel, switching them back to the project's own
+`jupytext.toml` and the `Python (nhm-assist)` kernel. It does drop the
+notebook's pairing to `src/workflow_templates/`, though, so make sure any
+dev-mode edits are synced (saved) and committed/pushed to `nhm-assist` **before**
+you switch back — otherwise those edits stay stuck in your own workspace
+notebook and never reach the shared template.
+
+`pixi run setup`'s "Generate NHM notebooks" menu option (and "Show notebook
+folder", when it decides regeneration is needed) does the same thing, since
+both always generate in local mode — pick either one on a dev-mode project to
+switch it back through the guided menu instead of the command above. Either
+way, watch for the per-notebook status it prints: `created` for a first-time
+notebook, `already configured` if nothing needed to change, or `metadata
+updated` when a switch (or a repair) actually happened.
+
+> **Where your workspace can live.** Dev mode pairs through a *relative* path, so
+> your workspace and this repo must share a parent directory below the filesystem
+> root — for example both somewhere under your home directory. A workspace on a
+> separate volume or Windows drive cannot be dev-paired, and `dev-mode` will tell
+> you so instead of silently writing the template to the wrong place. Ordinary
+> `notebooks-create-project` use is unaffected and works from anywhere.
 
 ### Targeting NHF or PEST templates
 
-`pixi run dev` defaults to the `nhm` workflow + `notebooks/` directory. To work on a different workflow:
+`dev-mode` defaults to the `nhm` workflow. Pass a different one as the third
+argument:
 
 ```bash
-pixi run dev nhf nhf_assist/notebooks
-pixi run dev pest pestpp_ies_calibration/notebooks
+pixi run dev-mode <workspace-root> my-test-project nhf
+pixi run dev-mode <workspace-root> my-test-project pest
 ```
 
-### Editing without launching Jupyter
+### How dev mode differs from normal use
 
-If you just want to regenerate notebooks (e.g. after pulling new `.py` changes) without opening a browser:
+Both write notebooks into the same place. The only difference is where the
+paired `.py` file lives:
 
-```bash
-pixi run notebooks-create nhm
-```
+| | `notebooks-create-project` (and `setup`) | `dev-mode` |
+| --- | --- | --- |
+| Paired `.py` | Same folder as the notebook, via the project's `jupytext.toml` | The real template in `src/workflow_templates/<workflow>/` |
+| Kernel | `Python (nhm-assist)` (default env) | `Python (nhm-assist dev)` (dev env) |
+| Edits land in | Your project | The nhm-assist repo |
 
-### Why this is separate from `pixi run setup`
-
-`pixi run setup` is for end users — it prompts for a workspace location outside the repo, manages projects and active models, and writes generated notebooks into the workspace. `pixi run dev` is for contributors — it skips all of that and works directly against the repo's `notebooks/` directory so edits land in source control.
+Everything else — how the notebook finds the active model, where outputs go —
+is identical, which is the point.
 
 ## nhm-assist plots and maps
 
