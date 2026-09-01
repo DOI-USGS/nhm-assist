@@ -23,6 +23,19 @@ environment is pinned to `pywatershed>=2.0.1,<3` / Python 3.11). Rather than a
 clean cutover on a branch, #44 proposes a separate dev/test environment so
 contributors can run either pywatershed version from the same branch.
 
+Separately, work item #41 flags that the
+[dataretrieval-python v1.2](https://github.com/DOI-USGS/dataretrieval-python/releases/tag/v1.2.0)
+release (and v1.3, since released) shipped breaking changes deferred from
+earlier v1.x releases. `dataretrieval` is currently unbounded in both
+`[project.dependencies]` and `[tool.pixi.dependencies]` — today's `pixi.lock`
+happens to have 1.1.5 resolved, but nothing pins it there, so any future
+`pixi install`/lock regeneration (including this one) could silently pull in
+1.2+ for every environment with no warning. #41 asks that we test the new
+release and pin to `<1.2` if it causes problems; since `dev_future` already
+exists as a controlled space for testing pre-release/breaking dependency
+versions (per #44), it's the natural place to test dataretrieval 1.2+ too,
+alongside pywatershed 3.x.
+
 Separately, this repo's real CI (the GitHub Actions mirror workflow) still
 needs migrating to GitLab CI to give merge requests actual signal — tracked
 in #47, which is deliberately on the back burner pending GitLab-CI-specific
@@ -55,15 +68,19 @@ correctly.
 2. Add a `ci` environment (`prod` + `test` features) as the pixi-side
    placeholder CI is meant to eventually use — this spec only defines it in
    `pyproject.toml`.
-3. Add a `dev_future` environment for testing pywatershed 3.x (and the
-   Python 3.12/3.13 it requires) in its own solve-group, without disturbing
-   `default`'s stable 2.x contract or `[project.dependencies]`'s published
-   promise.
+3. Add a `dev_future` environment, in its own solve-group, for testing
+   pre-release/breaking dependency versions without disturbing `default`'s
+   stable contract or `[project.dependencies]`'s published promise: pywatershed
+   3.x (and the Python 3.12/3.13 it requires) per #44, and dataretrieval 1.2+
+   per #41.
 4. Keep `[project.dependencies]` as the sole authoritative published runtime
    contract — nothing here duplicates it into a second list.
 5. Resolve #33 by bundling `proj-data` and disabling PROJ's network fetch in
    the `dev` feature only, so contributors behind a corporate firewall get a
    working `pyproj` automatically, without bloating `default`/`ci`.
+6. Resolve #41's short-term ask by pinning `dataretrieval<1.2` on `default`/
+   `ci`/`dev` (the known-good line, since nothing has tested 1.2+ yet) while
+   `dev_future` tracks `dataretrieval>=1.2` for testing.
 
 ## Non-goals
 
@@ -74,8 +91,9 @@ correctly.
   axis, and permanently out of scope: that workflow distinction is being
   unified away separately.
 - Migrating `src/assist`/`src/workflow_templates` code to actually support
-  pywatershed 3.0's breaking API changes. This spec only builds the
-  environment to test against; the code migration is the rest of #44's work.
+  pywatershed 3.0's or dataretrieval 1.2's breaking API changes. This spec
+  only builds the environments to test against; the code migration is the
+  rest of #44's and #41's work, respectively.
 - Publishing to PyPI/conda-forge.
 - Cleaning up the `dev` group's unused aspirational packages (gdptools,
   ipyleaflet, pint-xarray, tobler) — carried over as-is.
@@ -159,14 +177,49 @@ by then #44's code migration should have resolved which version is actually
 current. Re-tighten the published bound as part of whichever change makes
 pywatershed 3.x the supported default.
 
-### 3. Environment/feature composition
+### 3. dataretrieval version split
 
-| Environment | Features composed | Solve-group | Python | pywatershed |
-|---|---|---|---|---|
-| `default` | `prod` | `default` | `>=3.11.9,<3.14` | `>=2.0.1,<3` |
-| `ci` | `prod`, `test` | `default` | (same as `default`) | (same as `default`) |
-| `dev` | `prod`, `test`, `dev` | `default` | (same as `default`) | (same as `default`) |
-| `dev_future` | `test`, `dev`, `dev_future` | `future` | `>=3.12,<3.14` | `>=3,<4` |
+Same pattern as Section 2, for #41. `dataretrieval` moves out of the shared
+`[tool.pixi.dependencies]` block (where it's currently unbounded) and into
+per-feature pins. This is on top of Section 2's edit to the same block —
+`python`, `pywatershed`, and `dataretrieval` all end up feature-scoped,
+nothing else:
+
+```toml
+[tool.pixi.dependencies]
+# python, pywatershed, and dataretrieval removed from here — now feature-scoped below.
+cdsapi = "*"
+dask = "*"
+# ...(all other shared conda deps, unchanged)
+
+[tool.pixi.feature.prod.dependencies]
+dataretrieval = "<1.2"
+
+[tool.pixi.feature.dev_future.dependencies]
+dataretrieval = ">=1.2"
+```
+
+Unlike the pywatershed split, this doesn't loosen an existing bound — it adds
+the first explicit pin `dataretrieval` has ever had, since today it's
+unbounded everywhere and only stays on 1.1.5 because that's what's already
+resolved in `pixi.lock`. Pinning `default`/`ci`/`dev` to `<1.2` now (rather
+than waiting for a problem, per #41's literal wording) closes that gap: this
+MR's own lock regeneration could otherwise have silently picked up 1.2 or 1.3
+for every environment. `dev_future` tracks `dataretrieval>=1.2` so
+contributors can test the async parallel chunker and CQL2 query features #41
+calls out, and confirm compatibility before the `<1.2` cap is ever lifted.
+`[project.dependencies]`'s unbounded `dataretrieval` entry is unchanged, for
+the same reason as pywatershed's: not publishing for a few months yet, and
+this list stays the sole authoritative contract (Goal 4).
+
+### 4. Environment/feature composition
+
+| Environment | Features composed | Solve-group | Python | pywatershed | dataretrieval |
+|---|---|---|---|---|---|
+| `default` | `prod` | `default` | `>=3.11.9,<3.14` | `>=2.0.1,<3` | `<1.2` |
+| `ci` | `prod`, `test` | `default` | (same as `default`) | (same as `default`) | (same as `default`) |
+| `dev` | `prod`, `test`, `dev` | `default` | (same as `default`) | (same as `default`) | (same as `default`) |
+| `dev_future` | `test`, `dev`, `dev_future` | `future` | `>=3.12,<3.14` | `>=3,<4` | `>=1.2` |
 
 ```toml
 [tool.pixi.environments]
@@ -201,7 +254,9 @@ lint/test tools, just pointed at pywatershed 3.x.
   spec.
 - Inspect `pixi.lock` after solving: confirm the `default`/`future`
   solve-groups produced genuinely independent version sets for
-  `python`/`pywatershed`, with no cross-contamination.
+  `python`/`pywatershed`/`dataretrieval`, with no cross-contamination —
+  specifically, `default`/`ci`/`dev` resolve `dataretrieval<1.2` and
+  `dev_future` resolves `dataretrieval>=1.2` (1.2.x or 1.3.x).
 - In the `dev` environment, verify PROJ is offline-capable per #33's own
   recipe: `pixi run -e dev python -c "from pyproj import datadir, network;
   print(datadir.get_data_dir()); print(network.is_network_enabled())"`
