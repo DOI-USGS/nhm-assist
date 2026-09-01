@@ -268,6 +268,7 @@ def action_open_project(state: SetupState, *, print_func=print, input_func=input
         return None
 
     project = projects[choice - 1]
+    service.create_project(workspace_root, project.name)
     state.current_project = project.name
     print_func(f"Current project set to {project.name}")
     return project

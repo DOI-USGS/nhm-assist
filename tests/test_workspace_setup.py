@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -117,6 +118,21 @@ class WorkspaceSetupTests(unittest.TestCase):
             setup.action_open_project(state, print_func=lambda *_: None)
 
         self.assertEqual(state.current_project, "Project_B")
+
+    def test_action_open_project_backfills_missing_vscode_config(self):
+        service.create_project(self.workspace_root, "Project_A")
+        vscode_dir = self.workspace_root / "Project_A" / ".vscode"
+        shutil.rmtree(vscode_dir)
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+        )
+
+        with patch.object(setup, "prompt_menu_choice", return_value=1):
+            setup.action_open_project(state, print_func=lambda *_: None)
+
+        self.assertTrue((vscode_dir / "settings.json").is_file())
+        self.assertTrue((vscode_dir / "extensions.json").is_file())
 
     def test_action_copy_example_model_uses_numbered_example_selection(self):
         state = setup.SetupState(
