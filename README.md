@@ -114,6 +114,15 @@ pixi run notebooks-create-project <workspace-root> <project-name> nhm
 The last command prints the notebook folder and the command to open it. Open that
 folder however you like, and select the **Python (nhm-assist)** kernel.
 
+> **Picking the kernel in VS Code or Kiro.** Use "Select Another Kernel..." →
+> **"Jupyter Kernel..."** and choose it by name (**Python (nhm-assist)** or, in
+> dev mode, **Python (nhm-assist dev)**) — not "Python Environments...". The
+> latter lists raw interpreters (including this project's pixi envs) and, if
+> you pick one, VS Code rewrites the notebook's kernel metadata to a generic
+> `python3`/environment-folder-name pair instead of the registered kernel,
+> silently losing the `nhm-assist` identity. JupyterLab doesn't have this
+> second picker, so this only bites in VS Code/Kiro.
+
 Run `0_workspace_setup.ipynb` first from the project notebook directory.
 
 The workspace layout is:
