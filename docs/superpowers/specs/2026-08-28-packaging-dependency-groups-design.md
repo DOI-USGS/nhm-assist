@@ -244,9 +244,12 @@ lint/test tools, just pointed at pywatershed 3.x.
   new-mechanism risk (loosened base pin + per-feature overrides + a second
   solve-group), so a clean install across all of them is the key acceptance
   check.
-- `pixi run -e default test`, `-e ci test`, `-e dev test` all still pass —
-  regression check that splitting the old monolithic `dev` feature into
-  `prod`+`test`+`dev` composition didn't change behavior.
+- `pixi install -e default` still resolves cleanly (`default` composes only
+  `prod`, never `test` — by design, per Goal 1, so it never carries pytest;
+  there's no test suite to run there).
+- `pixi run -e ci test`, `-e dev test` both still pass — regression check
+  that splitting the old monolithic `dev` feature into `prod`+`test`+`dev`
+  composition didn't change behavior.
 - `pixi run -e dev_future test` is **expected to fail** on real test
   failures today (pywatershed 3.0's breaking changes aren't migrated yet).
   Success here means the environment installs and runs, not that tests
