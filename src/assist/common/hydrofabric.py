@@ -1,28 +1,132 @@
-import warnings
-import geopandas as gpd
+"""Shared hydrofabric helpers for the nhm and nhf workflows.
+
+Unified from src/assist/nhm/nhm_hydrofabric.py and
+src/assist/nhf/nhm_hydrofabric_v2.py. See
+docs/superpowers/specs/2026-08-30-helper-unification-design.md.
+
+Implementations come from the nhf side, which already tolerates both the GFv1.1
+and GFv2 geopackage column layouts; the nhm versions assume GFv1.1 columns and
+cannot read a GFv2 model.
+"""
 import numpy as np
 import pandas as pd
+
+import geopandas as gpd
 import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
-from rich import pretty
-from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info, fetch_waterdata_gage_info
+from assist.common.assist_utilities import find_missing_gage_info, fetch_waterdata_gage_info
 
-import sys
-import pathlib as pl
-import os
-root_folder = "nhf_assist"
-root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
-print(root_dir)
-from dotenv import load_dotenv
 
-load_dotenv(
-    dotenv_path=root_dir / ".env"
-)  # this will load the environment variables from the .env file
+def read_gages_file(
+    *,
+    model_dir,
+    poi_df,
+    gages_file,
+):
+    """
+    Read modified gages file.
+    If there are gages in the parameter file that are not in WaterData (USGS gages), then latitude, longitude, and poi_name must be provided from another source,
+    and appended to the "default_gages.csv" file. Once editing is complete, that file can be renamed "gages.csv"and will be used as the gages file.
+    If NO gages.csv is made, the default_gages.csv will be used.
 
-pretty.install()
-warnings.filterwarnings("ignore")
+    Parameters
+    ----------
+    model_dir : pathlib Path class
+        Path object to the subdomain directory.
+    poi_df : pandas DataFrame
+        Dataframe containing gages from the parameter file.
+    gages_file : pathlib Path class
+        Path to file containing gage information from WaterData for the gages in the parameter file.
+        
+    Returns
+    -------
+    gages_df : pandas DataFrame
+        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+    gages_txt : str
+        Informational feedback printed in notebooks.
+    gages_txt_nb2 : str
+        Informational feedback printed in notebooks.
+        
+    """
 
+    default_gages_file = model_dir / "default_gages.csv"
+
+    # Read in station file columns needed (You may need to tailor this to the particular file.
+    col_names = [
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+        "drainage_area",
+        "drainage_area_contrib",
+    ]
+    col_types = [np.str_, np.str_, np.str_, float, float, float, float]
+    cols = dict(
+        zip(col_names, col_types)
+    )  # Creates a dictionary of column header and datatype called below.
+
+    if gages_file.exists():
+
+        gages_df = pd.read_csv(gages_file, dtype=cols)
+
+        # Make poi_gage_id the index
+        # gages_df["poi_gage_id"] = gages_df.poi_gage_id.astype(str)
+        gages_df.set_index("poi_gage_id", inplace=True)
+
+        gages_agencies_txt = ", ".join(
+            f"{item}" for item in list(set(gages_df.poi_agency))
+        )
+        pois_agencies_txt = ", ".join(
+            f"{item}" for item in list(set(poi_df.poi_agency))
+        )
+
+        gages_txt_nb2 = f"NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb will display {len(gages_df)} [bold]gages managed by {gages_agencies_txt}[/bold] from the [bold]modified gages file (gages.csv)[/bold]."
+        gages_txt = f"The parameter file contains {len(poi_df.index)} [bold]gages[/bold] managed by {pois_agencies_txt}"
+
+        """
+        Checks the gages_df for missing meta data.
+        """
+        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+        for item in columns:
+            if pd.isnull(gages_df[item]).values.any():
+                subset = gages_df.loc[pd.isnull(gages_df[item])]
+                gages_txt_nb2 += f" The gages.csv is missing {item} data for {len(subset)} gages. Add missing data to the file and rename gages.csv."
+            else:
+                pass
+    else:
+        gages_df = pd.read_csv(default_gages_file, dtype=cols)
+
+        # Make poi_gage_id the index
+        gages_df.set_index("poi_gage_id", inplace=True)
+
+        gages_agencies_txt = ", ".join(
+            f"{item}" for item in list(set(gages_df.poi_agency))
+        )
+        pois_agencies_txt = ", ".join(
+            f"{item}" for item in list(set(poi_df.poi_agency))
+        )
+
+        gages_txt_nb2 = f"NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb will display [bold]{len(gages_df)} gages managed by {gages_agencies_txt}[/bold] from the [bold]default gages file (default_gages.csv)[/bold]."
+        gages_txt = f"The parameter file contains {len(poi_df.index)} [bold]gages[/bold] managed by {pois_agencies_txt}"
+
+        """
+        Checks the gages_df for missing meta data.
+        """
+        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
+        gages_txt_nb2 = " All gages have required metadata in the default_gages.csv."
+        for item in columns:
+            if pd.isnull(gages_df[item]).values.any():
+                gages_txt_nb2 = " Gages in the default_gages.csv are missing metadata. Add missing data to the file and rename to gages.csv before running NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb."
+                # subset = gages_df.loc[pd.isnull(gages_df[item])]
+                # items_list += f"{item},"
+                # subset_txt += f"{subset},"
+                # gages_txt_nb2 += f" The default_gages.csv is missing {item} data for {len(subset)} gages. Add missing data to the file and rename gages.csv."
+            else:
+                pass
+
+    return gages_df, gages_txt, gages_txt_nb2
 
 def create_hru_gdf(
     *,
@@ -463,7 +567,6 @@ def create_poi_df(
 
     return poi_df
 
-
 def create_default_gages_file(
     *,
     root_dir,
@@ -585,118 +688,6 @@ def create_default_gages_file(
         default_gages_df.to_csv(default_gages_file, index=False)
     
     return default_gages_file
-
-
-def read_gages_file(
-    *,
-    model_dir,
-    poi_df,
-    gages_file,
-):
-    """
-    Read modified gages file.
-    If there are gages in the parameter file that are not in WaterData (USGS gages), then latitude, longitude, and poi_name must be provided from another source,
-    and appended to the "default_gages.csv" file. Once editing is complete, that file can be renamed "gages.csv"and will be used as the gages file.
-    If NO gages.csv is made, the default_gages.csv will be used.
-
-    Parameters
-    ----------
-    model_dir : pathlib Path class
-        Path object to the subdomain directory.
-    poi_df : pandas DataFrame
-        Dataframe containing gages from the parameter file.
-    gages_file : pathlib Path class
-        Path to file containing gage information from WaterData for the gages in the parameter file.
-        
-    Returns
-    -------
-    gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
-    gages_txt : str
-        Informational feedback printed in notebooks.
-    gages_txt_nb2 : str
-        Informational feedback printed in notebooks.
-        
-    """
-
-    default_gages_file = model_dir / "default_gages.csv"
-
-    # Read in station file columns needed (You may need to tailor this to the particular file.
-    col_names = [
-        "poi_gage_id",
-        "poi_agency",
-        "poi_name",
-        "latitude",
-        "longitude",
-        "drainage_area",
-        "drainage_area_contrib",
-    ]
-    col_types = [np.str_, np.str_, np.str_, float, float, float, float]
-    cols = dict(
-        zip(col_names, col_types)
-    )  # Creates a dictionary of column header and datatype called below.
-
-    if gages_file.exists():
-
-        gages_df = pd.read_csv(gages_file, dtype=cols)
-
-        # Make poi_gage_id the index
-        # gages_df["poi_gage_id"] = gages_df.poi_gage_id.astype(str)
-        gages_df.set_index("poi_gage_id", inplace=True)
-
-        gages_agencies_txt = ", ".join(
-            f"{item}" for item in list(set(gages_df.poi_agency))
-        )
-        pois_agencies_txt = ", ".join(
-            f"{item}" for item in list(set(poi_df.poi_agency))
-        )
-
-        gages_txt_nb2 = f"NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb will display {len(gages_df)} [bold]gages managed by {gages_agencies_txt}[/bold] from the [bold]modified gages file (gages.csv)[/bold]."
-        gages_txt = f"The parameter file contains {len(poi_df.index)} [bold]gages[/bold] managed by {pois_agencies_txt}"
-
-        """
-        Checks the gages_df for missing meta data.
-        """
-        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        for item in columns:
-            if pd.isnull(gages_df[item]).values.any():
-                subset = gages_df.loc[pd.isnull(gages_df[item])]
-                gages_txt_nb2 += f" The gages.csv is missing {item} data for {len(subset)} gages. Add missing data to the file and rename gages.csv."
-            else:
-                pass
-    else:
-        gages_df = pd.read_csv(default_gages_file, dtype=cols)
-
-        # Make poi_gage_id the index
-        gages_df.set_index("poi_gage_id", inplace=True)
-
-        gages_agencies_txt = ", ".join(
-            f"{item}" for item in list(set(gages_df.poi_agency))
-        )
-        pois_agencies_txt = ", ".join(
-            f"{item}" for item in list(set(poi_df.poi_agency))
-        )
-
-        gages_txt_nb2 = f"NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb will display [bold]{len(gages_df)} gages managed by {gages_agencies_txt}[/bold] from the [bold]default gages file (default_gages.csv)[/bold]."
-        gages_txt = f"The parameter file contains {len(poi_df.index)} [bold]gages[/bold] managed by {pois_agencies_txt}"
-
-        """
-        Checks the gages_df for missing meta data.
-        """
-        columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        gages_txt_nb2 = " All gages have required metadata in the default_gages.csv."
-        for item in columns:
-            if pd.isnull(gages_df[item]).values.any():
-                gages_txt_nb2 = " Gages in the default_gages.csv are missing metadata. Add missing data to the file and rename to gages.csv before running NHM-Assist notebook 2_Model_Hydrofabric_Visualization.ipynb."
-                # subset = gages_df.loc[pd.isnull(gages_df[item])]
-                # items_list += f"{item},"
-                # subset_txt += f"{subset},"
-                # gages_txt_nb2 += f" The default_gages.csv is missing {item} data for {len(subset)} gages. Add missing data to the file and rename gages.csv."
-            else:
-                pass
-
-    return gages_df, gages_txt, gages_txt_nb2
-
 
 def make_hf_map_elements(
     *,
@@ -828,7 +819,6 @@ def make_hf_map_elements(
 #        HW_basins,
     )
 
-
 def evaluate_and_fix_nhru_geometry(gpkg_path, layer="nhru", fix=True):
     """
     Evaluate and optionally fix geometries in the nhru layer of a GeoPackage.
@@ -928,3 +918,18 @@ def evaluate_and_fix_nhru_geometry(gpkg_path, layer="nhru", fix=True):
         print("  All geometries are valid. No fix needed.")
 
     return report
+
+def _load_byhwobs_cal_gages(root_dir):
+    """Load the fixed NHM byHWobs calibration-gages CSV.
+
+    This file is a fixed data dependency shipped with NHM v1.1; its header uses
+    the native `poi_id` name. Read it under that name so the ``str`` dtype keeps
+    leading zeros (e.g. ``"08049300"``), then canonicalize the column to the
+    project-wide `poi_gage_id` at the boundary.
+    """
+    cal_gages_file = (
+        root_dir / "data_dependencies/NHM_v1_1/nhm_v1_1_byhwobs_cal_gages.csv"
+    )
+    cols = {"poi_id": np.str_, "latitude": float, "longitude": float}
+    byHWobs_poi_df = pd.read_csv(cal_gages_file, sep="\t", dtype=cols).fillna(0)
+    return byHWobs_poi_df.rename(columns={"poi_id": "poi_gage_id"})
