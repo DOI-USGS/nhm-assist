@@ -154,6 +154,16 @@ separate in-repo notebook directory and no contributor-only Jupyter launcher —
 you work against your own project, exactly like a user would, so the path you
 exercise is the path they get.
 
+> **Corporate firewall/VPN and `pyproj`.** The `dev` (and `dev-future`) pixi
+> environment bundles conda-forge's `proj-data` grid package and sets
+> `PROJ_NETWORK=OFF` automatically on activation. If you're behind a
+> firewall that does SSL inspection, the usual symptom is `pyproj`'s first
+> reprojection hanging or failing (`CERTIFICATE_VERIFY_FAILED`) while it
+> tries to fetch datum-shift grids from `cdn.proj.org` — with the grids
+> already on disk and network fetches disabled, that never happens. No
+> per-machine setup needed; it's scoped to `dev`/`dev-future` only, so
+> `default`/`ci` don't pay the extra ~500MB.
+
 Set up a project once:
 
 ```bash
