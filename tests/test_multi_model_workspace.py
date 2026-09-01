@@ -482,11 +482,11 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
         # helpers. We're not testing create_default_gages_file end-to-end here,
         # only that the new fallback call happens when missing rows exist.
         with patch.object(
-            nhm_hydrofabric, "find_missing_gage_info", side_effect=fake_find
+            nhm_hydrofabric, "find_missing_gage_metadata", side_effect=fake_find
         ) as mock_find:
             # The orchestration is verified by integration; here we just
             # confirm the symbol is imported and reachable.
-            self.assertTrue(callable(nhm_hydrofabric.find_missing_gage_info))
+            self.assertTrue(callable(nhm_hydrofabric.find_missing_gage_metadata))
 
 
 class ProjectSharedNotebookCliTests(unittest.TestCase):

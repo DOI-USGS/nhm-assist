@@ -1,4 +1,4 @@
-"""find_missing_gage_info is nhf's; nhm's survives under a private name."""
+"""find_missing_gage_info is nhf's; nhm's survives as find_missing_gage_metadata."""
 import ast
 import inspect
 
@@ -41,14 +41,14 @@ def test_canonical_is_verbatim_nhf(baselines):
     assert _body_ast(common.find_missing_gage_info) == _body_ast(nhf.find_missing_gage_info)
 
 
-def test_nhm_version_survives_under_a_private_name(baselines):
+def test_nhm_version_survives_as_find_missing_gage_metadata(baselines):
     import assist.common.assist_utilities as common
 
     nhm, _ = baselines
-    assert inspect.signature(common._find_missing_gage_metadata) == inspect.signature(
+    assert inspect.signature(common.find_missing_gage_metadata) == inspect.signature(
         nhm.find_missing_gage_info
     )
-    assert _body_ast(common._find_missing_gage_metadata) == _body_ast(
+    assert _body_ast(common.find_missing_gage_metadata) == _body_ast(
         nhm.find_missing_gage_info
     )
 
@@ -65,7 +65,7 @@ def test_nhm_metadata_lookup_keeps_its_return_contract(tmp_path):
     import assist.common.assist_utilities as common
     import pandas as pd
 
-    out = common._find_missing_gage_metadata(
+    out = common.find_missing_gage_metadata(
         gage_ids=[],
         poi_df=pd.DataFrame(),
         resource_file_path=tmp_path / "missing.csv",

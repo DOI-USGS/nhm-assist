@@ -5,6 +5,7 @@ same function in the pre-unification nhm module, read out of git. This is the
 guard against a transcription slip during a "verbatim" copy.
 """
 import ast
+import copy
 import inspect
 
 import pytest
@@ -25,8 +26,33 @@ def nhm_baseline():
     return load_module_from_git(BASELINE_REV, NHM_PATH, "baseline_nhm_for_copies")
 
 
+def _strip_docstring(fn_node: ast.FunctionDef) -> ast.FunctionDef:
+    """Drop a leading bare-string statement (the docstring), if present.
+
+    Final review Fix 5 (2026-08-30) added short documentation notes to
+    create_append_gages_to_param_file and make_myparam_addl_gages_param_file
+    recording that they require nhm-shaped input. That is a deliberate,
+    reviewed divergence from the baseline body, not a transcription slip, so
+    it is excluded here rather than weakening the comparison for everything
+    else in the function.
+    """
+    body = fn_node.body
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        fn_node = copy.deepcopy(fn_node)
+        fn_node.body = fn_node.body[1:]
+    return fn_node
+
+
 def _ast_of(fn):
-    return ast.dump(ast.parse(inspect.getsource(fn)))
+    module = ast.parse(inspect.getsource(fn))
+    fn_node = module.body[0]
+    assert isinstance(fn_node, ast.FunctionDef)
+    return ast.dump(_strip_docstring(fn_node))
 
 
 @pytest.mark.parametrize("name", COPIED_FROM_NHM)

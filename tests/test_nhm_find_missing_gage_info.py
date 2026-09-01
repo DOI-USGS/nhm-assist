@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from assist.nhm import nhm_assist_utilities
+from assist.common import assist_utilities as nhm_assist_utilities
 
 
 class FindMissingGageInfoTests(unittest.TestCase):
@@ -22,7 +22,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
         self.poi_df = pd.DataFrame({"poi_gage_id": ["12345678"]})
 
     def test_returns_empty_when_no_gage_ids_provided(self):
-        result = nhm_assist_utilities.find_missing_gage_info(
+        result = nhm_assist_utilities.find_missing_gage_metadata(
             gage_ids=[],
             poi_df=self.poi_df,
             resource_file_path=self.resource_file,
@@ -41,7 +41,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        result = nhm_assist_utilities.find_missing_gage_info(
+        result = nhm_assist_utilities.find_missing_gage_metadata(
             gage_ids=["12345678"],
             poi_df=self.poi_df,
             resource_file_path=self.resource_file,
@@ -75,7 +75,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
             nhm_assist_utilities.waterdata,
             "get_monitoring_locations",
         ) as mock_wd:
-            result = nhm_assist_utilities.find_missing_gage_info(
+            result = nhm_assist_utilities.find_missing_gage_metadata(
                 gage_ids=["12345678"],
                 poi_df=self.poi_df,
                 resource_file_path=self.resource_file,
@@ -123,7 +123,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
             "get_monitoring_locations",
             return_value=(wd_df, None),
         ) as mock_wd:
-            result = nhm_assist_utilities.find_missing_gage_info(
+            result = nhm_assist_utilities.find_missing_gage_metadata(
                 gage_ids=["12345678", "87654321"],
                 poi_df=self.poi_df,
                 resource_file_path=self.resource_file,
@@ -160,7 +160,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
             "get_monitoring_locations",
             return_value=(wd_df, None),
         ), patch("builtins.print", side_effect=capture_print):
-            result = nhm_assist_utilities.find_missing_gage_info(
+            result = nhm_assist_utilities.find_missing_gage_metadata(
                 gage_ids=["12345678"],
                 poi_df=self.poi_df,
                 resource_file_path=self.resource_file,
@@ -189,7 +189,7 @@ class FindMissingGageInfoTests(unittest.TestCase):
             "get_monitoring_locations",
             side_effect=OSError("WaterData down"),
         ), patch("builtins.print", side_effect=capture_print):
-            result = nhm_assist_utilities.find_missing_gage_info(
+            result = nhm_assist_utilities.find_missing_gage_metadata(
                 gage_ids=["12345678"],
                 poi_df=self.poi_df,
                 resource_file_path=self.resource_file,

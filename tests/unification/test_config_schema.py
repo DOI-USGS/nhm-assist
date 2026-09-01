@@ -4,6 +4,7 @@ import pytest
 import yaml
 
 from assist.common.assist_utilities import load_subdomain_config
+from tests.unification.harness import BASELINE_REV, REPO_ROOT, load_module_from_git
 
 BASE = {
     "Folium_maps_dir": "/tmp/fm",
@@ -78,3 +79,42 @@ def test_path_keys_absent_from_yaml_become_None(tmp_path):
     cfg = load_subdomain_config(root)
     assert cfg["out_dir"] is None
     assert cfg["nc_files_dir"] is None
+
+
+# Differential regression guard for C1 (legacy nwis_* keys silently dropped)
+# and C2 (start_date/end_date no longer normalized to %m/%d/%Y). Neither of
+# the synthetic-fixture tests above exercises the repo's real, nhm-shaped
+# config or compares against the baseline loader, which is exactly why both
+# regressions shipped. Uses the repository's actual ./subdomain_config.yaml
+# (nhm schema: nwis_* keys, no resource_gages_file) as the input, and the
+# pre-unification nhm loader (BASELINE_REV) as the oracle.
+NHM_BASELINE_PATH = "src/assist/nhm/nhm_assist_utilities.py"
+
+
+@pytest.mark.skipif(
+    not (REPO_ROOT / "subdomain_config.yaml").exists(),
+    reason="repository's real ./subdomain_config.yaml is not present",
+)
+def test_matches_the_baseline_nhm_loader_on_the_real_config():
+    """The new loader's output must be a superset of the baseline nhm
+    loader's output on the repo's own config, with every shared key equal.
+    """
+    baseline = load_module_from_git(
+        BASELINE_REV, NHM_BASELINE_PATH, "baseline_nhm_config_schema"
+    )
+    old = baseline.load_subdomain_config(REPO_ROOT)
+    new = load_subdomain_config(REPO_ROOT)
+
+    missing = [key for key in old if key not in new]
+    assert not missing, (
+        f"keys present in the baseline loader but missing from the new "
+        f"loader: {missing}"
+    )
+
+    mismatched = {
+        key: (old[key], new[key]) for key in old if new[key] != old[key]
+    }
+    assert not mismatched, (
+        f"keys differ between the baseline loader and the new loader: "
+        f"{mismatched}"
+    )
