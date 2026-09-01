@@ -1,4 +1,4 @@
-"""find_missing_gage_info is nhf's; nhm's survives as find_missing_gage_metadata."""
+"""find_missing_gage_info is nhf's."""
 import ast
 import inspect
 
@@ -41,36 +41,8 @@ def test_canonical_is_verbatim_nhf(baselines):
     assert _body_ast(common.find_missing_gage_info) == _body_ast(nhf.find_missing_gage_info)
 
 
-def test_nhm_version_survives_as_find_missing_gage_metadata(baselines):
-    import assist.common.assist_utilities as common
-
-    nhm, _ = baselines
-    assert inspect.signature(common.find_missing_gage_metadata) == inspect.signature(
-        nhm.find_missing_gage_info
-    )
-    assert _body_ast(common.find_missing_gage_metadata) == _body_ast(
-        nhm.find_missing_gage_info
-    )
-
-
 def test_nhm_private_helpers_came_along():
     import assist.common.assist_utilities as common
 
     assert callable(common._load_nldi_cached)
     assert callable(common._translate_waterdata_columns)
-
-
-def test_nhm_metadata_lookup_keeps_its_return_contract(tmp_path):
-    """Empty input must give an empty frame indexed by poi_gage_id."""
-    import assist.common.assist_utilities as common
-    import pandas as pd
-
-    out = common.find_missing_gage_metadata(
-        gage_ids=[],
-        poi_df=pd.DataFrame(),
-        resource_file_path=tmp_path / "missing.csv",
-        root_dir=tmp_path,
-    )
-    assert out.empty
-    assert out.index.name == "poi_gage_id"
-    assert list(out.columns) == ["latitude", "longitude", "poi_name", "poi_agency"]
