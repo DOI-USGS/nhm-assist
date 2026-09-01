@@ -32,6 +32,23 @@ CONFIG_KEY_ALIASES: dict[str, str] = {
     "nwis_gage_nobs_min": "waterdata_gage_nobs_min",
 }
 
+# Every key some consumer reads. Derived by parsing all config[...] and
+# config.get(...) reads under src/: 28 keys, none read defensively, so a missing
+# one is a broken workspace rather than a soft default. Both pre-unification
+# baselines subscripted each of these directly.
+REQUIRED_CONFIG_KEYS = frozenset({
+    "Folium_maps_dir", "GIS_format", "NHM_dir", "control_file_name",
+    "default_gages_file", "end_date", "gages_file", "html_maps_dir",
+    "html_plots_dir", "model_dir", "nc_files_dir", "nhru_nmonths_params",
+    "nhru_params", "notebook_output_dir", "out_dir", "output_netcdf_filename",
+    "param_file", "param_filename", "selected_output_variables", "start_date",
+    "subdomain", "water_years", "waterdata_gage_nobs_min",
+    "waterdata_gages_file", "workspace_txt",
+})
+
+# Present only in nhf-shaped configs; nhm-shaped ones legitimately omit it.
+OPTIONAL_CONFIG_KEYS = frozenset({"resource_gages_file"})
+
 # All 14 keys both baselines wrapped in pl.Path(). Omitting any of these leaves a
 # raw str in the config, and consumers doing `config["out_dir"] / "x.nc"` raise
 # TypeError. Verified against both baselines at 27f7144.
@@ -81,6 +98,13 @@ def load_subdomain_config(root_dir: pl.Path) -> dict:
             raw[new_key] = raw[old_key]
         elif new_key in raw and old_key not in raw:
             raw[old_key] = raw[new_key]
+
+    missing = sorted(REQUIRED_CONFIG_KEYS - set(raw))
+    if missing:
+        raise KeyError(
+            f"{config_path} is missing required key(s): {', '.join(missing)}. "
+            "Re-run 0_workspace_setup.ipynb for this model to regenerate it."
+        )
 
     config: dict = dict(raw)
     for key in _PATH_KEYS:

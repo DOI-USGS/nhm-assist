@@ -4,18 +4,8 @@ import pytest
 import yaml
 
 from assist.common.assist_utilities import load_subdomain_config
+from tests.unification.fabrics import COMPLETE_CONFIG as BASE
 from tests.unification.harness import BASELINE_REV, REPO_ROOT, load_module_from_git
-
-BASE = {
-    "Folium_maps_dir": "/tmp/fm",
-    "model_dir": "/tmp/m",
-    "param_filename": "/tmp/m/myparam.param",
-    "gages_file": "/tmp/m/gages.csv",
-    "default_gages_file": "/tmp/m/default_gages.csv",
-    "output_netcdf_filename": "/tmp/m/out.nc",
-    "control_file_name": "control.default.bandit",
-    "nhru_nmonths_params": ["jh_coef"],
-}
 
 
 def _write(tmp_path: pl.Path, extra: dict) -> pl.Path:
@@ -71,14 +61,6 @@ def test_every_path_key_becomes_a_Path(tmp_path):
     cfg = load_subdomain_config(root)
     for key in PATH_KEYS:
         assert isinstance(cfg[key], pl.Path), f"{key} is {type(cfg[key]).__name__}, not Path"
-
-
-def test_path_keys_absent_from_yaml_become_None(tmp_path):
-    root = _write(tmp_path, {"nwis_gages_file": "/tmp/m/NWISgages.csv",
-                             "nwis_gage_nobs_min": 365})
-    cfg = load_subdomain_config(root)
-    assert cfg["out_dir"] is None
-    assert cfg["nc_files_dir"] is None
 
 
 # Differential regression guard for C1 (legacy nwis_* keys silently dropped)

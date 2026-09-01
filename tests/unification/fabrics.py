@@ -71,3 +71,22 @@ def current_function_ast(fn) -> str:
     node = ast.parse(inspect.getsource(fn).lstrip()).body[0]
     node.name = "_"
     return ast.dump(node)
+
+
+# A config carrying every required key. Written in the nhm (NWIS) spelling; the
+# loader back-fills the WaterData names, so this satisfies the required set.
+COMPLETE_CONFIG = {
+    "Folium_maps_dir": "/tmp/m/fm", "model_dir": "/tmp/m",
+    "param_filename": "/tmp/m/myparam.param", "param_file": "myparam.param",
+    "gages_file": "/tmp/m/gages.csv", "default_gages_file": "/tmp/m/default_gages.csv",
+    "output_netcdf_filename": "/tmp/m/out.nc", "NHM_dir": "/tmp/nhm",
+    "out_dir": "/tmp/m/output", "notebook_output_dir": "/tmp/m/nof",
+    "html_maps_dir": "/tmp/m/hm", "html_plots_dir": "/tmp/m/hp",
+    "nc_files_dir": "/tmp/m/nc", "subdomain": "TestBasin", "GIS_format": ".gpkg",
+    "control_file_name": "control.default.bandit",
+    "nwis_gages_file": "/tmp/m/NWISgages.csv", "nwis_gage_nobs_min": 365,
+    "nhru_nmonths_params": ["jh_coef"], "nhru_params": ["carea_max"],
+    "selected_output_variables": ["recharge"], "water_years": True,
+    "start_date": "1980-01-01T00:00:00", "end_date": "2022-12-31T00:00:00",
+    "workspace_txt": "test",
+}
