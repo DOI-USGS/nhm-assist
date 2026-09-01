@@ -7,7 +7,7 @@ from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from assist.nhm.nhm_assist_utilities import (fetch_nwis_gage_info,
-                                              find_missing_gage_info,
+                                              find_missing_gage_metadata,
                                               make_HW_cal_level_files)
 pretty.install()
 warnings.filterwarnings("ignore")
@@ -562,7 +562,7 @@ def create_default_gages_file(
         missing_ids = (
             default_gages_df.loc[pre_fill_missing_mask, "poi_gage_id"].astype(str).tolist()
         )
-        fetched = find_missing_gage_info(
+        fetched = find_missing_gage_metadata(
             gage_ids=missing_ids,
             poi_df=poi_df,
             resource_file_path=resource_gages_file,
