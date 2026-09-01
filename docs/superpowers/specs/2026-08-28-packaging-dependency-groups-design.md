@@ -1,4 +1,4 @@
-# Packaging: dependency groups for default/ci/dev/dev_future environments
+# Packaging: dependency groups for default/ci/dev/dev-future environments
 
 **Date:** 2026-08-28
 **Status:** Draft, pending review
@@ -31,7 +31,7 @@ earlier v1.x releases. `dataretrieval` is currently unbounded in both
 happens to have 1.1.5 resolved, but nothing pins it there, so any future
 `pixi install`/lock regeneration (including this one) could silently pull in
 1.2+ for every environment with no warning. #41 asks that we test the new
-release and pin to `<1.2` if it causes problems; since `dev_future` already
+release and pin to `<1.2` if it causes problems; since `dev-future` already
 exists as a controlled space for testing pre-release/breaking dependency
 versions (per #44), it's the natural place to test dataretrieval 1.2+ too,
 alongside pywatershed 3.x.
@@ -59,7 +59,7 @@ correctly.
 ## Goals
 
 1. Split today's single flat `dev` feature into PEP 735 `[dependency-groups]`
-   (`test`: pytest/pytest-cov; `dev`: ruff, pre-commit, jupyter-black, and the
+   (`test`: pytest/pytest-cov; `dev`: ruff, pre-commit; `dev-future`: the
    existing aspirational packages), which pixi auto-converts into matching
    features. This keeps contributor tooling out of published PyPI metadata
    entirely (dependency-groups aren't extras) and lets `ci` and `dev`
@@ -68,7 +68,7 @@ correctly.
 2. Add a `ci` environment (`prod` + `test` features) as the pixi-side
    placeholder CI is meant to eventually use — this spec only defines it in
    `pyproject.toml`.
-3. Add a `dev_future` environment, in its own solve-group, for testing
+3. Add a `dev-future` environment, in its own solve-group, for testing
    pre-release/breaking dependency versions without disturbing `default`'s
    stable contract or `[project.dependencies]`'s published promise: pywatershed
    3.x (and the Python 3.12/3.13 it requires) per #44, and dataretrieval 1.2+
@@ -80,12 +80,12 @@ correctly.
    working `pyproj` automatically, without bloating `default`/`ci`.
 6. Resolve #41's short-term ask by pinning `dataretrieval<1.2` on `default`/
    `ci`/`dev` (the known-good line, since nothing has tested 1.2+ yet) while
-   `dev_future` tracks `dataretrieval>=1.2` for testing.
+   `dev-future` tracks `dataretrieval>=1.2` for testing.
 
 ## Non-goals
 
 - Any CI workflow changes. `.github/workflows/ci.yaml` and `.gitlab-ci.yml`
-  are untouched; wiring `ci` or `dev_future` into an actual pipeline is #47's
+  are untouched; wiring `ci` or `dev-future` into an actual pipeline is #47's
   job (currently on the back burner) or a follow-up once it lands.
 - Splitting environments per NHM/NHF/PEST workflow — a different, unrelated
   axis, and permanently out of scope: that workflow distinction is being
@@ -95,8 +95,11 @@ correctly.
   only builds the environments to test against; the code migration is the
   rest of #44's and #41's work, respectively.
 - Publishing to PyPI/conda-forge.
-- Cleaning up the `dev` group's unused aspirational packages (gdptools,
-  ipyleaflet, pint-xarray, tobler) — carried over as-is.
+- Cleaning up the unused aspirational packages (gdptools, ipyleaflet,
+  pint-xarray, tobler) themselves — they're relocated to the `dev-future`
+  group (Design §1) so ordinary `dev` installs stop paying for them, but
+  nobody's audited whether they're still wanted at all; that's a separate
+  decision.
 
 ## Design
 
@@ -105,13 +108,23 @@ correctly.
 ```toml
 [dependency-groups]
 test = ["pytest", "pytest-cov"]
-dev = ["ruff", "pre-commit", "gdptools", "ipyleaflet", "pint-xarray", "tobler"]
+dev = ["ruff", "pre-commit"]
+dev-future = ["gdptools", "ipyleaflet", "pint-xarray", "tobler"]
 ```
 
 Pixi automatically interprets each group as a same-named feature carrying
 the associated `pypi-dependencies`. `jupyter-black` stays in
 `[project.dependencies]` (it's already there as a runtime dep for the
 generated notebooks, not dev-only tooling).
+
+The aspirational, currently-unused packages (`gdptools`, `ipyleaflet`,
+`pint-xarray`, `tobler`) move from the `dev` group into their own
+`dev-future` group. Naming the group `dev-future` is what makes this work:
+pixi merges it into the same `dev-future` feature that Design §2/§3 already
+define `python`/`pywatershed`/`dataretrieval` pins on (the identical pattern
+`proj-data` below uses to merge into the `dev` feature). The practical
+effect: ordinary `dev` installs no longer pay for four packages nothing in
+this repo imports; only `dev-future` does.
 
 `proj-data` (issue #33) can't go in `[dependency-groups]` — it's a
 conda-forge-only data package, not on PyPI — so it's added directly as a
@@ -132,7 +145,7 @@ feature gets the offline grid bundle and network fetches disabled
 automatically on activation, with no per-contributor setup. Because `ci`
 and `default` never compose `dev`, neither pays the ~500MB cost or picks up
 `PROJ_NETWORK=OFF` — matching your comment on #33 that this belongs in the
-developer environment only. `dev_future` composes `dev` too, so it inherits
+developer environment only. `dev-future` composes `dev` too, so it inherits
 the same fix.
 
 ### 2. pywatershed version split
@@ -154,16 +167,16 @@ dask = "*"
 python = ">=3.11.9,<3.14"
 pywatershed = ">=2.0.1,<3"
 
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 ```
 
-Only `prod` and `dev_future` declare these two packages. `ci` and `dev`
+Only `prod` and `dev-future` declare these two packages. `ci` and `dev`
 compose `prod` (see Section 3) to inherit them rather than redeclaring their
-own copy — `dev_future` deliberately does **not** compose `prod`, since
+own copy — `dev-future` deliberately does **not** compose `prod`, since
 composing a feature that pins `pywatershed>=2.0.1,<3` into the same
-environment as `dev_future`'s `>=3,<4` pin would hand pixi two conflicting
+environment as `dev-future`'s `>=3,<4` pin would hand pixi two conflicting
 conda pins for the same package with no way to reconcile them.
 
 Everything else in the shared `[tool.pixi.dependencies]` block (geopandas,
@@ -195,7 +208,7 @@ dask = "*"
 [tool.pixi.feature.prod.dependencies]
 dataretrieval = "<1.2"
 
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 dataretrieval = ">=1.2"
 ```
 
@@ -205,7 +218,7 @@ unbounded everywhere and only stays on 1.1.5 because that's what's already
 resolved in `pixi.lock`. Pinning `default`/`ci`/`dev` to `<1.2` now (rather
 than waiting for a problem, per #41's literal wording) closes that gap: this
 MR's own lock regeneration could otherwise have silently picked up 1.2 or 1.3
-for every environment. `dev_future` tracks `dataretrieval>=1.2` so
+for every environment. `dev-future` tracks `dataretrieval>=1.2` so
 contributors can test the async parallel chunker and CQL2 query features #41
 calls out, and confirm compatibility before the `<1.2` cap is ever lifted.
 `[project.dependencies]`'s unbounded `dataretrieval` entry is unchanged, for
@@ -219,23 +232,23 @@ this list stays the sole authoritative contract (Goal 4).
 | `default` | `prod` | `default` | `>=3.11.9,<3.14` | `>=2.0.1,<3` | `<1.2` |
 | `ci` | `prod`, `test` | `default` | (same as `default`) | (same as `default`) | (same as `default`) |
 | `dev` | `prod`, `test`, `dev` | `default` | (same as `default`) | (same as `default`) | (same as `default`) |
-| `dev_future` | `test`, `dev`, `dev_future` | `future` | `>=3.12,<3.14` | `>=3,<4` | `>=1.2` |
+| `dev-future` | `test`, `dev`, `dev-future` | `future` | `>=3.12,<3.14` | `>=3,<4` | `>=1.2` |
 
 ```toml
 [tool.pixi.environments]
 default = { features = ["prod"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
 dev = { features = ["prod", "test", "dev"], solve-group = "default" }
-dev_future = { features = ["test", "dev", "dev_future"], solve-group = "future" }
+dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
 ```
 
 `ci` and `dev` staying in the `default` solve-group means their resolved
 versions of every shared package always match `default` exactly — no drift
-between what end users get and what's tested. `dev_future` needs its own
+between what end users get and what's tested. `dev-future` needs its own
 `future` solve-group because its Python/pywatershed pins are incompatible
 with the others'.
 
-`dev_future` composes `test`+`dev` rather than duplicating tooling — same
+`dev-future` composes `test`+`dev` rather than duplicating tooling — same
 lint/test tools, just pointed at pywatershed 3.x.
 
 ## Testing
@@ -250,7 +263,7 @@ lint/test tools, just pointed at pywatershed 3.x.
 - `pixi run -e ci test`, `-e dev test` both still pass — regression check
   that splitting the old monolithic `dev` feature into `prod`+`test`+`dev`
   composition didn't change behavior.
-- `pixi run -e dev_future test` is **expected to fail** on real test
+- `pixi run -e dev-future test` is **expected to fail** on real test
   failures today (pywatershed 3.0's breaking changes aren't migrated yet).
   Success here means the environment installs and runs, not that tests
   pass — worth stating explicitly so it isn't later mistaken for a broken
@@ -259,7 +272,7 @@ lint/test tools, just pointed at pywatershed 3.x.
   solve-groups produced genuinely independent version sets for
   `python`/`pywatershed`/`dataretrieval`, with no cross-contamination —
   specifically, `default`/`ci`/`dev` resolve `dataretrieval<1.2` and
-  `dev_future` resolves `dataretrieval>=1.2` (1.2.x or 1.3.x).
+  `dev-future` resolves `dataretrieval>=1.2` (1.2.x or 1.3.x).
 - In the `dev` environment, verify PROJ is offline-capable per #33's own
   recipe: `pixi run -e dev python -c "from pyproj import datadir, network;
   print(datadir.get_data_dir()); print(network.is_network_enabled())"`

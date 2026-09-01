@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the single flat `dev` pixi feature with four purpose-built environments (`default`, `ci`, `dev`, `dev_future`) defined entirely in `pyproject.toml`, so contributor tooling lives in PEP 735 dependency groups, `default`/`ci`/`dev` stay pinned to known-good `pywatershed`/`dataretrieval` versions, `dev_future` lets contributors test pywatershed 3.x and dataretrieval 1.2+ from the same branch, and the `dev` feature auto-fixes the corporate-firewall PROJ issue (#33).
+**Goal:** Replace the single flat `dev` pixi feature with four purpose-built environments (`default`, `ci`, `dev`, `dev-future`) defined entirely in `pyproject.toml`, so contributor tooling lives in PEP 735 dependency groups, `default`/`ci`/`dev` stay pinned to known-good `pywatershed`/`dataretrieval` versions, `dev-future` lets contributors test pywatershed 3.x and dataretrieval 1.2+ from the same branch, and the `dev` feature auto-fixes the corporate-firewall PROJ issue (#33).
 
 **Architecture:** One file, `pyproject.toml`, edited in five sequential passes (dependency-groups conversion, PROJ/proj-data fix, pywatershed version split, dataretrieval version split, environment table), each validated by a cheap TOML-parse check since the manifest is intentionally inconsistent between passes (e.g. `python`'s only pin briefly has no environment composing it). A final task runs the real `pixi install`/`pixi run`/lock-inspection checks once all five passes have landed.
 
@@ -12,12 +12,12 @@
 
 ## Global Constraints
 
-- Scope is limited to `pyproject.toml` and the resulting `pixi.lock` regeneration. No changes to `src/`, `tests/`, `.github/workflows/ci.yaml`, or `.gitlab-ci.yml` — wiring `ci`/`dev_future` into an actual pipeline is #47's job (spec Non-goals).
+- Scope is limited to `pyproject.toml` and the resulting `pixi.lock` regeneration. No changes to `src/`, `tests/`, `.github/workflows/ci.yaml`, or `.gitlab-ci.yml` — wiring `ci`/`dev-future` into an actual pipeline is #47's job (spec Non-goals).
 - Do not migrate `src/assist`/`src/workflow_templates` code for pywatershed 3.0 or dataretrieval 1.2 breaking changes — this plan only builds the environments to test against (spec Non-goals).
-- Do not touch the `dev` group's unused aspirational packages (`gdptools`, `ipyleaflet`, `pint-xarray`, `tobler`) beyond moving them verbatim into `[dependency-groups]` — carried over as-is (spec Non-goals).
+- Do not touch the unused aspirational packages (`gdptools`, `ipyleaflet`, `pint-xarray`, `tobler`) beyond relocating them verbatim into the `dev-future` `[dependency-groups]` entry — no audit of whether they're still wanted (spec Non-goals).
 - `[project.dependencies]` stays the sole authoritative published runtime contract (spec Goal 4) — nothing in `[tool.pixi.*]` duplicates a version bound that isn't also reflected there, except the two deliberate exceptions the spec calls out: `pywatershed` and `dataretrieval` get *tighter* per-feature pixi pins than their loosened/unbounded `[project.dependencies]` entries (spec Design §2, §3 "Risk, accepted deliberately").
 - **Per the repository's contribution norm: stage changes with `git add`, but do not `git commit`, merge, or push, and do not open a merge request.** That is the maintainer's action. Every task below ends with staging, not committing.
-- `pixi run -e dev_future test` is **expected to fail** on real test failures (pywatershed 3.0's breaking changes aren't migrated yet). Success there means the environment installs and runs, not that tests pass.
+- `pixi run -e dev-future test` is **expected to fail** on real test failures (pywatershed 3.0's breaking changes aren't migrated yet). Success there means the environment installs and runs, not that tests pass.
 - `default` never composes the `test` feature (by design, per Goal 1) — there is no test suite to run under `-e default`; only `pixi install -e default` is checked there.
 
 ---
@@ -29,7 +29,7 @@
 
 **Interfaces:**
 - Consumes: nothing from other tasks.
-- Produces: PEP 735 groups `test` (pytest, pytest-cov) and `dev` (ruff, pre-commit, gdptools, ipyleaflet, pint-xarray, tobler), which pixi auto-converts into same-named features `test` and `dev`. Task 5 composes these feature names into `ci`/`dev`/`dev_future`.
+- Produces: PEP 735 groups `test` (pytest, pytest-cov), `dev` (ruff, pre-commit), and `dev-future` (gdptools, ipyleaflet, pint-xarray, tobler), which pixi auto-converts into same-named features `test`, `dev`, and `dev-future`. Task 5 composes the `test`/`dev` feature names into `ci`/`dev`/`dev-future`; the `dev-future` group's packages land in the same `dev-future` feature that Tasks 3-4 add `python`/`pywatershed`/`dataretrieval` pins to.
 
 - [ ] **Step 1: Insert the `[dependency-groups]` table**
 
@@ -45,7 +45,8 @@ insert a blank line then:
 ```toml
 [dependency-groups]
 test = ["pytest", "pytest-cov"]
-dev = ["ruff", "pre-commit", "gdptools", "ipyleaflet", "pint-xarray", "tobler"]
+dev = ["ruff", "pre-commit"]
+dev-future = ["gdptools", "ipyleaflet", "pint-xarray", "tobler"]
 ```
 
 so the result reads:
@@ -56,10 +57,15 @@ Homepage = "https://code.usgs.gov/wma/hytest/nhm-assist"
 
 [dependency-groups]
 test = ["pytest", "pytest-cov"]
-dev = ["ruff", "pre-commit", "gdptools", "ipyleaflet", "pint-xarray", "tobler"]
+dev = ["ruff", "pre-commit"]
+dev-future = ["gdptools", "ipyleaflet", "pint-xarray", "tobler"]
 
 [tool.hatch.version]
 ```
+
+(Naming the third group `dev-future` is what makes it merge into the same
+`dev-future` feature Tasks 3-4 add conda pins to — the identical mechanism
+`proj-data` uses in Task 2 to merge into the `dev` feature.)
 
 - [ ] **Step 2: Remove the now-redundant flat `dev` feature dependency list**
 
@@ -98,7 +104,7 @@ Expected: `VALID` printed, no exception.
 - [ ] **Step 4: Confirm the moved packages only exist in one place**
 
 Run: `grep -n "gdptools\|ipyleaflet\|pint-xarray\|tobler\|pytest-cov\|^pytest \|pre-commit" pyproject.toml`
-Expected: every one of these names appears exactly once, inside the new `[dependency-groups]` table (lines from Step 1) — not also under `[tool.pixi.feature.dev.dependencies]` (which no longer exists after Step 2).
+Expected: every one of these names appears exactly once, inside the new `[dependency-groups]` table (lines from Step 1) — `gdptools`/`ipyleaflet`/`pint-xarray`/`tobler` under the `dev-future` group, `ruff`/`pre-commit` under `dev`, `pytest`/`pytest-cov` under `test` — not also under `[tool.pixi.feature.dev.dependencies]` (which no longer exists after Step 2).
 
 - [ ] **Step 5: Stage the change (do not commit)**
 
@@ -118,7 +124,7 @@ Expected: `pyproject.toml` shows as staged (`modified:` under "Changes to be com
 
 **Interfaces:**
 - Consumes: Task 1's `[tool.pixi.feature.dev.pypi-dependencies]` block (this task inserts directly above it).
-- Produces: `proj-data` and `PROJ_NETWORK=OFF` on the `dev` feature — inherited by any environment that composes `dev` (only the `dev` and `dev_future` environments, per the composition table Task 5 builds; `default`/`ci` never see it).
+- Produces: `proj-data` and `PROJ_NETWORK=OFF` on the `dev` feature — inherited by any environment that composes `dev` (only the `dev` and `dev-future` environments, per the composition table Task 5 builds; `default`/`ci` never see it).
 
 - [ ] **Step 1: Add the `proj-data` dependency and activation env var**
 
@@ -163,14 +169,14 @@ Expected: `pyproject.toml` still shows as staged/modified. No commit is made.
 
 ---
 
-## Task 3: pywatershed version split — per-feature pins on `prod` and `dev_future`
+## Task 3: pywatershed version split — per-feature pins on `prod` and `dev-future`
 
 **Files:**
-- Modify: `pyproject.toml` (loosen `[project.dependencies]`'s `pywatershed` bound; remove `python`/`pywatershed` from the shared `[tool.pixi.dependencies]` block; add `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev_future.dependencies]`)
+- Modify: `pyproject.toml` (loosen `[project.dependencies]`'s `pywatershed` bound; remove `python`/`pywatershed` from the shared `[tool.pixi.dependencies]` block; add `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev-future.dependencies]`)
 
 **Interfaces:**
 - Consumes: nothing from other tasks (independent of Tasks 1-2's `dev`-feature edits).
-- Produces: `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev_future.dependencies]` tables that Task 4 adds `dataretrieval` lines to, and that Task 5's `[tool.pixi.environments]` composes.
+- Produces: `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev-future.dependencies]` tables that Task 4 adds `dataretrieval` lines to, and that Task 5's `[tool.pixi.environments]` composes.
 
 - [ ] **Step 1: Loosen the published `pywatershed` bound**
 
@@ -268,12 +274,12 @@ pywatershed = ">=2.0.1,<3"
 nhm-assist = { path = ".", editable = true }
 ```
 
-- [ ] **Step 4: Add the `dev_future` feature's `python`/`pywatershed` pins**
+- [ ] **Step 4: Add the `dev-future` feature's `python`/`pywatershed` pins**
 
 Directly after the `[tool.pixi.feature.dev.pypi-dependencies]` block (added in Task 1/2), insert:
 
 ```toml
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 ```
@@ -284,7 +290,7 @@ so the tail of the feature tables reads:
 [tool.pixi.feature.dev.pypi-dependencies]
 nhm-assist = { path = ".", editable = true }
 
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 ```
@@ -300,7 +306,7 @@ Run: `grep -n "^python \|^pywatershed " pyproject.toml`
 Expected: no output (neither name appears unindented/top-level in `[tool.pixi.dependencies]` anymore).
 
 Run: `grep -n "pywatershed" pyproject.toml`
-Expected: four hits — `[project.dependencies]`'s `"pywatershed>=2.0.1"`, `[tool.pixi.feature.prod.dependencies]`'s `pywatershed = ">=2.0.1,<3"`, `[tool.pixi.feature.dev_future.dependencies]`'s `pywatershed = ">=3,<4"`, and the version cited in the block comment near the top of the file (`"...using pywatershed."` in the `description` field — leave that untouched, it's prose).
+Expected: four hits — `[project.dependencies]`'s `"pywatershed>=2.0.1"`, `[tool.pixi.feature.prod.dependencies]`'s `pywatershed = ">=2.0.1,<3"`, `[tool.pixi.feature.dev-future.dependencies]`'s `pywatershed = ">=3,<4"`, and the version cited in the block comment near the top of the file (`"...using pywatershed."` in the `description` field — leave that untouched, it's prose).
 
 - [ ] **Step 7: Stage the change (do not commit)**
 
@@ -313,14 +319,14 @@ Expected: `pyproject.toml` still shows as staged/modified. No commit is made.
 
 ---
 
-## Task 4: dataretrieval version split — per-feature pins on `prod` and `dev_future`
+## Task 4: dataretrieval version split — per-feature pins on `prod` and `dev-future`
 
 **Files:**
-- Modify: `pyproject.toml` (remove `dataretrieval` from the shared `[tool.pixi.dependencies]` block; add pins to `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev_future.dependencies]`)
+- Modify: `pyproject.toml` (remove `dataretrieval` from the shared `[tool.pixi.dependencies]` block; add pins to `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev-future.dependencies]`)
 
 **Interfaces:**
-- Consumes: Task 3's `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev_future.dependencies]` tables (this task adds one line to each).
-- Produces: `dataretrieval<1.2` on `prod` (inherited by `default`/`ci`/`dev` once Task 5 composes it), `dataretrieval>=1.2` on `dev_future`.
+- Consumes: Task 3's `[tool.pixi.feature.prod.dependencies]` and `[tool.pixi.feature.dev-future.dependencies]` tables (this task adds one line to each).
+- Produces: `dataretrieval<1.2` on `prod` (inherited by `default`/`ci`/`dev` once Task 5 composes it), `dataretrieval>=1.2` on `dev-future`.
 
 - [ ] **Step 1: Remove `dataretrieval` from the shared conda block**
 
@@ -362,12 +368,12 @@ pywatershed = ">=2.0.1,<3"
 dataretrieval = "<1.2"
 ```
 
-- [ ] **Step 3: Pin `dev_future` to the testing line**
+- [ ] **Step 3: Pin `dev-future` to the testing line**
 
 Replace:
 
 ```toml
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 ```
@@ -375,7 +381,7 @@ pywatershed = ">=3,<4"
 with:
 
 ```toml
-[tool.pixi.feature.dev_future.dependencies]
+[tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 dataretrieval = ">=1.2"
@@ -389,7 +395,7 @@ Expected: `VALID` printed, no exception.
 - [ ] **Step 5: Confirm `dataretrieval` is feature-scoped, not shared, and appears with the right bounds in each spot**
 
 Run: `grep -n "dataretrieval" pyproject.toml`
-Expected: three hits — `[project.dependencies]`'s unbounded `"dataretrieval"`, `[tool.pixi.feature.prod.dependencies]`'s `dataretrieval = "<1.2"`, and `[tool.pixi.feature.dev_future.dependencies]`'s `dataretrieval = ">=1.2"`. None under the shared `[tool.pixi.dependencies]` block.
+Expected: three hits — `[project.dependencies]`'s unbounded `"dataretrieval"`, `[tool.pixi.feature.prod.dependencies]`'s `dataretrieval = "<1.2"`, and `[tool.pixi.feature.dev-future.dependencies]`'s `dataretrieval = ">=1.2"`. None under the shared `[tool.pixi.dependencies]` block.
 
 - [ ] **Step 6: Stage the change (do not commit)**
 
@@ -402,14 +408,14 @@ Expected: `pyproject.toml` still shows as staged/modified. No commit is made.
 
 ---
 
-## Task 5: Wire up `ci` and `dev_future` environments; recompose `dev`
+## Task 5: Wire up `ci` and `dev-future` environments; recompose `dev`
 
 **Files:**
 - Modify: `pyproject.toml` (rewrite `[tool.pixi.environments]`)
 
 **Interfaces:**
-- Consumes: the `test`/`dev` features from Task 1, the `dev`-feature PROJ fix from Task 2, and the `prod`/`dev_future` feature dependency tables from Tasks 3-4.
-- Produces: the four environments (`default`, `ci`, `dev`, `dev_future`) that Task 6 installs and tests.
+- Consumes: the `test`/`dev` features from Task 1, the `dev`-feature PROJ fix from Task 2, and the `prod`/`dev-future` feature dependency tables from Tasks 3-4.
+- Produces: the four environments (`default`, `ci`, `dev`, `dev-future`) that Task 6 installs and tests.
 
 - [ ] **Step 1: Rewrite the environments table**
 
@@ -428,7 +434,7 @@ with:
 default = { features = ["prod"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
 dev = { features = ["prod", "test", "dev"], solve-group = "default" }
-dev_future = { features = ["test", "dev", "dev_future"], solve-group = "future" }
+dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
 ```
 
 - [ ] **Step 2: Validate TOML syntax**
@@ -442,7 +448,7 @@ Run: `python -c "
 import tomllib
 d = tomllib.load(open('pyproject.toml', 'rb'))
 envs = d['tool']['pixi']['environments']
-for name in ('default', 'ci', 'dev', 'dev_future'):
+for name in ('default', 'ci', 'dev', 'dev-future'):
     print(name, envs[name])
 "`
 
@@ -451,7 +457,7 @@ Expected:
 default {'features': ['prod'], 'solve-group': 'default'}
 ci {'features': ['prod', 'test'], 'solve-group': 'default'}
 dev {'features': ['prod', 'test', 'dev'], 'solve-group': 'default'}
-dev_future {'features': ['test', 'dev', 'dev_future'], 'solve-group': 'future'}
+dev-future {'features': ['test', 'dev', 'dev-future'], 'solve-group': 'future'}
 ```
 
 - [ ] **Step 4: Stage the change (do not commit)**
@@ -477,8 +483,10 @@ Expected: `pyproject.toml` still shows as staged/modified. No commit is made.
 - [ ] **Step 1: Resolve all four environments**
 
 ```bash
-pixi install
+pixi install --all
 ```
+
+`pixi install` with no flag only installs the `default` environment — `--all` is required to resolve and install `ci`/`dev`/`dev-future` too (discovered during execution; the plan originally omitted the flag).
 
 Expected: exits 0, `pixi.lock` is rewritten, no dependency-conflict errors. This is the main new-mechanism risk (loosened base pin + per-feature overrides + a second solve-group), so a clean install across all four environments is the key acceptance check (spec Testing item 1).
 
@@ -499,10 +507,10 @@ pixi run -e dev test
 
 Expected: both pass, same test count as before this branch (no test-suite changes in this plan) — regression check that splitting the old monolithic `dev` feature into `prod`+`test`+`dev` composition didn't change behavior (spec Testing item 2, as corrected).
 
-- [ ] **Step 4: Run the test suite under `dev_future` — expected to fail on real test failures**
+- [ ] **Step 4: Run the test suite under `dev-future` — expected to fail on real test failures**
 
 ```bash
-pixi run -e dev_future test
+pixi run -e dev-future test
 ```
 
 Expected: the environment installs and the command runs (pytest executes), but individual tests are expected to fail because pywatershed 3.0's breaking changes aren't migrated in `src/assist`/`src/workflow_templates` yet (spec Non-goals; spec Testing item 3). Success here means "ran", not "passed" — do not treat test failures here as a plan defect.
@@ -514,7 +522,7 @@ python -c "
 import yaml
 lock = yaml.safe_load(open('pixi.lock'))
 envs = lock['environments']
-for name in ('default', 'ci', 'dev', 'dev_future'):
+for name in ('default', 'ci', 'dev', 'dev-future'):
     packages = envs[name]['packages']
     print(name, list(packages.keys())[:1] if isinstance(packages, dict) else type(packages))
 "
@@ -523,7 +531,7 @@ grep -n "pywatershed-" pixi.lock | sort -u
 grep -n "python-3\." pixi.lock | sort -u
 ```
 
-Expected: `default`/`ci`/`dev` (all in the `default` solve-group) resolve the same `python` (3.11.x-3.13.x range per the `prod` pin), the same `pywatershed` (2.x), and the same `dataretrieval` (< 1.2, e.g. 1.1.x); `dev_future` (the `future` solve-group) resolves its own independent `python` (3.12.x or 3.13.x), `pywatershed` (3.x), and `dataretrieval` (>= 1.2, i.e. 1.2.x or 1.3.x). No cross-contamination between the two solve-groups (spec Testing item 4, extended to cover `dataretrieval`).
+Expected: `default`/`ci`/`dev` (all in the `default` solve-group) resolve the same `python` (3.11.x-3.13.x range per the `prod` pin), the same `pywatershed` (2.x), and the same `dataretrieval` (< 1.2, e.g. 1.1.x); `dev-future` (the `future` solve-group) resolves its own independent `python` (3.12.x or 3.13.x), `pywatershed` (3.x), and `dataretrieval` (>= 1.2, i.e. 1.2.x or 1.3.x). No cross-contamination between the two solve-groups (spec Testing item 4, extended to cover `dataretrieval`).
 
 - [ ] **Step 6: Verify the PROJ offline fix in the `dev` environment**
 
@@ -540,7 +548,7 @@ pixi list -e default | grep -i proj-data
 pixi list -e ci | grep -i proj-data
 ```
 
-Expected: no output from either command — `proj-data` (~500MB) is scoped to `dev`/`dev_future` only, never reaching `default`/`ci` (spec Testing item 5, the "whole point of scoping it to `dev`" check).
+Expected: no output from either command — `proj-data` (~500MB) is scoped to `dev`/`dev-future` only, never reaching `default`/`ci` (spec Testing item 5, the "whole point of scoping it to `dev`" check).
 
 - [ ] **Step 8: Review the full staged diff**
 
@@ -561,7 +569,7 @@ No further action — do not commit, merge, push, or open a merge request. Repor
 
 ## Self-Review Notes
 
-- **Spec coverage:** Goal 1 (dependency-groups) → Task 1. Goal 2 (`ci` environment) → Task 5. Goal 3 (`dev_future` for both #44 and #41) → Tasks 3, 4, 5. Goal 4 (`[project.dependencies]` stays authoritative) → enforced as a Global Constraint, checked in Tasks 3/4 Step 5-ish greps confirming no duplicate unbounded lists were introduced. Goal 5 (#33 PROJ fix) → Task 2, verified in Task 6 Steps 6-7. Goal 6 (`dataretrieval<1.2` default/ci/dev vs. `>=1.2` dev_future) → Task 4, verified in Task 6 Step 5. Design §1 (dependency groups + proj-data) → Tasks 1-2. Design §2 (pywatershed split) → Task 3. Design §3 (dataretrieval split) → Task 4. Design §4 (environment/feature composition table) → Task 5. Every Testing bullet (as corrected during planning — see below) → Task 6.
+- **Spec coverage:** Goal 1 (dependency-groups) → Task 1. Goal 2 (`ci` environment) → Task 5. Goal 3 (`dev-future` for both #44 and #41) → Tasks 3, 4, 5. Goal 4 (`[project.dependencies]` stays authoritative) → enforced as a Global Constraint, checked in Tasks 3/4 Step 5-ish greps confirming no duplicate unbounded lists were introduced. Goal 5 (#33 PROJ fix) → Task 2, verified in Task 6 Steps 6-7. Goal 6 (`dataretrieval<1.2` default/ci/dev vs. `>=1.2` dev-future) → Task 4, verified in Task 6 Step 5. Design §1 (dependency groups + proj-data) → Tasks 1-2. Design §2 (pywatershed split) → Task 3. Design §3 (dataretrieval split) → Task 4. Design §4 (environment/feature composition table) → Task 5. Every Testing bullet (as corrected during planning — see below) → Task 6.
 - **Spec defect caught during planning:** the spec's Testing section originally listed `pixi run -e default test` as expected to pass, but `default` only composes `prod` (never `test`), so pytest isn't installed there — that check cannot succeed as written. Fixed inline in the spec (replaced with a `pixi install -e default` check) and reflected in Task 6 Step 2/3 and the Global Constraints note. This was a pre-existing spec bug, not introduced by the #41 revision.
 - **No placeholders:** every step shows the literal before/after TOML, the literal shell command, or the literal expected output — nothing says "add appropriate handling" or defers detail.
-- **Consistency check:** feature/table names match exactly across tasks — `prod`/`dev`/`test`/`dev_future` feature names in Task 5's environment composition match the `[tool.pixi.feature.*]` table names introduced in Tasks 1-4; the `dataretrieval`/`pywatershed`/`python` version bounds in Task 6's expected lock output match the exact strings written in Tasks 3-4.
+- **Consistency check:** feature/table names match exactly across tasks — `prod`/`dev`/`test`/`dev-future` feature names in Task 5's environment composition match the `[tool.pixi.feature.*]` table names introduced in Tasks 1-4; the `dataretrieval`/`pywatershed`/`python` version bounds in Task 6's expected lock output match the exact strings written in Tasks 3-4.
