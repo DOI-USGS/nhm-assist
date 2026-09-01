@@ -231,7 +231,7 @@ xr_streamflow = create_sf_efc_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     owrd_df=owrd_df,
     ecy_df=ecy_df,
-    NWIS_df=waterdata_df,
+    waterdata_df=waterdata_df,
     gages_df=gages_df,
 )
 
