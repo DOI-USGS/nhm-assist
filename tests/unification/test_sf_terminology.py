@@ -19,6 +19,10 @@ def test_create_waterdata_sf_df_uses_the_waterdata_fetcher_and_metadata_path():
     assert "fetch_nwis_gage_info" not in source
     assert 'metadata/WaterDataGages.csv' in source
     assert "waterdata_cache.nc" in source
+    mkdir_call = "waterdata_gages_file.parent.mkdir(parents=True, exist_ok=True)"
+    to_csv_call = "out_gage_info.to_csv(waterdata_gages_file, index=False)"
+    assert mkdir_call in source
+    assert source.index(mkdir_call) < source.index(to_csv_call)
 
 
 def test_geos_safe_clip_survived_the_terminology_pass():

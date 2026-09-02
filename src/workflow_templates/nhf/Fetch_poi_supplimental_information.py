@@ -34,7 +34,7 @@ jupyter_black.load()
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import create_poi_df
+from assist.nhf.nhm_hydrofabric_v2 import create_poi_df, make_hf_map_elements
 # from assist.nhf.map_template_v2 import make_hf_map
 from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
 import topojson
@@ -75,6 +75,7 @@ config
     control_file_name=config["control_file_name"],
     waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],

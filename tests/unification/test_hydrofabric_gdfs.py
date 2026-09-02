@@ -27,11 +27,44 @@ def _ast_of(fn):
     return ast.dump(ast.parse(inspect.getsource(fn)))
 
 
-@pytest.mark.parametrize("name", ["create_segment_gdf"])
-def test_copy_is_ast_identical_to_nhf(name, nhf_baseline):
+def test_segment_gdf_is_nhf_verbatim_except_the_restored_nhm_params(nhf_baseline):
+    """nhf commented out `model_idx`; `create_append_gages_to_param_file` selects
+    that column, so add_pois_to_parameters died with
+    `KeyError: "['model_idx'] not in index"`. Restored, and splicing the same
+    one-line change into nhf's baseline proves nothing else drifted.
+    """
     import assist.common.hydrofabric as common
 
-    assert _ast_of(getattr(common, name)) == _ast_of(getattr(nhf_baseline, name))
+    edits = [
+        # model_idx: create_append_gages_to_param_file selects that column
+        (
+            '    # df["model_idx"] = df.index + 1\n',
+            '    df["model_idx"] = df.index + 1\n',
+        ),
+        # tosegment_nhm: nhm's map_template renders it
+        (
+            '    # seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]\n'
+            '    seg_params = ["tosegment", "seg_length", "obsin_segment"]\n',
+            '    seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]\n',
+        ),
+        # ...guarded so GFv2 parameter files without it still load
+        (
+            '    )  # loads parmaeterfile functions for pyPRMS\n',
+            '    )  # loads parmaeterfile functions for pyPRMS\n'
+            '    seg_params = [vv for vv in seg_params if vv in pdb.parameters]\n',
+        ),
+    ]
+    nhf_source = inspect.getsource(nhf_baseline.create_segment_gdf)
+    for old, new in edits:
+        assert old in nhf_source, (
+            f"nhf baseline no longer contains {old!r}; test needs updating"
+        )
+        nhf_source = nhf_source.replace(old, new)
+    expected = ast.parse(nhf_source).body[0]
+    expected.name = "_"
+    actual = ast.parse(inspect.getsource(common.create_segment_gdf)).body[0]
+    actual.name = "_"
+    assert ast.dump(actual) == ast.dump(expected)
 
 
 def _restore_calibration_block(nhf_source: str) -> str:
@@ -66,6 +99,27 @@ def _restore_calibration_block(nhf_source: str) -> str:
             "    return hru_gdf, hru_text, hru_cal_level_txt",
         ),
     ]
+    replacements.append(
+        # nhf commented out hru_segment_nhm; nhm's create_nhru_par_map reads it,
+        # so notebook 3 died with KeyError: 'hru_segment_nhm'.
+        (
+            '        # "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU\n',
+            '        "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU\n',
+        )
+    )
+    replacements.append(
+        # ...and the guard that keeps that restore safe on GFv2 parameter files,
+        # which need not carry every v1.1 parameter.
+        (
+            "    # Create a dataframe for parameter values\n    first = True\n",
+            "    gdb_hru_params = [\n"
+            "        vv for vv in gdb_hru_params\n"
+            "        if vv not in hru_params or vv in pdb.parameters\n"
+            "    ]\n"
+            "\n"
+            "    # Create a dataframe for parameter values\n    first = True\n",
+        )
+    )
     result = nhf_source
     for old, new in replacements:
         assert old in result, (

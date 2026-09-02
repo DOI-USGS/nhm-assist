@@ -1002,6 +1002,7 @@ def create_waterdata_sf_df(
     out_gage_info = waterdata_gage_info_aoi[
         ~waterdata_gage_info_aoi["poi_gage_id"].astype(str).isin(too_few)
     ]
+    waterdata_gages_file.parent.mkdir(parents=True, exist_ok=True)
     out_gage_info.to_csv(waterdata_gages_file, index=False)
 
     return waterdata_df

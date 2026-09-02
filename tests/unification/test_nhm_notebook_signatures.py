@@ -16,9 +16,10 @@ e.g. `assist.nhm.nhm_hydrofabric` / `assist.nhf.nhm_hydrofabric_v2`, which
 just re-export the `assist.common` implementation — see the module
 docstrings in those shim files), it asserts two things:
 
-  1. Every keyword argument passed at the call site is accepted by the
-     function's real signature (`inspect.signature(...).bind_partial`).
-     This is the check that would have caught `nwis_gages_file=`.
+  1. Every call site fully binds to the function's real signature
+     (`inspect.signature(...).bind`): passed keywords are accepted and every
+     required parameter is supplied. This is the check that would have caught
+     `nwis_gages_file=` and missing required arguments.
   2. Where the call site tuple-unpacks the result (`a, b, c = f(...)`), the
      number of unpacked targets matches the function's actual return arity,
      inferred statically from its own `return` statements. A single-name
@@ -229,6 +230,13 @@ def _iter_assign_calls(tree: ast.Module):
                 yield target, call
 
 
+def _template_imports(relative_path: str) -> list[ast.ImportFrom]:
+    """The ``from ... import ...`` statements in one workflow template."""
+    source = (TEMPLATES_ROOT / relative_path).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    return [node for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)]
+
+
 def test_sweep_covers_every_template_file():
     """Guard against the sweep silently covering nothing (e.g. a path typo)."""
     files = list(_iter_template_files())
@@ -240,6 +248,35 @@ def test_sweep_covers_every_template_file():
     names = {p.name for p in files}
     for skipped in SKIP_FILES:
         assert skipped not in names, f"{skipped} should have been filtered out"
+
+
+def test_nhf_fetch_imports_make_hf_map_elements_from_current_shim():
+    imports = _template_imports("nhf/Fetch_poi_supplimental_information.py")
+
+    assert any(
+        node.module == "assist.nhf.nhm_hydrofabric_v2"
+        and any(alias.name == "make_hf_map_elements" for alias in node.names)
+        for node in imports
+    ), "Fetch_poi_supplimental_information.py must import make_hf_map_elements from the NHF shim"
+
+
+def test_pest_ranking_reaches_used_common_helpers_without_legacy_imports():
+    imports = _template_imports("pest/poi_ranking.py")
+
+    assert any(
+        node.module == "assist.common.assist_utilities"
+        and any(alias.name == "load_subdomain_config" for alias in node.names)
+        for node in imports
+    ), "poi_ranking.py must import load_subdomain_config from assist.common.assist_utilities"
+    assert any(
+        node.module == "assist.common.hydrofabric"
+        and any(alias.name == "make_hf_map_elements" for alias in node.names)
+        for node in imports
+    ), "poi_ranking.py must import make_hf_map_elements from assist.common.hydrofabric"
+    assert not any(
+        node.module == "nhm_helpers" or node.module.startswith("nhm_helpers.")
+        for node in imports
+    ), "poi_ranking.py must not retain legacy nhm_helpers imports"
 
 
 def test_every_call_site_binds_and_unpacks_correctly():
@@ -274,7 +311,7 @@ def test_every_call_site_binds_and_unpacks_correctly():
             sig = inspect.signature(fn)
             dummy_kwargs = {kw.arg: None for kw in call.keywords}
             try:
-                sig.bind_partial(*([None] * len(call.args)), **dummy_kwargs)
+                sig.bind(*([None] * len(call.args)), **dummy_kwargs)
             except TypeError as exc:
                 keyword_failures.append(
                     f"{path.relative_to(REPO_ROOT)}:{call.lineno} calls "

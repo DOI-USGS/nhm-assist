@@ -100,6 +100,7 @@ poi_gage_id_sel = None
     control_file_name=config["control_file_name"],
     waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
@@ -153,7 +154,7 @@ plot_start_date, plot_end_date, year_list, output_var_list = retrieve_hru_output
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox, Button
 from IPython.display import display, IFrame, clear_output
-import assist.nhm.display_controls as dc
+import assist.common.display_controls as dc
 
 style_var = {"description_width": "initial"}
 layout = widgets.Layout(width="25%")

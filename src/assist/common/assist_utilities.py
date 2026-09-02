@@ -229,6 +229,7 @@ def delete_notebook_output_files(
         "append_gages_to_param_file.csv",
         "default_gages_file.csv",
         "NWISgages.csv",
+        "WaterDataGages.csv",
     ]
     for file_name in files:
         target = model_dir / file_name
@@ -831,14 +832,16 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
     mask_missing = gages_df[cols].isnull().any(axis=1)
     missing_meta_df = gages_df.loc[mask_missing]
 
-    if not missing_meta_df.empty:
+    nldi_geojson_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
+
+    if not missing_meta_df.empty and nldi_geojson_path.exists():
         """
         First, Check the NLDI json for missing data in the dependencies folder.
         These data are said to have the most acurate location information, so stop there first.
         """
         print(f"{len(missing_meta_df)} gages missing metadata. Searching NLDI database.")
         ##### Check NLDI database for missing gage info
-        file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
+        file_path = nldi_geojson_path
         nldi_gdf = gpd.read_file(file_path)  # or .geojson
     
         # Split on the first '-' and create new columns
@@ -848,10 +851,15 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             .str.strip()
             .str.split("-", n=1, expand=True)  # split on the first dash only
         )
-        nldi_gdf.to_file(
-            npoigages_data_dir / "usgs_nldi_gages.gpkg",
-            driver="GPKG",
-        )
+        try:
+            nldi_gdf.to_file(
+                npoigages_data_dir / "usgs_nldi_gages.gpkg",
+                driver="GPKG",
+            )
+        except OSError:
+            # data_dependencies/ may be read-only on shared filesystems.
+            # The cache is an optimization; carry on with the in-memory frame.
+            pass
     
         nldi_gdf = nldi_gdf[["poi_agency", "name", "poi_gage_id", "geometry"]]
         nldi_gdf.rename(
@@ -910,6 +918,14 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         print(
             f"Metadata for {len(gages_found_info_list)} gages found in NLDI database.csv",
             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
+        )
+    elif not missing_meta_df.empty:
+        # non-fatal: the NLDI extract is an optional local data dependency that is
+        # absent on air-gapped deployments and on fresh clones (data_dependencies/
+        # is not tracked). The WaterData lookup below covers these gages.
+        print(
+            f"NLDI database not found at {nldi_geojson_path}; "
+            f"seeking {len(missing_meta_df)} gages in USGS WaterData instead."
         )
     
     ''' 

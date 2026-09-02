@@ -178,7 +178,7 @@ def create_hru_gdf(
         "hru_lat",  # the latitude if the hru centroid
         "hru_lon",  # the longitude if the hru centroid
         "hru_area",
-        # "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU
+        "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU
         "hru_segment",  # The segment_id of the segment recieving flow from the HRU
     ]
     gdb_hru_params = hru_params + nhru_params + nhru_nmonths_params
@@ -232,6 +232,14 @@ def create_hru_gdf(
         elif "model_hru_idx" in hru_gdb.columns:
             hru_gdb["hru_id"] = hru_gdb["model_hru_idx"]
    
+    # GFv1.1 parameter files carry hru_segment_nhm; GFv2 ones need not. Drop only
+    # the built-in extras that this parameter file lacks -- a name the user supplied
+    # via nhru_params/nhru_nmonths_params must still raise, so typos stay visible.
+    gdb_hru_params = [
+        vv for vv in gdb_hru_params
+        if vv not in hru_params or vv in pdb.parameters
+    ]
+
     # Create a dataframe for parameter values
     first = True
     for vv in gdb_hru_params:
@@ -337,8 +345,7 @@ def create_segment_gdf(
     """
 
     # List of parameters values to retrieve for the segments.
-    # seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]
-    seg_params = ["tosegment", "seg_length", "obsin_segment"]
+    seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]
     """
     Projections are ascribed geometry from the HRUs geodatabase (GIS).
     The NHM uses the NAD 1983 USGS Contiguous USA Albers projection EPSG# 102039.
@@ -358,6 +365,11 @@ def create_segment_gdf(
     pdb = ParameterFile(
         param_filename, metadata=prms_meta, verbose=False
     )  # loads parmaeterfile functions for pyPRMS
+
+    # GFv2 parameter files need not carry every v1.1 parameter; drop the ones
+    # this file lacks rather than raising. nhm's map_template reads
+    # tosegment_nhm, so it must be requested whenever it is available.
+    seg_params = [vv for vv in seg_params if vv in pdb.parameters]
 
     if GIS_format == ".gpkg":
         seg_gdb = gpd.read_file(
@@ -396,7 +408,7 @@ def create_segment_gdf(
             df = pd.concat([df, pdb.get_dataframe(vv)], axis=1)  # , ignore_index=True)
 
     df.reset_index(inplace=True)
-    # df["model_idx"] = df.index + 1
+    df["model_idx"] = df.index + 1
     df["segment_id"] = df.index + 1
     df.index.name = "index"  # Index column must be renamed
     print(df.columns)
@@ -500,7 +512,20 @@ def create_poi_df(
         pdb["poi_gage_segment"].as_dataframe, left_index=True, right_index=True
     )
     poi = poi.merge(pdb["poi_type"].as_dataframe, left_index=True, right_index=True)
-    
+
+    # nhm's poi_df carried nhm_seg and nhm's map_template renders it in the POI
+    # marker tooltips; nhf's build dropped the merge. GFv2 parameter files spell
+    # it nhm_seg_id, so accept either spelling and normalise to nhm_seg.
+    seg_param = next(
+        (name for name in ("nhm_seg", "nhm_seg_id") if name in pdb.parameters),
+        None,
+    )
+    if seg_param is not None:
+        seg_ids = pdb[seg_param].as_dataframe
+        if seg_param != "nhm_seg":
+            seg_ids = seg_ids.rename(columns={seg_param: "nhm_seg"})
+        poi = poi.merge(seg_ids, left_on="poi_gage_segment", right_index=True)
+
     """
     Create a dataframe for poi_gages from the parameter file with WaterData gage information data.
 
@@ -512,6 +537,18 @@ def create_poi_df(
 
     poi = poi.merge(npoigages_info, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
+
+    # The byHWobs calibration-gages CSV is a fixed NHM data dependency with a
+    # native `poi_id` header; the loader canonicalizes it to `poi_gage_id`.
+    byHWobs_poi_df = _load_byhwobs_cal_gages(root_dir)
+
+    # Identify the byHWobs calibration gages in our current poi database (ammended
+    # in the model prams file to include more gages). nhm's map_template reads
+    # nhm_calib in create_streamflow_poi_markers.
+    poi_df["nhm_calib"] = "N"
+    poi_df.loc[
+        poi_df["poi_gage_id"].isin(byHWobs_poi_df["poi_gage_id"]), "nhm_calib"
+    ] = "Y"
 
     """
     """
@@ -585,7 +622,7 @@ def create_default_gages_file(
 
         1) the gages listed in the parameter file (poi_gages), and
         2) all streamflow gages from WaterData in the subdomain model that have at least user-specified minimum number of obervations
-           through use of the nwis_cache.nc. Metadata for gages will be fetched from NLDI and WaterData databases.
+           through use of the waterdata_cache.nc. Metadata for gages will be fetched from NLDI and WaterData databases.
         3) if a resource_gages.csv file exists, these gages will be included as well, and this will be the source of metadata for the file.
 
     Note: Provided extractions from NHM version 1.1 have only USGS gages in the parameter file but may have no data after 1979.
@@ -720,7 +757,7 @@ def make_hf_map_elements(
     control_file_name : pathlib Path class
         Path object to the control file.
     waterdata_gages_file : pathlib Path class
-        Path to WaterData data, e.g., model_dir / "NWISgages.csv"
+        Path to WaterData data, e.g., model_dir / "metadata/WaterDataGages.csv"
     gages_file : pathlib Path class
         Path to file containing gage information from WaterData for the gages in the parameter file.
     default_gages_file : pathlib Path class

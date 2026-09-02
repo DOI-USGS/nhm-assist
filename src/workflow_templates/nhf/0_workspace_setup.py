@@ -303,7 +303,7 @@ dict_file = {
     "gages_file": str(model_dir / "gages.csv"),
     "default_gages_file": str(model_dir / "default_gages.csv"),
     "resource_gages_file": str(model_dir / "metadata/resource_gages.csv"),
-    "waterdata_gages_file": str(model_dir / "WaterDataGages.csv"),
+    "waterdata_gages_file": str(waterdata_gages_file),
     "output_netcdf_filename": str(
         model_dir / "notebook_output_files/nc_files/sf_efc.nc"
     ),

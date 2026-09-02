@@ -91,6 +91,7 @@ crs = 4326
     control_file_name=config["control_file_name"],
     waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
@@ -122,7 +123,7 @@ map_file = make_streamflow_map(
     water_years=config["water_years"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
-    poi_id_sel=poi_id_sel,
+    poi_gage_id_sel=poi_id_sel,
     seg_gdf=seg_gdf,
     html_maps_dir=config["html_maps_dir"],
     subdomain=config["subdomain"],
@@ -144,7 +145,7 @@ map_file = make_streamflow_map(
 # %matplotlib inline
 import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
-import assist.nhm.display_controls as dc
+import assist.common.display_controls as dc
 
 gage_txt = widgets.Text(
     description="Streamgage ID:",

@@ -133,7 +133,7 @@ map_file = make_streamflow_map(
 # %matplotlib inline
 import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
-import assist.nhf.display_controls_v2 as dc
+import assist.common.display_controls as dc
 
 gage_txt = widgets.Text(
     description="Streamgage ID:",

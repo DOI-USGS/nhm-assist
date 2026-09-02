@@ -60,6 +60,11 @@ def test_map_elements_survived_and_is_verbatim_nhf():
     # splices still succeeding.
     replacements = [
         (
+            '        Path to WaterData data, e.g., model_dir / "NWISgages.csv"',
+            '        Path to WaterData data, e.g., model_dir / '
+            '"metadata/WaterDataGages.csv"',
+        ),
+        (
             "    hru_gdf, hru_txt = create_hru_gdf(",
             "    hru_gdf, hru_txt, hru_cal_level_txt = create_hru_gdf(",
         ),
@@ -114,6 +119,14 @@ def test_map_elements_survived_and_is_verbatim_nhf():
     expected_node.name = "_"
 
     assert current_function_ast(common.make_hf_map_elements) == ast.dump(expected_node)
+
+
+def test_map_elements_describes_canonical_waterdata_gages_file():
+    import assist.common.hydrofabric as common
+
+    assert 'model_dir / "metadata/WaterDataGages.csv"' in inspect.getdoc(
+        common.make_hf_map_elements
+    )
 
 
 def test_map_elements_dependencies_all_resolve():
