@@ -286,6 +286,7 @@ water_years = True
 # Establish paths and file names
 gages_file = model_dir / "gages.csv"
 default_gages_file = model_dir / "default_gages.csv"
+resource_gages_file = model_dir / "metadata/resource_gages.csv"
 nwis_gages_file = model_dir / "NWISgages.csv"
 output_netcdf_filename = model_dir / "notebook_output_files/nc_files/sf_efc.nc"
 NHM_dir = root_dir / "data_dependencies/NHM_v1_1"
@@ -331,6 +332,7 @@ dict_file = {
     "water_years": water_years,
     "gages_file": str(model_dir / "gages.csv"),
     "default_gages_file": str(model_dir / "default_gages.csv"),
+    "resource_gages_file": str(model_dir / "metadata/resource_gages.csv"),
     "nwis_gages_file": str(model_dir / "NWISgages.csv"),
     "output_netcdf_filename": str(
         model_dir / "notebook_output_files/nc_files/sf_efc.nc"

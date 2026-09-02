@@ -15,7 +15,7 @@ import geopandas as gpd
 import xarray as xr
 from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
-from assist.common.assist_utilities import find_missing_gage_info, fetch_waterdata_gage_info
+from assist.common.assist_utilities import find_missing_gage_info, fetch_waterdata_gage_info, make_HW_cal_level_files
 
 
 def read_gages_file(
@@ -296,16 +296,16 @@ def create_hru_gdf(
     """
 
     #### READ table (.csv) of HRU calibration level file
-    # hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)
-    # hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")
+    hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)
+    hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")
 
-    # hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")
-    # hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")
+    hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")
+    hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")
 
     hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."
-    # hru_cal_level_txt = f'{hru_gdf[hru_gdf["level"] > 1]["level"].count()} HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are within HW calibrated with streamflow observations.'
+    hru_cal_level_txt = f'{hru_gdf[hru_gdf["level"] > 1]["level"].count()} HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are within HW calibrated with streamflow observations.'
 
-    return hru_gdf, hru_text
+    return hru_gdf, hru_text, hru_cal_level_txt
 
 
 def create_segment_gdf(
@@ -754,13 +754,13 @@ def make_hf_map_elements(
         Informational feedback printed in notebooks.
     gages_txt_nb2 : str
         Informational feedback printed in notebooks.
-    # HW_basins_gdf : geopandas GeoDataFrame
-    #     NHM headwaters basins geopandas GeoDataFrame used to display caliration level of HRUs on map.
-    # HW_basins : geopandas polyline dataset
-    #     Polyline file that was made using HW_basins_gdf.boundary
-    
+    HW_basins_gdf : geopandas GeoDataFrame
+        NHM headwaters basins geopandas GeoDataFrame used to display caliration level of HRUs on map.
+    HW_basins : geopandas polyline dataset
+        Polyline file that was made using HW_basins_gdf.boundary
+
     """
-    hru_gdf, hru_txt = create_hru_gdf(
+    hru_gdf, hru_txt, hru_cal_level_txt = create_hru_gdf(
         root_dir=root_dir,
         model_dir=model_dir,
         GIS_format=GIS_format,
@@ -802,12 +802,12 @@ def make_hf_map_elements(
         gages_file=gages_file,
     )
 
-#    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)
+    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)
 
     return (
         hru_gdf,
         hru_txt,
-        #hru_cal_level_txt,
+        hru_cal_level_txt,
         seg_gdf,
         seg_txt,
         waterdata_gages_aoi,
@@ -815,8 +815,8 @@ def make_hf_map_elements(
         gages_df,
         gages_txt,
         gages_txt_nb2,
-#        HW_basins_gdf,
-#        HW_basins,
+        HW_basins_gdf,
+        HW_basins,
     )
 
 def evaluate_and_fix_nhru_geometry(gpkg_path, layer="nhru", fix=True):

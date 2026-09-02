@@ -143,8 +143,9 @@ poi_df = create_poi_df(
     control_file_name=config["control_file_name"],
     hru_gdf=hru_gdf,
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
@@ -160,7 +161,7 @@ waterdata_df = create_waterdata_sf_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
-    waterdata_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
@@ -173,7 +174,7 @@ default_gages_file = create_default_gages_file(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     control_file_name=config["control_file_name"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
     seg_gdf=seg_gdf,

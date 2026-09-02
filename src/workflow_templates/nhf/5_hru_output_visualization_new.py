@@ -70,7 +70,7 @@ poi_id_sel = None
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -78,8 +78,8 @@ poi_id_sel = None
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],

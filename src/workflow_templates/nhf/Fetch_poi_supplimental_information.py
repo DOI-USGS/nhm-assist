@@ -57,7 +57,7 @@ config
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     nwis_gages_aoi,
@@ -65,20 +65,20 @@ config
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",

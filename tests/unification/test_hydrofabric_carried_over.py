@@ -1,10 +1,12 @@
 """Functions unique to one side must survive unification."""
+import ast
 import inspect
 
 from tests.unification.fabrics import (
     NHF_HF,
     NHM_HF,
     baseline_function_ast,
+    baseline_function_source,
     current_function_ast,
 )
 
@@ -36,11 +38,82 @@ def test_geometry_fixer_defaults_to_the_nhru_layer():
 
 
 def test_map_elements_survived_and_is_verbatim_nhf():
+    """`make_hf_map_elements` carries deliberate exceptions from nhf's
+    baseline: it now unpacks 3 values from `create_hru_gdf` and returns the
+    restored `hru_cal_level_txt` (see tests/unification/test_hydrofabric_gdfs.py
+    for why), and it now calls the restored `make_HW_cal_level_files` and
+    returns the restored `HW_basins_gdf`/`HW_basins` (see
+    tests/unification/test_hru_cal_levels.py for why). Splicing those edits
+    into nhf's baseline source and comparing ASTs proves nothing else about
+    the function drifted from nhf.
+    """
     import assist.common.hydrofabric as common
 
-    assert current_function_ast(common.make_hf_map_elements) == (
-        baseline_function_ast(NHF_HF, "make_hf_map_elements")
+    nhf_source = baseline_function_source(NHF_HF, "make_hf_map_elements")
+
+    # Each (old, new) pair is one deliberate, independently-verified splice.
+    # Asserting `old in expected_source` before applying each one (rather
+    # than a single aggregate "did anything change" check at the end) means
+    # a no-op `.replace()` — e.g. because the baseline text shifted and a
+    # splice target silently stopped matching — fails loudly and names the
+    # exact target that went missing, instead of being masked by the other
+    # splices still succeeding.
+    replacements = [
+        (
+            "    hru_gdf, hru_txt = create_hru_gdf(",
+            "    hru_gdf, hru_txt, hru_cal_level_txt = create_hru_gdf(",
+        ),
+        (
+            "        #hru_cal_level_txt,",
+            "        hru_cal_level_txt,",
+        ),
+        (
+            "    # HW_basins_gdf : geopandas GeoDataFrame\n"
+            "    #     NHM headwaters basins geopandas GeoDataFrame used to "
+            "display caliration level of HRUs on map.\n"
+            "    # HW_basins : geopandas polyline dataset\n"
+            "    #     Polyline file that was made using HW_basins_gdf.boundary\n"
+            "    \n"
+            '    """',
+            "    HW_basins_gdf : geopandas GeoDataFrame\n"
+            "        NHM headwaters basins geopandas GeoDataFrame used to "
+            "display caliration level of HRUs on map.\n"
+            "    HW_basins : geopandas polyline dataset\n"
+            "        Polyline file that was made using HW_basins_gdf.boundary\n"
+            "\n"
+            '    """',
+        ),
+        (
+            "#    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)",
+            "    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)",
+        ),
+        (
+            "#        HW_basins_gdf,\n"
+            "#        HW_basins,\n"
+            "    )",
+            "        HW_basins_gdf,\n"
+            "        HW_basins,\n"
+            "    )",
+        ),
+    ]
+
+    expected_source = nhf_source
+    for old, new in replacements:
+        assert old in expected_source, (
+            "nhf baseline's make_hf_map_elements no longer contains the "
+            f"expected splice target {old!r}; this test needs updating"
+        )
+        expected_source = expected_source.replace(old, new)
+
+    assert expected_source != nhf_source, (
+        "nhf baseline's make_hf_map_elements no longer matches the expected "
+        "unpack/return lines; this test needs updating"
     )
+
+    expected_node = ast.parse(expected_source).body[0]
+    expected_node.name = "_"
+
+    assert current_function_ast(common.make_hf_map_elements) == ast.dump(expected_node)
 
 
 def test_map_elements_dependencies_all_resolve():

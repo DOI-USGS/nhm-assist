@@ -83,12 +83,12 @@ config = load_subdomain_config(config_root)
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",
