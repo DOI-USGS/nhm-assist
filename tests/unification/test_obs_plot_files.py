@@ -57,8 +57,57 @@ def test_existing_plot_files_are_not_regenerated(tmp_path):
     assert marker.read_text(encoding="utf-8") == "ORIGINAL"
 
 
-def test_copy_is_ast_identical_to_the_nhf_baseline():
-    """Guard against a transcription slip during the verbatim copy."""
+# The one deliberate departure from nhf's baseline: plotly express reads the
+# global default template and walks its parent/child state while building a
+# figure, which is not thread-safe. Eight concurrent px.line calls
+# intermittently raise ValueError("Invalid value") out of
+# apply_default_cascade, which killed a cold-start nhm notebook 1 run after
+# writing only 8 of its obs-plot files. Serialising figure construction fixes
+# it; the surrounding parallelism (data slicing, file writes) is untouched.
+INTENDED_EDITS = [
+    (
+        """    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from tqdm.auto import tqdm
+""",
+        """    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from threading import Lock
+
+    from tqdm.auto import tqdm
+
+    _figure_lock = Lock()
+""",
+    ),
+    (
+        """        fig = px.line(
+            ds_sub_df,
+            x="time",
+            y="discharge",
+            markers=False,
+            labels={
+                "discharge": "Discharge",
+                "time": "Date",
+            },
+        )
+""",
+        """        with _figure_lock:
+            fig = px.line(
+                ds_sub_df,
+                x="time",
+                y="discharge",
+                markers=False,
+                labels={
+                    "discharge": "Discharge",
+                    "time": "Date",
+                },
+            )
+""",
+    ),
+]
+
+
+def test_copy_is_nhf_baseline_plus_only_the_thread_safety_fix():
+    """Guard against a transcription slip during the verbatim copy, allowing
+    only the substitutions in INTENDED_EDITS."""
     import ast
 
     from tests.unification.harness import BASELINE_REV, load_module_from_git
@@ -68,6 +117,24 @@ def test_copy_is_ast_identical_to_the_nhf_baseline():
         "src/assist/nhf/nhm_assist_utilities_v2.py",
         "baseline_nhf_for_obs_plots",
     )
+    expected_source = inspect.getsource(nhf.make_obs_plot_files)
+    for old_text, new_text in INTENDED_EDITS:
+        assert old_text in expected_source, (
+            f"nhf's baseline no longer contains {old_text[:60]!r}, so this "
+            "intended-edit entry is stale and the test needs updating"
+        )
+        expected_source = expected_source.replace(old_text, new_text)
+
     mine = ast.dump(ast.parse(inspect.getsource(make_obs_plot_files)))
-    theirs = ast.dump(ast.parse(inspect.getsource(nhf.make_obs_plot_files)))
+    theirs = ast.dump(ast.parse(expected_source))
     assert mine == theirs
+
+
+def test_figure_construction_is_serialised():
+    """The reason for the edit above: concurrent px.line is not thread-safe."""
+    source = inspect.getsource(make_obs_plot_files)
+    assert "_figure_lock = Lock()" in source
+    assert "with _figure_lock:" in source
+    lock_at = source.index("with _figure_lock:")
+    px_at = source.index("px.line(")
+    assert lock_at < px_at, "the lock must cover the px.line call"

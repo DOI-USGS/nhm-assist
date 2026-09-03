@@ -172,8 +172,7 @@ def test_generate_map_passes_hw_basins_none_through_without_bailing(dc):
     assert seen == {"HW_basins": None}, "GFv2 notebook lost its map entirely"
 
 
-@pytest.mark.parametrize("workflow", ["nhm", "nhf"])
-def test_templates_set_every_literally_required_state(workflow):
+def test_templates_set_every_literally_required_state():
     """Each side must assign every `_require_state` name its callbacks use, or
     the callback silently warns and returns."""
     import assist.common.display_controls as module
@@ -196,7 +195,7 @@ def test_templates_set_every_literally_required_state(workflow):
         "5_hru_output_visualization_new",
         "6_streamflow_output_visualization_new",
     ):
-        path = REPO_ROOT / f"src/workflow_templates/{workflow}/{name}.py"
+        path = REPO_ROOT / f"src/workflow_templates/common/{name}.py"
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
@@ -208,7 +207,7 @@ def test_templates_set_every_literally_required_state(workflow):
                         assigned.add(target.attr)
 
     assert not required - assigned, (
-        f"{workflow} templates never set: {sorted(required - assigned)}"
+        f"the shared templates never set: {sorted(required - assigned)}"
     )
 
 

@@ -16,7 +16,6 @@
 # %%
 import sys
 import os
-import pathlib as pl
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -30,10 +29,10 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
+# fallback to the package location — works for editable and non-editable installs.
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root() / "nhf_assist"
 from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
 from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
 

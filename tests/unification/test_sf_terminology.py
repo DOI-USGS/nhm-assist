@@ -53,7 +53,7 @@ def test_common_has_no_workflow_package_imports():
 
 def test_the_nhm_notebook_caller_was_updated():
     source = open(
-        "src/workflow_templates/nhm/1_create_streamflow_observations.py", encoding="utf-8"
+        "src/workflow_templates/common/1_create_streamflow_observations.py", encoding="utf-8"
     ).read()
     assert "waterdata_df=" in source
     assert "NWIS_df=" not in source
