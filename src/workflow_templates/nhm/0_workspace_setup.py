@@ -183,10 +183,10 @@ control = pws.Control.load_prms(
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **Minimum number of total streamflow observations (days) at a gage**.</font><br> 
-# <font size = '3'> Notebook 2 displays additional NWIS gages NOT listed the parameter file. `nwis_gage_nobs_min` is used to identify gages from NWIS that have a total number of daily stream observations >= `nwis_gage_nobs_min`.
+# <font size = '3'> Notebook 2 displays additional WaterData gages NOT listed the parameter file. `waterdata_gage_nobs_min` is used to identify gages from WaterData that have a total number of daily stream observations >= `waterdata_gage_nobs_min`.
 
 # %%
-nwis_gage_nobs_min = 365  # days
+waterdata_gage_nobs_min = 365  # days
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **List of parameters**.</font><br>
@@ -286,7 +286,8 @@ water_years = True
 # Establish paths and file names
 gages_file = model_dir / "gages.csv"
 default_gages_file = model_dir / "default_gages.csv"
-nwis_gages_file = model_dir / "NWISgages.csv"
+resource_gages_file = model_dir / "metadata/resource_gages.csv"
+waterdata_gages_file = model_dir / 'metadata/WaterDataGages.csv'
 output_netcdf_filename = model_dir / "notebook_output_files/nc_files/sf_efc.nc"
 NHM_dir = root_dir / "data_dependencies/NHM_v1_1"
 prms_meta = MetaData().metadata
@@ -324,14 +325,15 @@ dict_file = {
     "param_file": param_file,
     "param_filename": str(param_filename),
     "control_file_name": control_file_name,
-    "nwis_gage_nobs_min": nwis_gage_nobs_min,
+    "waterdata_gage_nobs_min": waterdata_gage_nobs_min,
     "nhru_params": nhru_params,
     "nhru_nmonths_params": nhru_nmonths_params,
     "selected_output_variables": selected_output_variables,
     "water_years": water_years,
     "gages_file": str(model_dir / "gages.csv"),
     "default_gages_file": str(model_dir / "default_gages.csv"),
-    "nwis_gages_file": str(model_dir / "NWISgages.csv"),
+    "resource_gages_file": str(model_dir / "metadata/resource_gages.csv"),
+    "waterdata_gages_file": str(waterdata_gages_file),
     "output_netcdf_filename": str(
         model_dir / "notebook_output_files/nc_files/sf_efc.nc"
     ),

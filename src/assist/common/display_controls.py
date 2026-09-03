@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 
 from ipywidgets import widgets
@@ -73,6 +74,28 @@ def _report_external_artifact(kind: str, artifact) -> None:
     display(HTML(f"<div style='color:#1f2937'>{msg}</div>"))
 
 
+def _accepted_by(fn, *names: str) -> list:
+    """Return those `names` that `fn` actually accepts as keywords.
+
+    Headwater basins are a GFv1.1 concept: nhm's map_template takes
+    HW_basins/HW_basins_gdf, nhf's map_template_v2 has no such parameters and
+    its notebooks never set that state. Asking the injected backend what it
+    accepts lets this one module drive both sides.
+    """
+    if fn is None:
+        return []
+    params = inspect.signature(fn).parameters
+    if any(p.kind is p.VAR_KEYWORD for p in params.values()):
+        return list(names)
+    return [name for name in names if name in params]
+
+
+def _supported(fn, **kwargs) -> dict:
+    """Drop the kwargs `fn` does not accept (see `_accepted_by`)."""
+    keep = set(_accepted_by(fn, *kwargs))
+    return {k: v for k, v in kwargs.items() if k in keep}
+
+
 def _require_state(*names: str) -> bool:
     missing = [name for name in names if globals().get(name) is None]
     if missing:
@@ -119,9 +142,9 @@ def generate_map() -> None:
         "year_list",
         "yr",
         "Folium_maps_dir",
-        "HW_basins",
         "subdomain",
         "v",
+        *_accepted_by(make_var_map, "HW_basins"),
     ):
         return
     _ensure_output_dirs()
@@ -129,22 +152,25 @@ def generate_map() -> None:
     if poi_gage_id is None:
         return
     map_file = make_var_map(
-        root_dir=root_dir,
-        out_dir=out_dir,
-        output_var_sel=v.value,
-        plot_start_date=plot_start_date,
-        plot_end_date=plot_end_date,
-        water_years=water_years,
-        hru_gdf=hru_gdf,
-        poi_df=poi_df,
-        poi_gage_id_sel=poi_gage_id,
-        seg_gdf=seg_gdf,
-        html_maps_dir=html_maps_dir,
-        year_list=year_list,
-        sel_year=yr.value,
-        Folium_maps_dir=Folium_maps_dir,
-        HW_basins=HW_basins,
-        subdomain=subdomain,
+        **_supported(
+            make_var_map,
+            root_dir=root_dir,
+            out_dir=out_dir,
+            output_var_sel=v.value,
+            plot_start_date=plot_start_date,
+            plot_end_date=plot_end_date,
+            water_years=water_years,
+            hru_gdf=hru_gdf,
+            poi_df=poi_df,
+            poi_gage_id_sel=poi_gage_id,
+            seg_gdf=seg_gdf,
+            html_maps_dir=html_maps_dir,
+            year_list=year_list,
+            sel_year=yr.value,
+            Folium_maps_dir=Folium_maps_dir,
+            HW_basins=HW_basins,
+            subdomain=subdomain,
+        )
     )
     _report_external_artifact("map", map_file)
 
@@ -302,10 +328,9 @@ def on_map_clicked(b: widgets.Button) -> None:
         "seg_gdf",
         "html_maps_dir",
         "subdomain",
-        "HW_basins_gdf",
-        "HW_basins",
         "output_netcdf_filename",
         "gage_txt",
+        *_accepted_by(make_streamflow_map, "HW_basins_gdf", "HW_basins"),
     ):
         return
     _ensure_output_dirs()
@@ -317,20 +342,23 @@ def on_map_clicked(b: widgets.Button) -> None:
 
         try:
             map_file = make_streamflow_map(
-                root_dir=root_dir,
-                out_dir=out_dir,
-                plot_start_date=plot_start_date,
-                plot_end_date=plot_end_date,
-                water_years=water_years,
-                hru_gdf=hru_gdf,
-                poi_df=poi_df,
-                poi_gage_id_sel=poi_gage_id_sel,
-                seg_gdf=seg_gdf,
-                html_maps_dir=html_maps_dir,
-                subdomain=subdomain,
-                HW_basins_gdf=HW_basins_gdf,
-                HW_basins=HW_basins,
-                output_netcdf_filename=output_netcdf_filename,
+                **_supported(
+                    make_streamflow_map,
+                    root_dir=root_dir,
+                    out_dir=out_dir,
+                    plot_start_date=plot_start_date,
+                    plot_end_date=plot_end_date,
+                    water_years=water_years,
+                    hru_gdf=hru_gdf,
+                    poi_df=poi_df,
+                    poi_gage_id_sel=poi_gage_id_sel,
+                    seg_gdf=seg_gdf,
+                    html_maps_dir=html_maps_dir,
+                    subdomain=subdomain,
+                    HW_basins_gdf=HW_basins_gdf,
+                    HW_basins=HW_basins,
+                    output_netcdf_filename=output_netcdf_filename,
+                )
             )
             _report_external_artifact("map", map_file)
 

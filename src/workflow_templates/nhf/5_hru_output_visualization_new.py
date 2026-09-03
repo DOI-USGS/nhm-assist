@@ -70,7 +70,7 @@ poi_id_sel = None
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -78,8 +78,8 @@ poi_id_sel = None
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],
@@ -142,7 +142,7 @@ plot_start_date, plot_end_date, year_list, output_var_list = retrieve_hru_output
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox, Button
 from IPython.display import display, IFrame, clear_output
-import assist.nhf.display_controls_v2 as dc
+import assist.common.display_controls as dc
 
 style_var = {"description_width": "initial"}
 layout = widgets.Layout(width="25%")

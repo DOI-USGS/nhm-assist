@@ -39,18 +39,14 @@ jupyter_black.load()
 root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
 sys.path.append(str(root_dir))
 print(root_dir)
-from nhm_helpers.nhm_assist_utilities import load_subdomain_config
-from nhm_helpers import efc
+from assist.common.assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 
 # %%
 
 # %%
-from nhm_helpers.nhm_hydrofabric import make_hf_map_elements
-from nhm_helpers.map_template import make_par_map
-from nhm_helpers.nhm_assist_utilities import make_plots_par_vals
-from nhm_helpers.nhm_helpers import *
+from assist.common.hydrofabric import make_hf_map_elements
 from ipywidgets import widgets
 from IPython.display import display
 
@@ -86,12 +82,13 @@ warnings.filterwarnings("ignore")
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",

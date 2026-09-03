@@ -143,14 +143,15 @@ poi_df = create_poi_df(
     control_file_name=config["control_file_name"],
     hru_gdf=hru_gdf,
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
 # %% [markdown]
-# # Retrieve all NWIS gage information and streamflow observations.
-# This function pulls time series data for all NWIS gages in the domain, and then filters data to the simulation period (`nwis_gages_cache.nc`), and creates `NWISgages.csv`. Both the time series data file and the NWISgages.csv contain all site information for gages with a period of record greater than the user specified threshold (`nwis_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** ALL gages in the parameter file regardless of a period of record less than the specified threshold.
+# # Retrieve all WaterData gage information and streamflow observations.
+# This function pulls time series data for all WaterData gages in the domain, then filters data to the simulation period (`waterdata_cache.nc`), and creates `metadata/WaterDataGages.csv`. Both the time series data file and `metadata/WaterDataGages.csv` contain all site information for gages with a period of record greater than the user specified threshold (`waterdata_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** all gages in the parameter file regardless of a period of record less than the specified threshold.
 
 # %%
 waterdata_df = create_waterdata_sf_df(
@@ -160,20 +161,20 @@ waterdata_df = create_waterdata_sf_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
-    waterdata_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     seg_gdf=seg_gdf,
 )
 
 # %% [markdown]
 # ## Make the default gages file (default_gages.csv)
-# The `default_gages.csv` contains gages from the parameter file and NWIS gages from the domain (`nwis_gages_cache.nc`). The gages from the parameter file are represented in the variable `poi_df`. The gages in the `default_gages.csv` are represented in the variable `gages_df` here. The `default_gages.csv` may be missing site information if there are gages in the parameter file that are not in NWIS. If this is the case, an error will be displayed below and the `default_gages.csv` must be manually updated, and the file must be renamed `gages.csv`, and this notebook must be re-run. If `gages.csv` exists, then gages in the `gages.csv` are represented in the variable `gages_df`.
+# The `default_gages.csv` contains gages from the parameter file and WaterData gages from the domain (`waterdata_cache.nc`). The gages from the parameter file are represented in the variable `poi_df`. The gages in the `default_gages.csv` are represented in the variable `gages_df` here. The `default_gages.csv` may be missing site information if there are gages in the parameter file that are not in WaterData. If this is the case, an error will be displayed below and the `default_gages.csv` must be manually updated, and the file must be renamed `gages.csv`, and this notebook must be re-run. If `gages.csv` exists, then gages in the `gages.csv` are represented in the variable `gages_df`.
 
 # %%
 default_gages_file = create_default_gages_file(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     control_file_name=config["control_file_name"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
     hru_gdf=hru_gdf,
     poi_df=poi_df,
     seg_gdf=seg_gdf,
@@ -231,7 +232,7 @@ xr_streamflow = create_sf_efc_df(
     output_netcdf_filename=config["output_netcdf_filename"],
     owrd_df=owrd_df,
     ecy_df=ecy_df,
-    NWIS_df=waterdata_df,
+    waterdata_df=waterdata_df,
     gages_df=gages_df,
 )
 

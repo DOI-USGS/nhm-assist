@@ -108,7 +108,7 @@ delete_notebook_output_files(
 # The cell below reads the NHM subdomain model hydrofabric elements for mapping HRUs and gages.
 
 # %%
-hru_gdf, hru_text = create_hru_gdf(
+hru_gdf, hru_text, hru_cal_level_txt = create_hru_gdf(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     GIS_format=config["GIS_format"],

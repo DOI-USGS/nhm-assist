@@ -32,6 +32,23 @@ CONFIG_KEY_ALIASES: dict[str, str] = {
     "nwis_gage_nobs_min": "waterdata_gage_nobs_min",
 }
 
+# Every key some consumer reads. Derived by parsing all config[...] and
+# config.get(...) reads under src/: 28 keys, none read defensively, so a missing
+# one is a broken workspace rather than a soft default. Both pre-unification
+# baselines subscripted each of these directly.
+REQUIRED_CONFIG_KEYS = frozenset({
+    "Folium_maps_dir", "GIS_format", "NHM_dir", "control_file_name",
+    "default_gages_file", "end_date", "gages_file", "html_maps_dir",
+    "html_plots_dir", "model_dir", "nc_files_dir", "nhru_nmonths_params",
+    "nhru_params", "notebook_output_dir", "out_dir", "output_netcdf_filename",
+    "param_file", "param_filename", "selected_output_variables", "start_date",
+    "subdomain", "water_years", "waterdata_gage_nobs_min",
+    "waterdata_gages_file", "workspace_txt",
+})
+
+# Present only in nhf-shaped configs; nhm-shaped ones legitimately omit it.
+OPTIONAL_CONFIG_KEYS = frozenset({"resource_gages_file"})
+
 # All 14 keys both baselines wrapped in pl.Path(). Omitting any of these leaves a
 # raw str in the config, and consumers doing `config["out_dir"] / "x.nc"` raise
 # TypeError. Verified against both baselines at 27f7144.
@@ -81,6 +98,13 @@ def load_subdomain_config(root_dir: pl.Path) -> dict:
             raw[new_key] = raw[old_key]
         elif new_key in raw and old_key not in raw:
             raw[old_key] = raw[new_key]
+
+    missing = sorted(REQUIRED_CONFIG_KEYS - set(raw))
+    if missing:
+        raise KeyError(
+            f"{config_path} is missing required key(s): {', '.join(missing)}. "
+            "Re-run 0_workspace_setup.ipynb for this model to regenerate it."
+        )
 
     config: dict = dict(raw)
     for key in _PATH_KEYS:
@@ -205,6 +229,7 @@ def delete_notebook_output_files(
         "append_gages_to_param_file.csv",
         "default_gages_file.csv",
         "NWISgages.csv",
+        "WaterDataGages.csv",
     ]
     for file_name in files:
         target = model_dir / file_name
@@ -807,14 +832,16 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
     mask_missing = gages_df[cols].isnull().any(axis=1)
     missing_meta_df = gages_df.loc[mask_missing]
 
-    if not missing_meta_df.empty:
+    nldi_geojson_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
+
+    if not missing_meta_df.empty and nldi_geojson_path.exists():
         """
         First, Check the NLDI json for missing data in the dependencies folder.
         These data are said to have the most acurate location information, so stop there first.
         """
         print(f"{len(missing_meta_df)} gages missing metadata. Searching NLDI database.")
         ##### Check NLDI database for missing gage info
-        file_path = npoigages_data_dir / "usgs_nldi_gages.geojson"
+        file_path = nldi_geojson_path
         nldi_gdf = gpd.read_file(file_path)  # or .geojson
     
         # Split on the first '-' and create new columns
@@ -824,10 +851,15 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             .str.strip()
             .str.split("-", n=1, expand=True)  # split on the first dash only
         )
-        nldi_gdf.to_file(
-            npoigages_data_dir / "usgs_nldi_gages.gpkg",
-            driver="GPKG",
-        )
+        try:
+            nldi_gdf.to_file(
+                npoigages_data_dir / "usgs_nldi_gages.gpkg",
+                driver="GPKG",
+            )
+        except OSError:
+            # data_dependencies/ may be read-only on shared filesystems.
+            # The cache is an optimization; carry on with the in-memory frame.
+            pass
     
         nldi_gdf = nldi_gdf[["poi_agency", "name", "poi_gage_id", "geometry"]]
         nldi_gdf.rename(
@@ -886,6 +918,14 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
         print(
             f"Metadata for {len(gages_found_info_list)} gages found in NLDI database.csv",
             # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
+        )
+    elif not missing_meta_df.empty:
+        # non-fatal: the NLDI extract is an optional local data dependency that is
+        # absent on air-gapped deployments and on fresh clones (data_dependencies/
+        # is not tracked). The WaterData lookup below covers these gages.
+        print(
+            f"NLDI database not found at {nldi_geojson_path}; "
+            f"seeking {len(missing_meta_df)} gages in USGS WaterData instead."
         )
     
     ''' 
@@ -1117,104 +1157,6 @@ def _translate_waterdata_columns(df: pd.DataFrame) -> pd.DataFrame:
         if col not in translated.columns:
             translated[col] = pd.NA
     return translated[["latitude", "longitude", "poi_name", "poi_agency"]]
-
-
-# REMOVE WHEN: nhm's metadata-only API. Sole caller:
-# nhm_hydrofabric.create_default_gages_file. Exists only until the hydrofabric
-# concern migrates that function to the canonical find_missing_gage_info; once
-# it does, delete this function (see final-review.md, deferred item 2).
-def find_missing_gage_metadata(
-    *,
-    gage_ids: list[str],
-    poi_df: pd.DataFrame,
-    resource_file_path: pl.Path,
-    root_dir: pl.Path,
-    nldi_geojson_path: pl.Path | None = None,
-) -> pd.DataFrame:
-    """Look up metadata for gages missing from the resource file.
-
-    Returns a DataFrame indexed by poi_gage_id with columns latitude, longitude,
-    poi_name, poi_agency. Queries NLDI (local geojson) and WaterData
-    (network) only for gages not already covered.
-
-    Network failures log a warning and return whatever was successfully
-    fetched; the caller is responsible for any rows still missing metadata.
-    """
-    METADATA_COLS = ["latitude", "longitude", "poi_name", "poi_agency"]
-    empty = pd.DataFrame(columns=METADATA_COLS)
-    empty.index.name = "poi_gage_id"
-    if not gage_ids:
-        return empty
-
-    pending = list(dict.fromkeys(gage_ids))
-
-    if resource_file_path.exists():
-        try:
-            resource_df = pd.read_csv(
-                resource_file_path,
-                dtype={"poi_gage_id": str},
-            )
-        except (FileNotFoundError, pd.errors.EmptyDataError):
-            resource_df = None
-        if resource_df is not None and "poi_gage_id" in resource_df.columns:
-            covered = set(resource_df["poi_gage_id"].astype(str).tolist())
-            pending = [g for g in pending if g not in covered]
-
-    if not pending:
-        return empty
-
-    if nldi_geojson_path is None:
-        nldi_geojson_path = (
-            root_dir / "data_dependencies" / "usgs_nldi_gages.geojson"
-        )
-    nldi_gpkg_path = nldi_geojson_path.with_suffix(".gpkg")
-
-    found_frames: list[pd.DataFrame] = []
-
-    try:
-        nldi_gdf = _load_nldi_cached(nldi_geojson_path, nldi_gpkg_path)
-        nldi_lookup = (
-            nldi_gdf.set_index("poi_gage_id")[METADATA_COLS]
-            if "poi_gage_id" in nldi_gdf.columns
-            else pd.DataFrame(columns=METADATA_COLS)
-        )
-        hits = [g for g in pending if g in nldi_lookup.index]
-        if hits:
-            found_frames.append(nldi_lookup.loc[hits])
-            pending = [g for g in pending if g not in nldi_lookup.index]
-    except Exception as exc:
-        # non-fatal: NLDI may be unavailable on air-gapped deployments
-        print(
-            f"WARNING: could not reach NLDI ({exc}); "
-            f"{len(pending)} gages may lack metadata."
-        )
-
-    if pending:
-        try:
-            chunk_size = 100
-            wd_frames = []
-            for i in range(0, len(pending), chunk_size):
-                chunk_ids = pending[i : i + chunk_size]
-                location_ids = [f"USGS-{g}" for g in chunk_ids]
-                wd_df, _ = waterdata.get_monitoring_locations(
-                    monitoring_location_id=location_ids,
-                )
-                if wd_df is not None and not wd_df.empty:
-                    wd_frames.append(wd_df)
-            if wd_frames:
-                combined = pd.concat(wd_frames, ignore_index=True)
-                translated = _translate_waterdata_columns(combined)
-                hits = [g for g in pending if g in translated.index]
-                if hits:
-                    found_frames.append(translated.loc[hits])
-        except Exception as exc:
-            # non-fatal: WaterData may be unavailable
-            print(
-                f"WARNING: could not reach WaterData ({exc}); "
-                f"{len(pending)} gages may lack metadata."
-            )
-
-    return pd.concat(found_frames) if found_frames else empty
 
 
 def create_append_gages_to_param_file_v2(
@@ -1818,200 +1760,6 @@ def fetch_waterdata_gage_info(
 
 
     return waterdata_gage_info_aoi
-
-
-def fetch_nwis_gage_info(
-    *,
-    root_dir,
-    model_dir,
-    control_file_name,
-    nwis_gage_nobs_min,
-    hru_gdf,
-    seg_gdf,
-):
-    """
-    This function creates a pandas DataFrame of information for all gages in the model domain that
-    are in USGS WaterData database that have mean daily discharge data from the start date to the end date listed in the control file,
-    and that are within 1 kilometer of the provided stream network.
-
-    Parameters
-    ----------
-    model_dir : pathlib Path class
-        Path object to the subdomain directory.
-    control_file_name : pathlib Path class
-        Path object to the control file.
-    nwis_gage_nobs_min : int
-        Minimum number of days for NWIS gage to be considered as potential poi.
-    hru_gdf : geopandas GeoDataFrame()
-        HRU geopandas.GeoDataFrame() from GIS data in subdomain.
-    seg_gdf : geopandas GeoDataFrame()
-        segments geopandas.GeoDataFrame() from GIS data in subdomain.
-
-    Returns
-    -------
-    nwis_gage_info_aoi : pandas DataFrame()
-        DataFrame containing gage information for gages found in NWIS.
-    """
-
-    nwis_gages_file = model_dir / "NWISgages.csv"
-    control = pws.Control.load_prms(
-        pl.Path(model_dir / control_file_name, warn_unused_options=False)
-    )
-
-    """
-    Projections are ascribed geometry from the HRUs geodatabase (GIS).
-    The NHM uses the NAD 1983 USGS Contiguous USA Albers projection EPSG# 102039.
-    The geometry units of this projection are not useful for many notebook packages.
-    The geodatabases are reprojected to World Geodetic System 1984.
-
-    Options:
-        crs = 3857, WGS 84 / Pseudo-Mercator - Spherical Mercator, Google Maps, OpenStreetMap, Bing, ArcGIS, ESRI.
-        *crs = 4326, WGS 84 - WGS84 - World Geodetic System 1984, used in GPS
-    """
-    crs = 4326
-
-    """
-    Use caution if start and end dates may be modified here. 
-    If gages are present in the param file, recommend adding metadata in the gage_resource.csv
-    """
-
-    st_date = "1900-01-01"# pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
-    en_date = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
-
-    if nwis_gages_file.exists():
-        col_names = [
-            "poi_agency",
-            "poi_gage_id",
-            "poi_name",
-            "latitude",
-            "longitude",
-            "drainage_area",
-            "drainage_area_contrib",
-        ]
-        col_types = [
-            np.str_,
-            np.str_,
-            np.str_,
-            float,
-            float,
-            float,
-            float,
-        ]
-        cols = dict(
-            zip(col_names, col_types)
-        )  # Creates a dictionary of column header and datatype called below.
-
-        nwis_gage_info_aoi = pd.read_csv(
-            nwis_gages_file,
-            dtype=cols,
-            usecols=[
-                "poi_agency",
-                "poi_gage_id",
-                "poi_name",
-                "latitude",
-                "longitude",
-                "drainage_area",
-                "drainage_area_contrib",
-            ],
-        )
-    else:
-        aoi_bb = hru_gdf.total_bounds
-        domain_discharge, _ = waterdata.get_time_series_metadata(
-            # state_name=states_name,
-            bbox = aoi_bb.tolist(),
-            parameter_code="00060",
-            statistic_id="00003",
-            # begin=f"../{en_date}",
-            # end=f"{st_date}/..",
-        )
-
-        """Drop gages that are more than 1000m from a NHM segment
-        """
-
-        # DataFrames
-        points_gdf = domain_discharge.set_crs("EPSG:4326").to_crs(crs=3857)
-        lines_gdf = seg_gdf.to_crs(crs=3857)  # change proj to get practical linear unit
-
-        # Step 1: Calculate minimum distance from each point to the nearest line
-        def nearest_line_distance(point):
-            return lines_gdf.geometry.distance(point).min()
-
-        # Apply the distance calculation to points
-        points_gdf["distance_to_line"] = points_gdf.geometry.apply(
-            nearest_line_distance
-        )
-
-        # Step 2: Filter points that are within 1000 meters of the nearest line
-        filtered_points_gdf = points_gdf[points_gdf["distance_to_line"] <= 1000]
-
-        # Drop the distance column if no longer needed
-        filtered_points_gdf = filtered_points_gdf.drop(columns="distance_to_line")
-
-        domain_discharge = filtered_points_gdf.copy().to_crs(crs)
-
-        """Now, get the site infomation for the new list
-            used the chunk format from the example: 
-            https://github.com/DOI-USGS/dataretrieval-python/blob/dc9b614f646b2656c17acc77c0161762053afaf6/demos/WaterData_demo.ipynb
-        """
-        chunk_size = 100
-        site_list = domain_discharge["monitoring_location_id"].unique().tolist()
-        chunks = [
-            site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
-        ]
-        domain_locations = pd.DataFrame()
-        for site_group in chunks:
-            try:
-                chunk_data, _ = waterdata.get_monitoring_locations(
-                    monitoring_location_id=site_group,
-                    site_type_code=["ST", "ST-TS"], # may need to specify more streamflow site types here??
-                    properties=[
-                        "monitoring_location_id",
-                        "geometry",
-                        "agency_code",
-                        "agency_name",
-                        "monitoring_location_number",
-                        "monitoring_location_name",
-                        "state_name",
-                        "drainage_area",
-                        "contributing_drainage_area",
-                    ],
-                )
-                if not chunk_data.empty:
-                    domain_locations = pd.concat([domain_locations, chunk_data])
-            except Exception as e:
-                print(f"Chunk failed: {e}")
-
-        domain_locations["latitude"] = (
-            domain_locations.geometry.y
-        )  # need this for the notebooks
-        domain_locations["longitude"] = (
-            domain_locations.geometry.x
-        )  # need this for the notebooks
-
-        nwis_gage_info_aoi = (
-            domain_locations.set_index("monitoring_location_number", drop=False)
-            .set_crs("EPSG:4326")
-            .to_crs(crs)
-        )
-
-        field_map = {
-            "agency_code": "poi_agency",
-            "monitoring_location_number": "poi_gage_id",
-            "monitoring_location_name": "poi_name",
-            "latitude": "latitude",
-            "longitude": "longitude",
-            "drainage_area": "drainage_area",
-            "contributing_drainage_area": "drainage_area_contrib",
-        }
-        include_cols = list(field_map.keys())
-
-        nwis_gage_info_aoi = nwis_gage_info_aoi.loc[:, include_cols]
-        nwis_gage_info_aoi.rename(columns=field_map, inplace=True)
-        nwis_gage_info_aoi.set_index("poi_gage_id", inplace=True)
-        nwis_gage_info_aoi = nwis_gage_info_aoi.sort_index()
-        nwis_gage_info_aoi.reset_index(inplace=True)
-
-    return nwis_gage_info_aoi
 
 
 def make_HW_cal_level_files(hru_gdf):

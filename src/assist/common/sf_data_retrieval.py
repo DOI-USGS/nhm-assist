@@ -1,9 +1,12 @@
+from __future__ import annotations
+
+
 import pathlib as pl
 import warnings
 from io import StringIO
 from urllib import request
 from urllib.error import HTTPError
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 import geopandas as gpd
 import netCDF4
 import numpy as np
@@ -13,32 +16,58 @@ import pathlib as pl
 import pywatershed as pws
 import xarray as xr
 from rich.console import Console
-
-
 from dataretrieval import waterdata
-from dataretrieval import nwis
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import requests
+import time
+
+from shapely import make_valid
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from typing import Iterable, List, Tuple
+
+
+def _safe_clip_mask(hru_gdf):
+    """Return hru_gdf with geometries repaired via make_valid.
+
+    geopandas.clip() internally unions the mask geometry; that union raises
+    GEOSException when any source polygon is invalid (self-intersecting,
+    NaN coords, unclosed ring, etc.). Repair upstream so .clip() can't trip.
+    """
+    safe = hru_gdf.copy()
+    safe["geometry"] = safe.geometry.apply(
+        lambda g: make_valid(g) if g is not None and not g.is_empty else g
+    )
+    return safe
 
 from rich import pretty
 from rich.progress import Progress
-from assist.nhf.efc import efc
-from assist.nhf.nhm_assist_utilities_v2 import fetch_nwis_gage_info
+from assist.common.efc import efc
+from assist.common.assist_utilities import fetch_waterdata_gage_info
 
-import sys
-import os
-root_folder = "nhf_assist"
-root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
-print(root_dir)
-from dotenv import load_dotenv
 
-load_dotenv(
-    dotenv_path=root_dir / ".env"
-)  # this will load the environment variables from the .env file
 
 con = Console()
 pretty.install()
 warnings.filterwarnings("ignore")
+
+import os
+
+# Silence dataretrieval's per-page "Retrieving: daily · 1 page · 50,000 rows"
+# stderr line. The batch-level rich Progress bar in create_waterdata_sf_df
+# already surfaces download progress, and writes to stderr from worker threads
+# collide with rich.pretty.install() in Jupyter — the patched FileProxy reroutes
+# each write through Console.print → publish_display_data → stderr.flush, which
+# is the same patched stderr, causing unbounded recursion.
+os.environ.setdefault("API_USGS_PROGRESS", "0")
+
+
+def _ensure_usgs_pat_stripped():
+    # dataretrieval uses API_USGS_PAT env var for Water Data APIs auth
+    if "API_USGS_PAT" in os.environ and os.environ["API_USGS_PAT"] is not None:
+        os.environ["API_USGS_PAT"] = os.environ["API_USGS_PAT"].strip()
 
 
 def owrd_scraper(station_nbr, start_date, end_date):
@@ -131,7 +160,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
         
     Returns
     -------
@@ -140,8 +169,8 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     
     """
     control = pws.Control.load_prms(
-    model_dir / control_file_name, warn_unused_options=False
-)
+        model_dir / control_file_name, warn_unused_options=False
+    )
 
     start_date = pd.to_datetime(str(control.start_time)).strftime("%m/%d/%Y")
     end_date = pd.to_datetime(str(control.end_time)).strftime("%m/%d/%Y")
@@ -163,12 +192,9 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    aoi_gdb = gpd.read_file(
-    f"{model_dir}/GIS/model_layers.gpkg", layer="domain").to_crs(crs)  # Reads HRU file to Geopandas.
-    
-    model_domain_regions = list((huc2_gdf.clip(aoi_gdb).loc[:]["huc2"]).values)
+    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
 
     if any(item in owrd_regions for item in model_domain_regions):
         owrd_domain_txt = "The model domain intersects the Oregon state boundary. "
@@ -261,6 +287,8 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
     """
     Acquires daily streamflow data from Washington Department of Ecology (ECY).
+    Downloads a zip file containing annual DSG_DV.txt files for the station,
+    extracts and parses each year's file, then cleans up the zip.
 
     Parameters
     ----------
@@ -275,80 +303,144 @@ def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
         
     Returns
     -------
-    None
+    temp_df : pandas DataFrame or None
+        Dataframe containing ECY mean daily streamflow data, or None if no data.
     
     """
-    
+    import zipfile
+    import tempfile
+    import os
+
+    # Download the zip file containing all years of DSG data
+    url = (
+        f"https://apps.ecology.wa.gov/ContinuousFlowAndWQ/StationDetails/ExportData"
+        f"?stationCD={station}&isAllYears=true&isAllParams=false"
+        f"&startYear=0&endYear=0&paramArray=_DSG&SplitWaterYears=false"
+    )
+    print(f"Downloading ECY data for station {station}...")
+    print(f"  {url}")
+
+    try:
+        req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (nhm-assist)'})
+        with urlopen(req) as response:
+            zip_data = response.read()
+    except HTTPError as e:
+        print(f"  Failed to download zip for {station}: {e}")
+        return None
+    except Exception as e:
+        print(f"  Error downloading zip for {station}: {e}")
+        return None
+
+    # Write zip to a temp file and extract
     ecy_df_list = []
-    for ecy_year in ecy_years:
-        url = f"https://apps.ecology.wa.gov/ContinuousFlowAndWQ/StationData/Prod/{station}/{station}_{ecy_year}_DSG_DV.txt"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        zip_path = os.path.join(tmp_dir, f"{station}_DSG.zip")
+        with open(zip_path, 'wb') as f:
+            f.write(zip_data)
+
         try:
-            # The string that is to be searched
-            key = "DATE"
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # List files in the zip matching the DSG_DV pattern
+                dv_files = [
+                    name for name in zf.namelist()
+                    if '_DSG_DV.txt' in name or '_DSG_DV.TXT' in name
+                ]
+                print(f"  Found {len(dv_files)} annual DSG_DV files in zip")
 
-            # Opening the file and storing its data into the variable lines
-            with urlopen(url) as file:
-                lines = file.readlines()
+                for dv_file in dv_files:
+                    # Extract year from filename (e.g., "32B100_2002_DSG_DV.txt")
+                    try:
+                        parts = os.path.basename(dv_file).split('_')
+                        file_year = int(parts[1])
+                    except (IndexError, ValueError):
+                        continue
 
-            # Going over each line of the file
-            dateline = []
-            for number, line in enumerate(lines, 1):
+                    # Skip years outside the requested range
+                    if file_year not in ecy_years:
+                        continue
 
-                # Condition true if the key exists in the line
-                # If true then display the line number
-                if key in str(line):
-                    dateline.append(number)
-                    # print(f'{key} is at line {number}')
-            # df = pd.read_csv(url, skiprows=11, sep = '\s{3,}', on_bad_lines='skip', engine = 'python')  # looks for at least three spaces as separator
-            df = pd.read_fwf(
-                url, skiprows=dateline[0]
-            )  # seems to handle formatting for No Data and blanks together, above option is thrown off by blanks
-            # df['Day'] = pd.to_numeric(df['Day'], errors='coerce') # day col to numeric
-            # df = df[df['Day'].notna()].astype({'Day': int}) #
-            # df = df.drop('Day.1', axis=1)
-            if len(df.columns) == 3:
-                df.columns = ["time", "discharge", "Quality"]
-            elif len(df.columns) == 4:
-                df.columns = ["time", "utc", "discharge", "Quality"]
-                df.drop("utc", axis=1, inplace=True)
-            try:
-                df.drop(
-                    "Quality", axis=1, inplace=True
-                )  # drop quality for now, might use to filter later
-            except KeyError:
-                print(f"no Quality for {station} {ecy_year}")
-            df["time"] = pd.to_datetime(df["time"], errors="coerce")
-            df = df.dropna(subset=["time"])
-            df["poi_gage_id"] = station
-            df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
-            # specify data types
-            dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
-            df = df.astype(dtype_map)
+                    try:
+                        with zf.open(dv_file) as txt_file:
+                            lines = txt_file.read().decode('utf-8', errors='ignore').splitlines()
 
-            df.set_index(["poi_gage_id", "time"], inplace=True)
-            # next two lines are new if this breaks...
-            idx = pd.IndexSlice
-            df = df.loc[
-                idx[:, ecy_start_date:ecy_end_date], :
-            ]  # filters to the date range
-            df["agency_id"] = "ECY"
+                        # Find the header line containing "DATE"
+                        dateline = None
+                        for number, line in enumerate(lines):
+                            if "DATE" in line:
+                                dateline = number
+                                break
 
-            ecy_df_list.append(df)
-            print(f"good year {ecy_year}")
-            print(url)
-        except HTTPError:
-            pass
-        except ValueError as ex:
-            print(ex)
-            print(ecy_year)
-    if len(df) != 0:
+                        if dateline is None:
+                            print(f"    No DATE header found in {dv_file}")
+                            continue
+
+                        # Read header columns and all data using pd.read_fwf
+                        # This handles the variable-width columns properly
+                        from io import StringIO
+                        file_content = "\n".join(lines[dateline:])
+                        df = pd.read_fwf(StringIO(file_content))
+
+                        # Normalize column names to lowercase for matching
+                        df.columns = [c.strip().upper() for c in df.columns]
+
+                        # Keep only DATE and DISCHARGE columns (drop everything else)
+                        # Look for columns containing these keywords
+                        date_col = None
+                        discharge_col = None
+                        for col in df.columns:
+                            if "DATE" in col:
+                                date_col = col
+                            elif "DISCHARGE" in col or "VALUE" in col or "DSG" in col:
+                                discharge_col = col
+
+                        # If no discharge column found by name, take the second column
+                        if date_col is None:
+                            date_col = df.columns[0]
+                        if discharge_col is None and len(df.columns) >= 2:
+                            discharge_col = df.columns[1]
+
+                        if date_col is None or discharge_col is None:
+                            print(f"    Could not identify date/discharge columns in {dv_file} for station {station}. "
+                                  f"Available columns: {df.columns.tolist()}")
+                            continue
+
+                        df = df[[date_col, discharge_col]].copy()
+                        df.columns = ["time", "discharge"]
+
+                        df["time"] = pd.to_datetime(df["time"], errors="coerce")
+                        df = df.dropna(subset=["time"])
+                        df["poi_gage_id"] = station
+                        df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
+
+                        # Specify data types
+                        dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
+                        df = df.astype(dtype_map)
+
+                        df.set_index(["poi_gage_id", "time"], inplace=True)
+
+                        # Filter to date range
+                        idx = pd.IndexSlice
+                        df = df.loc[idx[:, ecy_start_date:ecy_end_date], :]
+                        df["agency_id"] = "ECY"
+
+                        if len(df) > 0:
+                            ecy_df_list.append(df)
+                            print(f"    {dv_file}: {len(df)} records")
+
+                    except Exception as ex:
+                        print(f"    Error parsing {dv_file}: {ex}")
+                        continue
+
+        except zipfile.BadZipFile:
+            print(f"  Downloaded file for {station} is not a valid zip")
+            return None
+
+    if ecy_df_list:
         temp_df = pd.concat(ecy_df_list)
-        # ecy_df["discharge_cfs"] = pd.to_numeric(ecy_df["discharge_cfs"], errors = 'coerce')
-        # maybe inster the rest of the df formatting here:
-
+        print(f"  Total: {len(temp_df)} records for {station}")
         return temp_df
     else:
-        print(f"No data for station {station} for data range {ecy_years}.")
+        print(f"  No data for station {station} in date range.")
         return None
 
 
@@ -368,7 +460,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     hru_gdf : geopandas GeoDataFrame
         HRU geodataframe from GIS data in subdomain.        
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
 
     Returns
     -------
@@ -377,10 +469,10 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
         
     """
     control = pws.Control.load_prms(
-    model_dir / control_file_name, warn_unused_options=False
-)
+        model_dir / control_file_name, warn_unused_options=False
+    )
     ecy_regions = ["17"]
-    ecy_df = pd.DataFrame()
+
     """
     Projections are ascribed geometry from the HRUs geodatabase (GIS).
     The NHM uses the NAD 1983 USGS Contiguous USA Albers projection EPSG# 102039.
@@ -393,13 +485,10 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     """
     crs = 4326
 
-    # Make a list if the HUC2 region(s) the subdomain intersects for NWIS queries.
+    # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    aoi_gdb = gpd.read_file(
-    f"{model_dir}/GIS/model_layers.gpkg", layer="domain").to_crs(crs)  # Reads HRU file to Geopandas.
-    
-    model_domain_regions = list((huc2_gdf.clip(aoi_gdb).loc[:]["huc2"]).values)
-    
+    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
+    ecy_df = pd.DataFrame()
 
     if any(item in ecy_regions for item in model_domain_regions):
         ecy_domain_txt = "The model domain intersects the Washington state boundary."
@@ -538,68 +627,147 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
     else:
         ecy_domain_txt = "The model domain is outside the Washinton state boundary."
         #ecy_df = pd.DataFrame()
-
+        #ecy_df = pd.DataFrame()
     con.print(ecy_domain_txt)
     return ecy_df
 
-def fetch_single_nwis_gage(ii, nwis_start, nwis_end, poi_df, nwis_gage_nobs_min):
-    try:
-        NWISgage_data = nwis.get_record(
-            sites=str(ii),
-            service="dv",
-            start=nwis_start,
-            end=nwis_end,
-            parameterCd="00060",
-            StatCd="00003",
-        )
+def _chunked(seq: List[str], n: int) -> Iterable[List[str]]:
+    for i in range(0, len(seq), n):
+        yield seq[i : i + n]
 
-        # Drop _cd columns
-        dropped = NWISgage_data.columns[NWISgage_data.columns.str.contains("_cd|_aux|regression")]
-        if not dropped.empty:
-            print(ii, "Dropped columns:", list(dropped))
-            NWISgage_data = NWISgage_data.drop(columns=dropped)
-   
-        mean_cols = [col for col in NWISgage_data.columns if "_Mean" in col]
-        
-        if len(mean_cols) >= 2:
-            # restrict to columns that actually exist
-            mean_cols_in_df = [c for c in mean_cols if c in NWISgage_data.columns]
-        
-            if len(mean_cols_in_df) >= 2:
-                print(f"Gage {ii} has multiple 00060_Mean discharge columns: {mean_cols_in_df}")
-                winner = NWISgage_data[mean_cols_in_df].notna().sum().idxmax()
-        
-                if winner is not None:
-                    cols_to_drop = [c for c in mean_cols_in_df if c != winner]
-                    NWISgage_data.drop(columns=cols_to_drop, inplace=True)
-                    NWISgage_data.rename(columns={winner: "00060_Mean"}, inplace=True)
-        
-                    print(
-                        f"Gage {ii} has columns {list(NWISgage_data.columns)}; "
-                        f"column {winner} was selected."
-                    )
-        else:
-            if NWISgage_data.columns[1] != "00060_Mean":
-                col_name = NWISgage_data.columns[1]
-                NWISgage_data.rename(columns={col_name: "00060_Mean"}, inplace=True)
-                print(f"For gage {ii}, column '{col_name}' was renamed '00060_Mean'.")
+
+def _as_monitoring_location_ids(site_ids: Iterable) -> List[str]:
+    """
+    Convert site numbers like '01646500' (or int 1646500) into Water Data API IDs like 'USGS-01646500'.
+    The waterdata module examples use monitoring_location_id values like 'USGS-01646500'.
+    """
+    out = []
+    for s in site_ids:
+        if pd.isna(s):
+            continue
+        s = str(s).strip()
+        if s.startswith("USGS-"):
+            out.append(s)
+            continue
+        # If numeric and <= 8 chars, pad to preserve leading zeros (common if read as int)
+        if s.isdigit() and len(s) <= 8:
+            s = s.zfill(8)
+        out.append(f"USGS-{s}")
+    return out
+
+
+WATERDATA_RETRY_MAX = 3
+WATERDATA_RETRY_BASE_SECONDS = 1.0
+WATERDATA_BATCH_STAGGER_SECONDS = 0.25
+_WATERDATA_RETRYABLE_STATUSES = {429, 502, 503, 504}
+
+
+try:
+    # dataretrieval exposes ChunkInterrupted for resumable mid-stream failures
+    # on large multi-site WaterData queries (.call.resume() picks up surviving chunks).
+    from dataretrieval.waterdata.chunking import ChunkInterrupted
+except Exception:  # pragma: no cover - older dataretrieval without chunking
+    ChunkInterrupted = None  # type: ignore[assignment,misc]
+
+
+def _should_retry_waterdata(exc: Exception) -> bool:
+    """Return True for transient API errors worth retrying."""
+    if ChunkInterrupted is not None and isinstance(exc, ChunkInterrupted):
+        return True
+    if isinstance(exc, requests.exceptions.HTTPError):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        return status in _WATERDATA_RETRYABLE_STATUSES
+    if isinstance(exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+        return True
+    # Heuristic fallback for wrapped errors that lose the original type.
+    msg = str(exc)
+    return any(code in msg for code in ("429", "502", "503", "504"))
+
+
+@dataclass
+class WaterDataBatchResult:
+    df: pd.DataFrame
+    missing_ids: List[str]
+    error: str | None = None
+
+
+def fetch_daily_discharge_batch(
+    monitoring_location_ids: List[str],
+    *,
+    start_date: str,
+    end_date: str,
+    parameter_code: str = "00060",
+    statistic_id: str = "00003",
+    skip_geometry: bool = True,
+    limit: int = 50000,
+    max_retries: int = WATERDATA_RETRY_MAX,
+    retry_base_seconds: float = WATERDATA_RETRY_BASE_SECONDS,
+) -> WaterDataBatchResult:
+    """
+    Pull daily mean discharge for a batch of sites using the modern Water Data APIs.
+    - get_daily supports multiple monitoring_location_id values per call.
+    - Responses may be paged; dataretrieval stitches pages together; limit controls page size.
+    - Retries up to max_retries on HTTP 429/502/503/504 + connection/timeout
+      errors with exponential backoff; non-transient errors return immediately.
+    - For dataretrieval ChunkInterrupted / ServiceInterrupted (mid-stream failure
+      on a large multi-site request), resumes from `.call.resume()` so completed
+      sub-requests are not re-issued.
+    """
+    time_range = f"{start_date}/{end_date}"
+    last_error_msg: str | None = None
+    resumable_call = None  # set by ChunkInterrupted; resumed on next attempt
+
+    for attempt in range(max_retries + 1):
+        try:
+            if resumable_call is not None:
+                df, md = resumable_call.resume()
             else:
-                pass
-                
-        if NWISgage_data.empty:
-            return ii, "NO_DATA_IN_PERIOD"
+                df, md = waterdata.get_daily(
+                    monitoring_location_id=monitoring_location_ids,
+                    parameter_code=parameter_code,
+                    statistic_id=statistic_id,
+                    time=time_range,
+                    skip_geometry=skip_geometry,
+                    limit=limit,
+                )
 
-        if len(NWISgage_data.index) >= nwis_gage_nobs_min or ii in poi_df["poi_gage_id"].unique().tolist():
-            return ii, NWISgage_data
-        else:
-            return ii, "TOO_FEW_OBS"
-            
-    except Exception as e:
-        return ii, f"ERROR: {e}"
+            if df is None or len(df) == 0:
+                return WaterDataBatchResult(df=pd.DataFrame(), missing_ids=list(monitoring_location_ids))
+
+            found = set(df["monitoring_location_id"].astype(str).unique())
+            missing = [mid for mid in monitoring_location_ids if mid not in found]
+            return WaterDataBatchResult(df=df, missing_ids=missing)
+
+        except Exception as e:
+            last_error_msg = str(e)
+            if ChunkInterrupted is not None and isinstance(e, ChunkInterrupted):
+                resumable_call = getattr(e, "call", None)
+                wait = getattr(e, "retry_after", None)
+                if wait is None:
+                    wait = retry_base_seconds * (2 ** attempt)
+            else:
+                wait = retry_base_seconds * (2 ** attempt)
+            if attempt >= max_retries or not _should_retry_waterdata(e):
+                return WaterDataBatchResult(
+                    df=pd.DataFrame(),
+                    missing_ids=list(monitoring_location_ids),
+                    error=last_error_msg,
+                )
+            time.sleep(wait)
+
+    return WaterDataBatchResult(
+        df=pd.DataFrame(),
+        missing_ids=list(monitoring_location_ids),
+        error=last_error_msg,
+    )
+import pathlib as pl
+import xarray as xr
+import netCDF4
+import pandas as pd
+import numpy as np
 
 
-
-def create_nwis_sf_df(
+def create_waterdata_sf_df(
     *,
     root_dir,
     control_file_name,
@@ -607,182 +775,237 @@ def create_nwis_sf_df(
     output_netcdf_filename,
     hru_gdf,
     poi_df,
-    nwis_gage_nobs_min,
+    waterdata_gage_nobs_min,
     seg_gdf,
-):  
+    batch_size: int = 75,
+    max_workers: int = 4,
+):
     """
-    Create a dataframe for NWIS gages in the model domain
+    Create a dataframe for Water Data API gages in the model domain
 
     Parameters
     ----------
+    root_dir: pathlib Path class
+        Path object to the nhm-assist root directory.
     control_file_name: pathlib Path class
         Path object to the control file.        
     model_dir: pathlib Path class
         Path object to the subdomain directory.        
     output_netcdf_filename: pathlib Path class
-        output netCDF filename for cachefile, e.g., model_dir / "notebook_output_files/nc_files/sf_efc.nc"        
+        Output netCDF filename for cachefile, e.g., model_dir / "notebook_output_files/nc_files/sf_efc.nc"        
     hru_gdf: geopandas GeoDataFrame
         HRU geopandas.GeoDataFrame() from GIS data in subdomain.        
     poi_df: pandas DataFrame
         Dataframe containing gages.        
-    nwis_gage_nobs_min: int
-        Minimum number of days for NWIS gage to be considered as pontential poi.
+    waterdata_gage_nobs_min: int
+        Minimum number of days for Water Data API gage to be considered as potential poi.
+    seg_gdf: geopandas GeoDataFrame
+        Segments geopandas.GeoDataFrame() from GIS data in subdomain.
+    batch_size: int
+        Number of monitoring locations to request per batch.
+    max_workers: int
+        Maximum number of worker threads used for batched requests.
         
     Returns
     -------
-    NWIS_df: pandas DataFrame
-        Dataframe of NWIS gages.
+    waterdata_df: pandas DataFrame
+        Dataframe of Water Data API gages.
         
     """
-    nwis_cache_file = model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
-    control = pws.Control.load_prms(
-        pl.Path(model_dir / control_file_name, warn_unused_options=False)
+    _ensure_usgs_pat_stripped()
+
+    waterdata_cache_file = (
+        model_dir / "notebook_output_files" / "nc_files" / "waterdata_cache.nc"
     )
-    nwis_gages_file = model_dir / "NWISgages.csv"
-    nwis_gage_info_aoi = fetch_nwis_gage_info(
+    control = pws.Control.load_prms(
+        pl.Path(model_dir / control_file_name), warn_unused_options=False
+    )
+    waterdata_gages_file = model_dir / "metadata/WaterDataGages.csv"
+
+    waterdata_gage_info_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
         model_dir=model_dir,
         control_file_name=control_file_name,
-        nwis_gage_nobs_min=nwis_gage_nobs_min,
+        waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
     )
 
-    if nwis_cache_file.exists():
-        with xr.open_dataset(nwis_cache_file) as NWIS_ds:
-            NWIS_df = NWIS_ds.to_dataframe()
+    if waterdata_cache_file.exists():
+        with xr.open_dataset(waterdata_cache_file) as waterdata_ds:
+            waterdata_df = waterdata_ds.to_dataframe()
             print(
-                "Cached copy of NWIS data exists. To re-download the data, remove the cache file."
+                "Cached copy of streamflow data exists. "
+                "To re-download, remove the cache file."
             )
-            del NWIS_ds
-    else:
-        output_netcdf_filename = (
-            model_dir / "notebook_output_files" / "nc_files" / "sf_efc.nc"
-        )
-        """
-        This function returns a dataframe of mean daily streamflow data from NWIS using gages listed in the gages_df,
-        for the period of record defined in the NHM model control file control.default.bandit.
-        Note: all gages in the gages_df that are not found in NWIS will be ignored.
-        """
+            del waterdata_ds
+        return waterdata_df
 
-    nwis_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
-    nwis_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
+    waterdata_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
+    waterdata_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
-    NWIS_tmp = []
-    err_list = []
-    nobs_min_list = []
-    no_data_list = []
+    # Build Water Data API monitoring_location_ids
+    site_ids = waterdata_gage_info_aoi["poi_gage_id"].tolist()
+    monitoring_ids = _as_monitoring_location_ids(site_ids)
+
+    # Download in batches
+    all_parts = []
+    err_batches = []
+    missing_ids_all = []
 
     with Progress() as progress:
-        task = progress.add_task("[red]Downloading...", total=len(nwis_gage_info_aoi))
+        task = progress.add_task(
+            "[red]Downloading (Water Data API)...", total=len(monitoring_ids)
+        )
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {
-                executor.submit(fetch_single_nwis_gage, ii, nwis_start, nwis_end, poi_df, nwis_gage_nobs_min): ii
-                for ii in nwis_gage_info_aoi.poi_gage_id
-            }
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {}
+            for batch_index, batch in enumerate(_chunked(monitoring_ids, batch_size)):
+                if batch_index > 0:
+                    # Stagger submissions so the WaterData edge does not see
+                    # a max_workers-wide burst of large multi-site queries.
+                    time.sleep(WATERDATA_BATCH_STAGGER_SECONDS)
+                fut = executor.submit(
+                    fetch_daily_discharge_batch,
+                    batch,
+                    start_date=waterdata_start,
+                    end_date=waterdata_end,
+                    parameter_code="00060",
+                    statistic_id="00003",
+                    skip_geometry=True,
+                    limit=50000,
+                )
+                future_map[fut] = len(batch)
 
-            for future in as_completed(futures):
-                ii, result = future.result()
-                if isinstance(result, pd.DataFrame):
-                    NWIS_tmp.append(result)
-                elif result == "TOO_FEW_OBS":
-                    nobs_min_list.append(ii)
-                elif result == "NO_DATA_IN_PERIOD":
-                    print(f"Gage {ii} returned no data for the model period.")
-                    no_data_list.append(ii)
-                else:
-                    err_list.append(ii)
-                    # con.print(f"Gage id {ii} not found in NWIS.")
-                    pass
-                progress.update(task, advance=1)
-                
-        NWIS_df = pd.concat(NWIS_tmp)
+            for fut in as_completed(future_map):
+                batch_len = future_map[fut]
+                res = fut.result()
+                progress.update(task, advance=batch_len)
+
+                if res.error is not None:
+                    err_batches.append(res.error)
+                    missing_ids_all.extend(res.missing_ids)
+                    continue
+
+                if len(res.missing_ids) > 0:
+                    missing_ids_all.extend(res.missing_ids)
+
+                if res.df is not None and len(res.df) > 0:
+                    all_parts.append(res.df)
+
+    if not all_parts:
+        raise RuntimeError(
+            "No daily discharge data returned from Water Data API for any requested sites "
+            f"({len(monitoring_ids)} sites). First error: "
+            f"{err_batches[0] if err_batches else 'None'}"
+        )
+
+    waterdata_raw_df = pd.concat(all_parts, ignore_index=True)
+
+    # Normalize to expected schema
+    waterdata_raw_df["poi_gage_id"] = (
+        waterdata_raw_df["monitoring_location_id"]
+        .astype(str)
+        .str.split("-", n=1)
+        .str[-1]
+    )
+    waterdata_raw_df["time"] = pd.to_datetime(
+        waterdata_raw_df["time"], utc=True
+    ).dt.tz_localize(None)
+    waterdata_raw_df["discharge"] = pd.to_numeric(
+        waterdata_raw_df["value"], errors="coerce"
+    )
+    waterdata_raw_df["agency_id"] = "USGS"
+
+    # De-dupe in case multiple rows exist per site/time
+    waterdata_raw_df = (
+        waterdata_raw_df.sort_values(
+            ["poi_gage_id", "time", "discharge"], ascending=[True, True, False]
+        ).drop_duplicates(subset=["poi_gage_id", "time"], keep="first")
+    )
+
+    keep_always = set(poi_df["poi_gage_id"].astype(str).unique().tolist())
+    obs_counts = waterdata_raw_df.groupby("poi_gage_id")["discharge"].apply(
+        lambda s: s.notna().sum()
+    )
+    too_few = obs_counts[
+        (obs_counts < waterdata_gage_nobs_min)
+        & (~obs_counts.index.isin(keep_always))
+    ].index.tolist()
+
+    if too_few:
         con.print(
-            f"{len(nobs_min_list)} gages had fewer obs than nwis_gage_nobs_min and will be ommited from nwis_gages_cache.nc and NWIS gages.csv unless they appear in the paramter file.\n{nobs_min_list}"
+            f"{len(too_few)} gages had fewer obs than waterdata_gage_nobs_min "
+            f"and will be omitted unless they appear in the parameter file.\n{too_few}"
         )
-        con.print(f"{len(err_list)} gages: {err_list} were **NOT** found in NWIS.")
-        # we only need site_no and discharge (00060_Mean)
-        NWIS_df = NWIS_df[["site_no", "00060_Mean"]].copy()
-        NWIS_df["agency_id"] = "USGS"
+        waterdata_raw_df = waterdata_raw_df[
+            ~waterdata_raw_df["poi_gage_id"].isin(too_few)
+        ]
 
-        NWIS_df = NWIS_df.tz_localize(None)
-        NWIS_df.reset_index(inplace=True)
-
-        # rename cols to match other df
-        NWIS_df.rename(
-            columns={
-                "datetime": "time",
-                "00060_Mean": "discharge",
-                "site_no": "poi_gage_id",
-            },
-            inplace=True,
-        )
-
-        NWIS_df.set_index(["poi_gage_id", "time"], inplace=True)
-
-        #### Write the .nc file
-        # Reformat data types
-        # Change the datatype for 'poi_gage_id' and 'time'
-        # dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
-        # NWIS_df = NWIS_df.astype(dtype_map)
-
-        # Write df as netcdf fine (.nc)
-        NWIS_ds = xr.Dataset.from_dataframe(NWIS_df)
-
-        # Set attributes for the variables
-        NWIS_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-        NWIS_ds["poi_gage_id"].attrs = {
-            "role": "timeseries_id",
-            "long_name": "Point-of-Interest ID",
-            "_Encoding": "ascii",
-        }
-        NWIS_ds["agency_id"].attrs = {"_Encoding": "ascii"}
-
-        # Set encoding (see 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html)
-        NWIS_ds["poi_gage_id"].encoding.update(
-            {"dtype": "S15", "char_dim_name": "poiid_nchars"}
-        )
-
-        NWIS_ds["time"].encoding.update(
-            {
-                "_FillValue": None,
-                "standard_name": "time",
-                "calendar": "standard",
-                "units": "days since 1940-01-01 00:00:00",
-            }
-        )
-
-        NWIS_ds["agency_id"].encoding.update(
-            {"dtype": "S5", "char_dim_name": "agency_nchars"}
-        )
-
-        # Add fill values to the data variables
-        var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
-
-        for cvar in NWIS_ds.data_vars:
-            if cvar not in ["agency_id"]:
-                NWIS_ds[cvar].encoding.update(var_encoding)
-
-        # add global attribute metadata
-        NWIS_ds.attrs = {
-            "Description": "Streamflow data for PRMS",
-            "FeatureType": "timeSeries",
-        }
-
-        # Write the dataset to a netcdf file
+    # Report missing sites (not found / no data in range)
+    if missing_ids_all:
+        missing_site_nos = [m.split("-", 1)[-1] for m in sorted(set(missing_ids_all))]
         con.print(
-            f"NWIS daily streamflow observations retrieved, writing data to {nwis_cache_file}."
+            f"{len(set(missing_site_nos))} gages returned no rows from "
+            f"Water Data API: {missing_site_nos}"
         )
-        NWIS_ds.to_netcdf(nwis_cache_file)
 
-    nwis_gage_info_aoi = nwis_gage_info_aoi[~nwis_gage_info_aoi["poi_gage_id"].isin(nobs_min_list)]
-    nwis_gage_info_aoi.to_csv(nwis_gages_file, index=False)
+    # Final index + xarray write
+    waterdata_df = waterdata_raw_df[
+        ["poi_gage_id", "time", "discharge", "agency_id"]
+    ].copy()
+    waterdata_df.set_index(["poi_gage_id", "time"], inplace=True)
 
-    con.print(f"{len(nobs_min_list)} gages had fewer obs than nwis_gage_nobs_min and will be omitted from nwis_gages_cache.nc and NWIS gages.csv unless they appear in the parameter file.")
-    con.print(f"{len(err_list)} gages were **NOT** found in NWIS for the model period: {err_list}")
+    waterdata_ds = xr.Dataset.from_dataframe(waterdata_df)
 
-    return NWIS_df
+    # attrs/encodings
+    waterdata_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
+    waterdata_ds["poi_gage_id"].attrs = {
+        "role": "timeseries_id",
+        "long_name": "Point-of-Interest ID",
+        "_Encoding": "ascii",
+    }
+    waterdata_ds["agency_id"].attrs = {"_Encoding": "ascii"}
+
+    waterdata_ds["poi_gage_id"].encoding.update(
+        {"dtype": "S15", "char_dim_name": "poiid_nchars"}
+    )
+    waterdata_ds["time"].encoding.update(
+        {
+            "_FillValue": None,
+            "standard_name": "time",
+            "calendar": "standard",
+            "units": "days since 1940-01-01 00:00:00",
+        }
+    )
+    waterdata_ds["agency_id"].encoding.update(
+        {"dtype": "S5", "char_dim_name": "agency_nchars"}
+    )
+
+    var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
+    for cvar in waterdata_ds.data_vars:
+        if cvar not in ["agency_id"]:
+            waterdata_ds[cvar].encoding.update(var_encoding)
+
+    waterdata_ds.attrs = {
+        "Description": "Streamflow data for PRMS",
+        "FeatureType": "timeSeries",
+    }
+
+    con.print(
+        f"Water Data API daily streamflow retrieved, writing data to "
+        f"{waterdata_cache_file}."
+    )
+    waterdata_ds.to_netcdf(waterdata_cache_file)
+
+    # Write gage list CSV (exclude too_few)
+    out_gage_info = waterdata_gage_info_aoi[
+        ~waterdata_gage_info_aoi["poi_gage_id"].astype(str).isin(too_few)
+    ]
+    waterdata_gages_file.parent.mkdir(parents=True, exist_ok=True)
+    out_gage_info.to_csv(waterdata_gages_file, index=False)
+
+    return waterdata_df
 
 
 def create_sf_efc_df(
@@ -790,16 +1013,16 @@ def create_sf_efc_df(
     output_netcdf_filename,
     owrd_df,
     ecy_df,
-    NWIS_df,
+    waterdata_df,
     gages_df,
 ):
     """
-    Combines daily streamflow dataframes from various database retrievals, currently NWIS, OWRD, and ECY into
+    Combines daily streamflow dataframes from various database retrievals, currently WaterData, OWRD, and ECY into
     one xarray dataset.
 
-    Note: all NWIS data is mirrored the OWRD database without any primary source tag/flag, so
-    this section will also determine the original source agency of each daily observation, OWRD vs. NWIS.
-    ECY does not republish NWIS data as not USGS gages are in the ECY database.
+    Note: all WaterData data is mirrored the OWRD database without any primary source tag/flag, so
+    this section will also determine the original source agency of each daily observation, OWRD vs. WaterData.
+    ECY does not republish WaterData data as not USGS gages are in the ECY database.
 
     The function will will also add to the xarray station information from the gages.csv file.
     The function will also add efc flow classifications to each daily streamflow (Ref from Parker).
@@ -815,10 +1038,10 @@ def create_sf_efc_df(
         Dataframe containing OWRD mean daily streamflow data for the specified gage and date range.        
     ecy_df : pandas DataFrame
         Dataframe containing ECY mean daily streamflow data for the specified gage and date range.        
-    NWIS_df : pandas DataFrame
-        Dataframe of NWIS gages.        
+    waterdata_df : pandas DataFrame
+        Dataframe of WaterData gages.
     gages_df : pandas DataFrame
-        Represents data pertaining to subdomain gages in parameter file, NWIS, and others.
+        Represents data pertaining to subdomain gages in parameter file, WaterData, and others.
     
     Returns
     -------
@@ -835,12 +1058,12 @@ def create_sf_efc_df(
             "All available streamflow observations were previously retrieved and included in the sf_efc.nc file. [bold]To update delete sf_efc.nc[/bold] and rerun 1_Create_Streamflow_Observations.ipynb."
         )
     else:
-        streamflow_df = NWIS_df.copy()  # Sets streamflow file to default, NWIS_df
+        streamflow_df = waterdata_df.copy()  # Sets streamflow file to default, waterdata_df
 
         if (
             not owrd_df.empty
         ):  # If there is an owrd_df, it will be combined with streamflow_df and rewrite the streamflow_df
-            # Merge NWIS and OWRD
+            # Merge WaterData and OWRD
             streamflow_df = pd.concat([streamflow_df, owrd_df])  # Join the two datasets
             # Drop duplicated indexes, keeping the first occurence (USGS occurs first)
             # try following this thing: https://saturncloud.io/blog/how-to-drop-duplicated-index-in-a-pandas-dataframe-a-complete-guide/#:~:text=Pandas%20provides%20the%20drop_duplicates(),names%20to%20the%20subset%20parameter.
@@ -1031,239 +1254,3 @@ def create_sf_efc_df(
         xr_streamflow.to_netcdf(output_netcdf_filename)
 
     return xr_streamflow
-
-def create_waterdata_sf_df(
-    *,
-    root_dir,
-    control_file_name,
-    model_dir,
-    output_netcdf_filename,
-    hru_gdf,
-    poi_df,
-    waterdata_gage_nobs_min,
-    seg_gdf,
-    batch_size: int = 75,
-    max_workers: int = 4,
-):
-    """
-    Create a dataframe for Water Data API gages in the model domain
-
-    Parameters
-    ----------
-    root_dir: pathlib Path class
-        Path object to the nhm-assist root directory.
-    control_file_name: pathlib Path class
-        Path object to the control file.        
-    model_dir: pathlib Path class
-        Path object to the subdomain directory.        
-    output_netcdf_filename: pathlib Path class
-        Output netCDF filename for cachefile, e.g., model_dir / "notebook_output_files/nc_files/sf_efc.nc"        
-    hru_gdf: geopandas GeoDataFrame
-        HRU geopandas.GeoDataFrame() from GIS data in subdomain.        
-    poi_df: pandas DataFrame
-        Dataframe containing gages.        
-    waterdata_gage_nobs_min: int
-        Minimum number of days for Water Data API gage to be considered as potential poi.
-    seg_gdf: geopandas GeoDataFrame
-        Segments geopandas.GeoDataFrame() from GIS data in subdomain.
-    batch_size: int
-        Number of monitoring locations to request per batch.
-    max_workers: int
-        Maximum number of worker threads used for batched requests.
-        
-    Returns
-    -------
-    waterdata_df: pandas DataFrame
-        Dataframe of Water Data API gages.
-        
-    """
-    _ensure_usgs_pat_stripped()
-
-    waterdata_cache_file = (
-        model_dir / "notebook_output_files" / "nc_files" / "nwis_cache.nc"
-    )
-    control = pws.Control.load_prms(
-        pl.Path(model_dir / control_file_name), warn_unused_options=False
-    )
-    waterdata_gages_file = model_dir / "WaterDataGages.csv"
-
-    waterdata_gage_info_aoi = fetch_nwis_gage_info(
-        root_dir=root_dir,
-        model_dir=model_dir,
-        control_file_name=control_file_name,
-        nwis_gage_nobs_min=waterdata_gage_nobs_min,
-        hru_gdf=hru_gdf,
-        seg_gdf=seg_gdf,
-    )
-
-    if waterdata_cache_file.exists():
-        with xr.open_dataset(waterdata_cache_file) as waterdata_ds:
-            waterdata_df = waterdata_ds.to_dataframe()
-            print(
-                "Cached copy of streamflow data exists. "
-                "To re-download, remove the cache file."
-            )
-            del waterdata_ds
-        return waterdata_df
-
-    waterdata_start = pd.to_datetime(str(control.start_time)).strftime("%Y-%m-%d")
-    waterdata_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
-
-    # Build Water Data API monitoring_location_ids
-    site_ids = waterdata_gage_info_aoi["poi_id"].tolist()
-    monitoring_ids = _as_monitoring_location_ids(site_ids)
-
-    # Download in batches
-    all_parts = []
-    err_batches = []
-    missing_ids_all = []
-
-    from tqdm.notebook import tqdm
-
-    pbar = tqdm(total=len(monitoring_ids), desc="Downloading (Water Data API)")
-
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_map = {}
-        for batch in _chunked(monitoring_ids, batch_size):
-            fut = executor.submit(
-                fetch_daily_discharge_batch,
-                batch,
-                start_date=waterdata_start,
-                end_date=waterdata_end,
-                parameter_code="00060",
-                statistic_id="00003",
-                skip_geometry=True,
-                limit=50000,
-            )
-            future_map[fut] = len(batch)
-
-        for fut in as_completed(future_map):
-            batch_len = future_map[fut]
-            res = fut.result()
-            pbar.update(batch_len)
-
-            if res.error is not None:
-                err_batches.append(res.error)
-                missing_ids_all.extend(res.missing_ids)
-                continue
-
-            if len(res.missing_ids) > 0:
-                missing_ids_all.extend(res.missing_ids)
-
-            if res.df is not None and len(res.df) > 0:
-                all_parts.append(res.df)
-
-    pbar.close()
-
-    if not all_parts:
-        raise RuntimeError(
-            "No daily discharge data returned from Water Data API for any requested sites "
-            f"({len(monitoring_ids)} sites). First error: "
-            f"{err_batches[0] if err_batches else 'None'}"
-        )
-
-    waterdata_raw_df = pd.concat(all_parts, ignore_index=True)
-
-    # Normalize to expected schema
-    waterdata_raw_df["poi_id"] = (
-        waterdata_raw_df["monitoring_location_id"]
-        .astype(str)
-        .str.split("-", n=1)
-        .str[-1]
-    )
-    waterdata_raw_df["time"] = pd.to_datetime(
-        waterdata_raw_df["time"], utc=True
-    ).dt.tz_localize(None)
-    waterdata_raw_df["discharge"] = pd.to_numeric(
-        waterdata_raw_df["value"], errors="coerce"
-    )
-    waterdata_raw_df["agency_id"] = "USGS"
-
-    # De-dupe in case multiple rows exist per site/time
-    waterdata_raw_df = (
-        waterdata_raw_df.sort_values(
-            ["poi_id", "time", "discharge"], ascending=[True, True, False]
-        ).drop_duplicates(subset=["poi_id", "time"], keep="first")
-    )
-
-    keep_always = set(poi_df["poi_id"].astype(str).unique().tolist())
-    obs_counts = waterdata_raw_df.groupby("poi_id")["discharge"].apply(
-        lambda s: s.notna().sum()
-    )
-    too_few = obs_counts[
-        (obs_counts < waterdata_gage_nobs_min)
-        & (~obs_counts.index.isin(keep_always))
-    ].index.tolist()
-
-    if too_few:
-        con.print(
-            f"{len(too_few)} gages had fewer obs than waterdata_gage_nobs_min "
-            f"and will be omitted unless they appear in the parameter file.\n{too_few}"
-        )
-        waterdata_raw_df = waterdata_raw_df[
-            ~waterdata_raw_df["poi_id"].isin(too_few)
-        ]
-
-    # Report missing sites (not found / no data in range)
-    if missing_ids_all:
-        missing_site_nos = [m.split("-", 1)[-1] for m in sorted(set(missing_ids_all))]
-        con.print(
-            f"{len(set(missing_site_nos))} gages returned no rows from "
-            f"Water Data API: {missing_site_nos}"
-        )
-
-    # Final index + xarray write
-    waterdata_df = waterdata_raw_df[
-        ["poi_id", "time", "discharge", "agency_id"]
-    ].copy()
-    waterdata_df.set_index(["poi_id", "time"], inplace=True)
-
-    waterdata_ds = xr.Dataset.from_dataframe(waterdata_df)
-
-    # attrs/encodings
-    waterdata_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-    waterdata_ds["poi_id"].attrs = {
-        "role": "timeseries_id",
-        "long_name": "Point-of-Interest ID",
-        "_Encoding": "ascii",
-    }
-    waterdata_ds["agency_id"].attrs = {"_Encoding": "ascii"}
-
-    waterdata_ds["poi_id"].encoding.update(
-        {"dtype": "S15", "char_dim_name": "poiid_nchars"}
-    )
-    waterdata_ds["time"].encoding.update(
-        {
-            "_FillValue": None,
-            "standard_name": "time",
-            "calendar": "standard",
-            "units": "days since 1940-01-01 00:00:00",
-        }
-    )
-    waterdata_ds["agency_id"].encoding.update(
-        {"dtype": "S5", "char_dim_name": "agency_nchars"}
-    )
-
-    var_encoding = dict(_FillValue=netCDF4.default_fillvals.get("f4"))
-    for cvar in waterdata_ds.data_vars:
-        if cvar not in ["agency_id"]:
-            waterdata_ds[cvar].encoding.update(var_encoding)
-
-    waterdata_ds.attrs = {
-        "Description": "Streamflow data for PRMS",
-        "FeatureType": "timeSeries",
-    }
-
-    con.print(
-        f"Water Data API daily streamflow retrieved, writing data to "
-        f"{waterdata_cache_file}."
-    )
-    waterdata_ds.to_netcdf(waterdata_cache_file)
-
-    # Write gage list CSV (exclude too_few)
-    out_gage_info = waterdata_gage_info_aoi[
-        ~waterdata_gage_info_aoi["poi_id"].astype(str).isin(too_few)
-    ]
-    out_gage_info.to_csv(waterdata_gages_file, index=False)
-
-    return waterdata_df

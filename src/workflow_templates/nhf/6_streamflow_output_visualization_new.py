@@ -61,7 +61,7 @@ crs = 4326
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -69,8 +69,8 @@ crs = 4326
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],
@@ -133,7 +133,7 @@ map_file = make_streamflow_map(
 # %matplotlib inline
 import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
-import assist.nhf.display_controls_v2 as dc
+import assist.common.display_controls as dc
 
 gage_txt = widgets.Text(
     description="Streamgage ID:",

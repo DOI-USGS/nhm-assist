@@ -98,12 +98,13 @@ poi_gage_id_sel = None
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",
@@ -153,7 +154,7 @@ plot_start_date, plot_end_date, year_list, output_var_list = retrieve_hru_output
 import ipywidgets as widgets
 from ipywidgets import HBox, VBox, Button
 from IPython.display import display, IFrame, clear_output
-import assist.nhm.display_controls as dc
+import assist.common.display_controls as dc
 
 style_var = {"description_width": "initial"}
 layout = widgets.Layout(width="25%")
