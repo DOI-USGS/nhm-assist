@@ -24,9 +24,23 @@ specific to working here as an agent.
 ## Design docs and plans
 
 Specs and implementation plans for substantial changes live under
-`docs/superpowers/specs/` and `docs/superpowers/plans/`. Check there for
-existing context — rationale, decisions, open questions — before starting
-significant work in an area that might already have one.
+`docs/design/`. Check there for existing context — rationale, decisions, open
+questions — before starting significant work in an area that might already have
+one. Commit new specs or plans there for a durable record, whether generated
+with [obra/superpowers](https://github.com/obra/superpowers), Kiro, or other AI
+agentic skills.
+
+| Stage | Location | What it holds |
+|---|---|---|
+| **Spec** | `docs/design/specs/YYYY-MM-DD-<topic>-design.md` | The problem, the decision and its rationale, what is explicitly out of scope, and open questions. Written and agreed *before* a plan. |
+| **Plan** | `docs/design/plans/YYYY-MM-DD-<topic>.md` | The implementation broken into ordered, individually verifiable tasks, each naming the exact files it touches and how to prove it worked. Cites the spec it implements. |
+
+Conventions:
+
+- Name files `YYYY-MM-DD-<topic>`, dated by when the work was designed.
+- A spec is a living register while its items are open; a plan is a
+  point-in-time artifact for one round of implementation.
+- Verification belongs in the plan, stated as a command and its expected output.
 
 ## Contribution norm
 
@@ -43,7 +57,7 @@ actually happens, does not read `.github/workflows/*` at all, so merge
 requests on `code.usgs.gov` currently get no CI signal.
 
 A GitLab CI migration is designed but not yet implemented — see
-`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md` for the
+`docs/design/specs/2026-08-25-gitlab-ci-migration-design.md` for the
 design and its open questions. Don't delete or "fix" the GitHub Actions
 workflow to work around this gap; the plan is to replace it with
 `.gitlab-ci.yml` once that design is implemented, not to patch around GitLab
