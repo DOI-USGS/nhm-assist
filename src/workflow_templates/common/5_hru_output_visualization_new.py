@@ -36,10 +36,12 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+# One template set serves every workflow, so the root cannot be hardcoded:
+# nhm's is the repo, nhf's is <repo>/nhf_assist, pest's is
+# <repo>/pestpp_ies_calibration. Each keeps its notebooks at <root>/notebooks,
+# so the root is derived from where this notebook is running.
+from assist.workspace.bridge import resolve_workflow_root
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -56,18 +58,18 @@ else:
 # %%
 from ipywidgets import widgets
 from IPython.display import display
-from assist.nhm.map_template import make_var_map
-from assist.nhm.nhm_hydrofabric import make_hf_map_elements
-from assist.nhm.nhm_output_visualization import retrieve_hru_output_info
+from assist.common.map_template import make_var_map
+from assist.common.hydrofabric import make_hf_map_elements
+from assist.common.output_visualization import retrieve_hru_output_info
 from ipywidgets import VBox
-from assist.nhm.output_plots import plot_colors
-from assist.nhm.output_plots import (
+from assist.common.output_plots import plot_colors
+from assist.common.output_plots import (
     var_colors_dict,
     leg_only_dict,
     make_plot_var_for_hrus_in_poi_basin,
     oopla,
 )
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(config_root)
 poi_gage_id_sel = None

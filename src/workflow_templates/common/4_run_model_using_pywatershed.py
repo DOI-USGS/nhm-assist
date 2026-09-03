@@ -35,12 +35,27 @@ con = Console()
 
 import sys
 import os
-root_folder = "nhf_assist"
-root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
+
+# One template set serves every workflow, so the root cannot be hardcoded --
+# this used to string-split cwd on the literal "nhf_assist".
+from assist.workspace.bridge import resolve_workflow_root
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 sys.path.append(str(root_dir))
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
-config = load_subdomain_config(root_dir)
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    config_root = root_dir
+
+from assist.common.assist_utilities import load_subdomain_config
+config = load_subdomain_config(config_root)
 # con.print(config)
 
 # %%

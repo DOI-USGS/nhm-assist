@@ -667,7 +667,17 @@ def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium
     map have desirable lengths of record to include the gage as a poi in the parameter file.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from threading import Lock
+
     from tqdm.auto import tqdm
+
+    # plotly express reads the global default template and walks its
+    # parent/child state while building a figure, which is not thread-safe:
+    # concurrent px.line calls intermittently raise
+    # ValueError("Invalid value") from apply_default_cascade. Figure
+    # construction is cheap next to the data slicing and file writes, so
+    # serialising just this step keeps the parallelism that matters.
+    _figure_lock = Lock()
 
     def _make_single_plot(cpoi):
         obs_plot_file = Folium_maps_dir / f"{cpoi}_streamflow_obs.txt"
@@ -678,16 +688,17 @@ def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium
         ds_sub_df = ds_sub.to_dataframe()
         ds_sub_df.reset_index(inplace=True, drop=False)
 
-        fig = px.line(
-            ds_sub_df,
-            x="time",
-            y="discharge",
-            markers=False,
-            labels={
-                "discharge": "Discharge",
-                "time": "Date",
-            },
-        )
+        with _figure_lock:
+            fig = px.line(
+                ds_sub_df,
+                x="time",
+                y="discharge",
+                markers=False,
+                labels={
+                    "discharge": "Discharge",
+                    "time": "Date",
+                },
+            )
 
         fig.update_layout(
             title_text=f"{cpoi} daily streamflow observations",

@@ -34,10 +34,12 @@ con = Console()
 
 import sys
 import os
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+# One template set serves every workflow, so the root cannot be hardcoded:
+# nhm's is the repo, nhf's is <repo>/nhf_assist, pest's is
+# <repo>/pestpp_ies_calibration. Each keeps its notebooks at <root>/notebooks,
+# so the root is derived from where this notebook is running.
+from assist.workspace.bridge import resolve_workflow_root
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -135,19 +137,32 @@ subdomain = "Walla_Walla"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
-runtime_paths = resolve_nhm_runtime_paths(
-    subdomain,
-    cwd=os.getcwd(),
-    env=os.environ,
-)
-active_model_name = runtime_paths.get("active_model_name")
-if active_model_name:
-    subdomain = active_model_name
-config_root = runtime_paths["config_root"]
-workspace_root = runtime_paths["workspace_root"]
-project_dir = runtime_paths["project_dir"]
-model_root = runtime_paths["model_root"]
-model_dir = runtime_paths["model_dir"]
+# resolve_nhm_runtime_paths always reports the *repo* root, so trusting it
+# outside workspace mode would point nhf's and pest's notebooks at the nhm
+# workspace's config and model directory. Only consult it when a workspace
+# project actually exists; otherwise derive everything from this workflow's
+# own root, which reproduces the previous per-workflow behaviour exactly.
+if project_context:
+    runtime_paths = resolve_nhm_runtime_paths(
+        subdomain,
+        cwd=os.getcwd(),
+        env=os.environ,
+    )
+    active_model_name = runtime_paths.get("active_model_name")
+    if active_model_name:
+        subdomain = active_model_name
+    config_root = runtime_paths["config_root"]
+    workspace_root = runtime_paths["workspace_root"]
+    project_dir = runtime_paths["project_dir"]
+    model_root = runtime_paths["model_root"]
+    model_dir = runtime_paths["model_dir"]
+else:
+    active_model_name = None
+    config_root = root_dir
+    workspace_root = None
+    project_dir = None
+    model_root = None
+    model_dir = root_dir / "domain_data" / subdomain
 if project_dir and active_model_name:
     print(f"Active project: {project_dir.name}")
     print(f"Active model: {active_model_name}")
@@ -193,7 +208,7 @@ waterdata_gage_nobs_min = 365  # days
 # <font size = '3'> Notebook 3 visualizes parameter values from the parameter file. Type the parameters you wish to visualize in the list(s) below. To view complete lists of parameters, copy/paste the functions below into a code block. The default parameters in the list below represent parameters calibrated during calibration of the NHM version 1.1. Calibrated values from NHM v 1.1 are displayed in Notebook 3 ([Markstrom and others, 2024](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)). More information about NHM parameters can be found in [Markstrom and others, 2015](https://water.usgs.gov/water-resources/software/PRMS/PRMS_tables_5.2.1.pdf)
 # >
 # ```
-# from assist.nhm.nhm_assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
+# from assist.common.assist_utilities import bynhru_parameter_list, bynmonth_bynhru_parameter_list, bynsegment_parameter_list
 # bynhru_parameter_list(param_filename)
 # bynmonth_bynhru_parameter_list(param_filename)
 # bynsegment_parameter_list(param_filename)
@@ -218,6 +233,8 @@ nhru_params = [
     "soil_rechr_max_frac",
     "ssr2gw_exp",
     "ssr2gw_rate",
+    "hru_slope",
+    "hru_aspect",
 ]
 
 nhru_nmonths_params = [
@@ -259,6 +276,7 @@ selected_output_variables = [
     "net_ppt",
     "net_rain",
     "net_snow",
+    "pkwater_equiv",
     "recharge",
     "seg_outflow",
     "snowmelt",

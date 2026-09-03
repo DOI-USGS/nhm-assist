@@ -43,11 +43,13 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
+# One template set serves every workflow, so the root cannot be hardcoded:
+# nhm's is the repo, nhf's is <repo>/nhf_assist, pest's is
+# <repo>/pestpp_ies_calibration. Each keeps its notebooks at <root>/notebooks,
+# so the root is derived from where this notebook is running.
+from assist.workspace.bridge import resolve_workflow_root
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -71,21 +73,21 @@ else:
 
 load_dotenv(dotenv_path=dotenv_path)
 
-from assist.nhm.sf_data_retrieval import (
+from assist.common.sf_data_retrieval import (
     create_waterdata_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,
 )
-from assist.nhm.nhm_hydrofabric import (
+from assist.common.hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
     create_default_gages_file,
     read_gages_file,
 )
-from assist.nhm.efc import plot_efc
-from assist.nhm.nhm_assist_utilities import (
+from assist.common.efc import plot_efc
+from assist.common.assist_utilities import (
     make_obs_plot_files,
     delete_notebook_output_files,
     load_subdomain_config,
@@ -241,10 +243,21 @@ xr_streamflow = create_sf_efc_df(
 # The cell below plots data from the `sf_efc.nc` for diagnostic purposes using the start and end dates listed in the control file.
 
 # %%
-cpoi_id = xr_streamflow.poi_gage_id.values[0]  # "08049300"
-print(
-    f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
-)
+cpoi_id = None
+for _gid in xr_streamflow.poi_gage_id.values:
+    _sub = xr_streamflow.sel(
+        poi_gage_id=_gid, time=slice(config["start_date"], config["end_date"])
+    )
+    if _sub["discharge"].notnull().any():
+        cpoi_id = _gid
+        break
+if cpoi_id is None:
+    cpoi_id = xr_streamflow.poi_gage_id.values[0]
+    print(f"No gage with data found in the simulation period. Defaulting to: {cpoi_id}")
+else:
+    print(
+        f"Daily streamflow with EFC classifications for gage: {cpoi_id}; Some gages may show no data because some gages in the parameter file have data outside the simulation period."
+    )
 
 # control = pws.Control.load_prms(
 #     model_dir / control_file_name, warn_unused_options=False
@@ -259,7 +272,8 @@ end_date = config[
 ds_sub = xr_streamflow.sel(poi_gage_id=cpoi_id, time=slice(start_date, end_date))
 ds_sub = ds_sub.to_dataframe()
 flow_col = "discharge"
-plot_efc(ds_sub, flow_col)
+if not os.environ.get("NHM_BATCH_MODE"):
+    plot_efc(ds_sub, flow_col)
 
 # %% [markdown]
 # # Create daily streamflow observation plots

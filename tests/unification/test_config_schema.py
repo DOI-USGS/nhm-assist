@@ -52,9 +52,9 @@ def _assert_str_of_name(value: ast.expr, expected_name: str) -> None:
     assert value.args[0].id == expected_name
 
 
-def test_nhm_workspace_template_emits_canonical_waterdata_config():
+def test_workspace_template_emits_canonical_waterdata_config():
     values = _template_dict_file_values(
-        REPO_ROOT / "src/workflow_templates/nhm/0_workspace_setup.py"
+        REPO_ROOT / "src/workflow_templates/common/0_workspace_setup.py"
     )
 
     assert "waterdata_gage_nobs_min" in values
@@ -66,8 +66,11 @@ def test_nhm_workspace_template_emits_canonical_waterdata_config():
     _assert_str_of_name(values["waterdata_gages_file"], "waterdata_gages_file")
 
 
-def test_nhf_workspace_template_serializes_its_waterdata_gages_variable():
-    template = REPO_ROOT / "src/workflow_templates/nhf/0_workspace_setup.py"
+def test_workspace_template_serializes_its_waterdata_gages_variable():
+    # nhm/0 and nhf/0 were deduplicated into one shared template, so this and
+    # the test above now guard the same file from different angles: the dict
+    # that gets written, and the variable that feeds it.
+    template = REPO_ROOT / "src/workflow_templates/common/0_workspace_setup.py"
     variable_value = _template_assignment_value(template, "waterdata_gages_file")
     assert isinstance(variable_value, ast.BinOp)
     assert isinstance(variable_value.left, ast.Name)

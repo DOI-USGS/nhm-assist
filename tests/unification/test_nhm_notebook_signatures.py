@@ -240,11 +240,20 @@ def _template_imports(relative_path: str) -> list[ast.ImportFrom]:
 def test_sweep_covers_every_template_file():
     """Guard against the sweep silently covering nothing (e.g. a path typo)."""
     files = list(_iter_template_files())
-    assert len(files) > 50, (
-        f"expected the sweep to find well over 50 template files under "
+    # Deduplicating the seven numbered templates into common/ removed seven
+    # files, so this is no longer "well over 50"; assert on the structure
+    # rather than a bare count, which is what actually matters.
+    assert len(files) > 40, (
+        f"expected the sweep to find well over 40 template files under "
         f"{TEMPLATES_ROOT}, found {len(files)}. Either the templates moved "
         "or this test's glob needs updating."
     )
+    covered = {p.parent.name for p in files}
+    assert {"common", "nhf", "pest"} <= covered, (
+        f"the sweep must cover the shared set and every workflow, saw {covered}"
+    )
+    shared = {p.name for p in files if p.parent.name == "common"}
+    assert len(shared) == 8, f"expected 8 shared templates, saw {sorted(shared)}"
     names = {p.name for p in files}
     for skipped in SKIP_FILES:
         assert skipped not in names, f"{skipped} should have been filtered out"

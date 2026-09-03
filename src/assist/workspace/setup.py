@@ -429,7 +429,7 @@ def nhm_notebooks_need_generation(state: SetupState) -> bool:
     if state.workspace_root is None or state.current_project is None:
         return True
 
-    template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+    templates = notebook_builder.iter_workflow_templates("nhm")
     notebook_dir = bridge.get_project_workflow_notebooks_dir(
         "nhm",
         state.workspace_root,
@@ -439,9 +439,8 @@ def nhm_notebooks_need_generation(state: SetupState) -> bool:
     if not notebook_dir.exists() or not any(notebook_dir.rglob("*.ipynb")):
         return True
 
-    for py_file in template_dir.rglob("*.py"):
-        relative = py_file.relative_to(template_dir).with_suffix(".ipynb")
-        target = notebook_dir / relative
+    for py_file, relative_path in templates:
+        target = notebook_dir / relative_path.with_suffix(".ipynb")
         if not target.exists():
             return True
         if py_file.stat().st_mtime > target.stat().st_mtime:

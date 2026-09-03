@@ -21,6 +21,40 @@ def resolve_repo_root(env: Mapping[str, str] | None = None) -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def resolve_workflow_root(
+    cwd: str | Path | None = None,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Return the workflow working root for a notebook running in ``cwd``.
+
+    One shared template set serves every workflow, so a template cannot
+    hardcode its root: nhm's is the repo itself, nhf's is ``<repo>/nhf_assist``
+    and pest's is ``<repo>/pestpp_ies_calibration``. Every workflow keeps its
+    notebooks at ``<root>/notebooks`` (see ``REPO_NOTEBOOK_DIRS``), so the root
+    is the parent of the notebooks directory the caller is running in.
+
+    Note this is deliberately *not* ``resolve_nhm_runtime_paths``, which always
+    reports the repo root and would silently point nhf's notebooks at the nhm
+    workspace's config and model directory.
+
+    Falls back to the repo root when the caller is not inside a notebooks
+    directory, which reproduces the old per-template behaviour.
+    """
+    repo_root = resolve_repo_root(env)
+    here = Path(os.getcwd() if cwd is None else cwd).expanduser().resolve()
+
+    for relative in REPO_NOTEBOOK_DIRS.values():
+        candidate = (repo_root / relative).resolve()
+        if here == candidate or candidate in here.parents:
+            return candidate.parent
+
+    # An out-of-tree workspace still follows the <root>/notebooks convention.
+    if here.name == "notebooks":
+        return here.parent
+    return repo_root
+
+
 def resolve_workspace_root(
     workspace_root: str | Path | None = None,
     *,
