@@ -1,28 +1,14 @@
-from __future__ import annotations
+"""Compatibility shim. Implementation lives in assist.common.streamflow_postprocess.
 
-import numpy as np
-import xarray as xr
+This module had no nhf counterpart, so it was never part of the nine-pair
+helper unification. It moved anyway once the workflow templates were shared:
+`common/4_run_model_using_pywatershed.py` was importing it, which left a shared
+template reaching into a per-fabric package.
 
+Moved with a plain `git mv` rather than the two-commit pattern used for the
+other modules: 28 lines over two same-day commits by one author, so there is no
+multi-author provenance for `git blame` to lose.
+"""
+from assist.common.streamflow_postprocess import subset_seg_outflow_to_poi_gages
 
-def subset_seg_outflow_to_poi_gages(
-    seg_outflow: xr.DataArray,
-    *,
-    poi_gage_segment: np.ndarray,
-    poi_gage_id: np.ndarray,
-    nhm_seg: np.ndarray,
-) -> xr.DataArray:
-    """Subset seg_outflow to POI gage segments in a rerun-safe way.
-
-    `poi_gage_segment` stores 1-based positions into the full `nhm_seg` parameter
-    array. The output file itself is labeled by `nhm_seg`, and may already be
-    filtered from a previous run, so selection must happen by label rather than
-    by positional index.
-    """
-
-    if "nhm_seg" not in seg_outflow.dims:
-        raise KeyError("Expected seg_outflow to include an `nhm_seg` dimension.")
-
-    gage_nhm_seg = np.asarray(nhm_seg)[np.asarray(poi_gage_segment) - 1]
-    return seg_outflow.sel(nhm_seg=gage_nhm_seg).assign_coords(
-        npoi_gages=("nhm_seg", np.asarray(poi_gage_id))
-    )
+__all__ = ["subset_seg_outflow_to_poi_gages"]
