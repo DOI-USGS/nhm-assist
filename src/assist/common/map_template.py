@@ -85,13 +85,13 @@ cal_style_function = lambda feature: {
     # "dashArray": "5, 5",
 }
 
-# hw_basin_style = lambda x: {
-#     "fillColor": "#00000000",
-#     #'fill_opacity' : .8,
-#     "color": "brown",
-#     "weight": 1.5,
-#     # "dashArray": "5, 5",
-# }
+hw_basin_style = lambda x: {
+    "fillColor": "#00000000",
+    #'fill_opacity' : .8,
+    "color": "brown",
+    "weight": 1.5,
+    # "dashArray": "5, 5",
+}
 
 popup_hru = folium.GeoJsonPopup(
     fields=["hru_id", "hru_segment"],
@@ -510,7 +510,7 @@ def create_poi_marker_cluster(
             ),
             radius=3,
             weight=2,
-            color=None,
+            color="black",
             fill=True,
             fill_color="Black",
             fill_opacity=1.0,
@@ -596,7 +596,7 @@ def create_non_poi_marker_cluster(
                 ),
                 radius=3,
                 weight=2,
-                color=None,
+                color="gray",
                 fill=True,
                 fill_color="Gray",
                 fill_opacity=1.0,
@@ -1750,8 +1750,8 @@ def make_hf_map(
     *,
     root_dir,
     hru_gdf,
-    #HW_basins_gdf,
-    #HW_basins,
+    HW_basins_gdf=None,
+    HW_basins=None,
     poi_df,
     poi_gage_id_sel,
     seg_gdf,
@@ -1943,7 +1943,20 @@ def make_hf_map(
     m2.get_root().html.add_child(legend)
 
 
+    if HW_basins_gdf is not None:
+        hru_cal_map = folium.GeoJson(
+            HW_basins_gdf,  # hru_gdf_map,
+            style_function=cal_style_function,
+            # highlight_function = highlight_function_hru_map,
+            name="HRU cal level",
+            z_index_offset=40002,
+        ).add_to(m2)
+
     hru_map.add_to(m2)
+    if HW_basins is not None:
+        hw_basins_map = folium.GeoJson(
+            HW_basins, style_function=hw_basin_style, name="HW basin boundary"
+        ).add_to(m2)
     if huc10_map_layer is not None:
         huc10_map_layer.add_to(m2)
     
@@ -2023,7 +2036,7 @@ def make_par_map(
     *,
     root_dir,
     hru_gdf,
-    #HW_basins,
+    HW_basins=None,
     poi_df,
     par_sel,
     mo_sel,
@@ -2120,9 +2133,10 @@ def make_par_map(
 
     hru_map.add_to(m3)
 
-    # hw_basins_map = folium.GeoJson(
-    #     HW_basins, style_function=hw_basin_style, name="HW basin boundary"
-    # ).add_to(m3)
+    if HW_basins is not None:
+        hw_basins_map = folium.GeoJson(
+            HW_basins, style_function=hw_basin_style, name="HW basin boundary"
+        ).add_to(m3)
 
     marker_cluster_label_hru.add_to(m3)
 
@@ -2192,7 +2206,7 @@ def make_var_map(
     year_list,
     sel_year,
     Folium_maps_dir,
-    #HW_basins,
+    HW_basins=None,
     subdomain,
 ):
 
@@ -2293,9 +2307,10 @@ def make_var_map(
     )
     hru_map.add_to(m3)
 
-    # hw_basins_map = folium.GeoJson(
-    #     HW_basins, style_function=hw_basin_style, name="HW basin boundary"
-    # ).add_to(m3)
+    if HW_basins is not None:
+        hw_basins_map = folium.GeoJson(
+            HW_basins, style_function=hw_basin_style, name="HW basin boundary"
+        ).add_to(m3)
 
     # Create/Add hru labels
     marker_cluster_label_hru = create_hru_label(hru_gdf, cluster_zoom)
@@ -2365,8 +2380,8 @@ def make_streamflow_map(
     seg_gdf,
     html_maps_dir,
     subdomain,
-    #HW_basins_gdf,
-    #HW_basins,
+    HW_basins_gdf=None,
+    HW_basins=None,
     output_netcdf_filename,
 ):
     """
@@ -2472,27 +2487,31 @@ def make_streamflow_map(
     m.add_child(MeasureControl(position="bottomright"))
 
     # Create and add hru calibration levels (colors)
-    # hru_cal_map = folium.GeoJson(
-    #     HW_basins_gdf,  # hru_gdf_map,
-    #     style_function=cal_style_function,
-    #     # highlight_function = highlight_function_hru_map,
-    #     name="HRU cal level",
-    #     z_index_offset=40002,
-    # ).add_to(m)
+    if HW_basins_gdf is not None:
+        hru_cal_map = folium.GeoJson(
+            HW_basins_gdf,  # hru_gdf_map,
+            style_function=cal_style_function,
+            # highlight_function = highlight_function_hru_map,
+            name="HRU cal level",
+            z_index_offset=40002,
+        ).add_to(m)
 
-    # Create and add hru boundaries and data
-    # hru_gdf["hw_id_str"] = hru_gdf.hw_id.astype(str)
-    # hru_map = create_hru_map(hru_gdf)
-    # tooltip_hru = folium.GeoJsonPopup(
-    #     fields=["hw_id_str"], aliases=["Headwater id"], labels=True
-    # )
-    # hru_map.add_child(tooltip_hru)
-    # hru_map.add_to(m)
+    # Create and add hru boundaries and data. hw_id comes from the GFv1.1
+    # cal-levels merge in create_hru_gdf; GFv2 fabrics have no headwaters.
+    if "hw_id" in hru_gdf.columns:
+        hru_gdf["hw_id_str"] = hru_gdf.hw_id.astype(str)
+        hru_map = create_hru_map(hru_gdf)
+        tooltip_hru = folium.GeoJsonPopup(
+            fields=["hw_id_str"], aliases=["Headwater id"], labels=True
+        )
+        hru_map.add_child(tooltip_hru)
+        hru_map.add_to(m)
 
     # Create and add headwater basin boundaries
-    # hw_basins_map = folium.GeoJson(
-    #     HW_basins, style_function=hw_basin_style, name="HW basin boundary"
-    # ).add_to(m)
+    if HW_basins is not None:
+        hw_basins_map = folium.GeoJson(
+            HW_basins, style_function=hw_basin_style, name="HW basin boundary"
+        ).add_to(m)
 
     # Create/Add segment map
     seg_map = create_segment_map_hide(seg_gdf)
@@ -2627,37 +2646,28 @@ def create_poi_obs_marker_cluster(
             ),
         ).add_to(poi_marker_cluster_label)
 
-        # marker = folium.CircleMarker(
-        #     location=[row["latitude"], row["longitude"]],
-        #     name=row["poi_gage_id"],
-        #     popup=folium.Popup(
-        #         iframe,
-        #         # max_width=500,
-        #         # max_height=300,
-        #         parse_html=True,
-        #     ),
-        #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
-        #     # popup=folium.Popup(
-        #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
-        #     #     max_width=280,
-        #     #     max_height=2000,
-        #     # ),
-        #     radius=4,
-        #     weight=1,
-        #     color="black",
-        #     fill=True,
-        #     fill_color="Black",
-        #     fill_opacity=1.0,
-        # ).add_to(poi_marker_cluster)
-        marker = folium.Marker(
-        location=[row["latitude"], row["longitude"]],
-        icon=make_polygon_icon(num_sides=3, radius=6, color="black", fill_opacity=1.0),
-        popup=folium.Popup(
-            iframe,
-            parse_html=True,
-        ),
-        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
-    ).add_to(poi_marker_cluster)
+        marker = folium.CircleMarker(
+            location=[row["latitude"], row["longitude"]],
+            name=row["poi_gage_id"],
+            popup=folium.Popup(
+                iframe,
+                # max_width=500,
+                # max_height=300,
+                parse_html=True,
+            ),
+            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+            # popup=folium.Popup(
+            #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
+            #     max_width=280,
+            #     max_height=2000,
+            # ),
+            radius=3,
+            weight=1,
+            color="black",
+            fill=True,
+            fill_color="Black",
+            fill_opacity=1.0,
+        ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
 
@@ -2760,37 +2770,28 @@ def create_non_poi_obs_marker_cluster(
                 ),
             ).add_to(non_poi_marker_cluster_label)
 
-            # marker = folium.CircleMarker(
-            #     location=[row["latitude"], row["longitude"]],
-            #     name=row["poi_gage_id"],
-            #     popup=folium.Popup(
-            #     iframe,
-            #     # max_width=500,
-            #     # max_height=300,
-            #     parse_html=True,
-            #     ),
-            #     # popup=folium.Popup(
-            #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
-            #     #     max_width=280,
-            #     #     max_height=2000,
-            #     # ),
-            #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
-            #     radius=4,
-            #     weight=1,
-            #     color="gray",
-            #     fill=True,
-            #     fill_color="Gray",
-            #     fill_opacity=1.0,
-            # ).add_to(non_poi_marker_cluster)
-            marker = folium.Marker(
-            location=[row["latitude"], row["longitude"]],
-            icon=make_polygon_icon(num_sides=3, radius=6, color="white", fill_opacity=1.0),
-            popup=folium.Popup(
+            marker = folium.CircleMarker(
+                location=[row["latitude"], row["longitude"]],
+                name=row["poi_gage_id"],
+                popup=folium.Popup(
                 iframe,
+                # max_width=500,
+                # max_height=300,
                 parse_html=True,
-            ),
-            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
-        ).add_to(non_poi_marker_cluster)
+                ),
+                # popup=folium.Popup(
+                #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
+                #     max_width=280,
+                #     max_height=2000,
+                # ),
+                tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+                radius=3,
+                weight=1,
+                color="gray",
+                fill=True,
+                fill_color="Gray",
+                fill_opacity=1.0,
+            ).add_to(non_poi_marker_cluster)
         else:
             pass
 

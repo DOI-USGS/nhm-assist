@@ -42,19 +42,40 @@ def test_nhf_module_path_is_an_alias_not_a_reexport(dc):
     assert dc.subdomain == "AliasProbe"
 
 
-def test_accepted_by_matches_each_fabrics_map_backend(dc):
+def test_accepted_by_reads_the_unified_map_backend(dc):
+    """Since concern 4 both fabric paths resolve to the same
+    `assist.common.map_template`, which advertises HW_basins on all four map
+    builders (defaulted to None) and guards each render on `is not None`. So
+    both sides now accept them -- the adapter's job shifted from bridging two
+    signatures to tolerating backends that lack the parameter at all, which is
+    what `test_accepted_by_passes_everything_to_a_kwargs_backend` and the
+    GFv2-stub test below still cover."""
     import assist.nhf.map_template_v2 as nhf
     import assist.nhm.map_template as nhm
 
-    assert dc._accepted_by(nhm.make_var_map, "HW_basins") == ["HW_basins"]
-    assert dc._accepted_by(nhf.make_var_map, "HW_basins") == []
+    for module in (nhm, nhf):
+        assert dc._accepted_by(module.make_var_map, "HW_basins") == ["HW_basins"]
+        assert set(
+            dc._accepted_by(module.make_streamflow_map, "HW_basins", "HW_basins_gdf")
+        ) == {"HW_basins", "HW_basins_gdf"}
 
-    assert set(
-        dc._accepted_by(nhm.make_streamflow_map, "HW_basins", "HW_basins_gdf")
-    ) == {"HW_basins", "HW_basins_gdf"}
-    assert (
-        dc._accepted_by(nhf.make_streamflow_map, "HW_basins", "HW_basins_gdf") == []
-    )
+
+def test_hw_basins_is_never_required_state():
+    """A GFv2 notebook never sets dc.HW_basins. Requiring it would make every
+    map callback warn and return early now that the unified backend advertises
+    the parameter -- a silent loss of the map, which is exactly the failure this
+    guards against."""
+    import inspect
+
+    import assist.common.display_controls as module
+
+    source = inspect.getsource(module)
+    for call in source.split("_require_state(")[1:]:
+        block = call.split("):")[0]
+        assert "HW_basins" not in block, (
+            "HW_basins is back in a _require_state list; GFv2 notebooks will "
+            "silently stop rendering maps"
+        )
 
 
 def test_accepted_by_passes_everything_to_a_kwargs_backend(dc):
@@ -120,18 +141,35 @@ def test_generate_map_passes_hw_basins_to_a_gfv1_1_backend(dc):
 
 
 def test_generate_map_still_bails_when_required_state_is_missing(dc):
-    """The hardening must survive the adapter: a GFv1.1 backend with no
-    HW_basins set must warn and return, not call the backend."""
+    """The hardening must survive the adapter. HW_basins is deliberately NOT
+    required any more (see test_hw_basins_is_never_required_state), so this
+    uses a genuinely required name: hru_gdf, without which the map is
+    meaningless rather than merely missing a layer."""
     called = []
 
-    def gfv1_1_backend(*, HW_basins, **kwargs):
+    def backend(**kwargs):
         called.append(True)
         return "map.html"
 
-    _prime(dc, gfv1_1_backend)
+    _prime(dc, backend)
+    dc.hru_gdf = None
+    dc.generate_map()
+    assert not called, "generate_map called the backend with hru_gdf unset"
+
+
+def test_generate_map_passes_hw_basins_none_through_without_bailing(dc):
+    """The GFv2 case: HW_basins unset must still produce a map, with the
+    headwater layer simply absent."""
+    seen = {}
+
+    def backend(*, HW_basins=None, **kwargs):
+        seen["HW_basins"] = HW_basins
+        return "map.html"
+
+    _prime(dc, backend)
     dc.HW_basins = None
     dc.generate_map()
-    assert not called, "generate_map called the backend without HW_basins set"
+    assert seen == {"HW_basins": None}, "GFv2 notebook lost its map entirely"
 
 
 @pytest.mark.parametrize("workflow", ["nhm", "nhf"])

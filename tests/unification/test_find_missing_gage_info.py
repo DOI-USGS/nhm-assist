@@ -70,6 +70,11 @@ INTENDED_EDITS = [
             pass''',
     ),
     (
+        '        resource_df.to_csv(resource_file_path, index=False)\n',
+        '        resource_file_path.parent.mkdir(parents=True, exist_ok=True)\n'
+        '        resource_df.to_csv(resource_file_path, index=False)\n',
+    ),
+    (
         '''            # f"{len(list(set(still_lacking_info_list)))} of {len(gages_df)} are still lacking gage info.",
         )
 ''',

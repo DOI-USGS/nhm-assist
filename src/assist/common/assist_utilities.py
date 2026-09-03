@@ -1074,6 +1074,10 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             pass
     else:
         resource_df = gages_df
+        # nhf's reference-gage callers point resource_file_path at
+        # hydrofabric_domain_data/<fabric>/npoigages_data/, which need not exist
+        # yet in a given workspace. Same fix as create_waterdata_sf_df's.
+        resource_file_path.parent.mkdir(parents=True, exist_ok=True)
         resource_df.to_csv(resource_file_path, index=False)
         
     # cols = ["latitude", "longitude", "poi_name", "poi_agency"]
