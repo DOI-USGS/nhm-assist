@@ -132,11 +132,45 @@ pst = pyemu.Pst(os.path.join(pestpp_model_dir, "prior_mc_loc.pst"))
 num_reals = pst.pestpp_options["ies_num_reals"]
 
 # %% [markdown]
-# ### changing from manual re-weighting to using the 'phi factor' approach
+# # Re-Weight Observations Using Phi Factors
+#
+# This notebook adjusts observation weights using the PEST++ "phi factor" approach,
+# which assigns each observation group a target fractional contribution to the total
+# objective function (phi). This replaces manual per-observation weight adjustments
+# with a group-level proportional allocation that PEST++ enforces internally.
+#
+# **Output files:**
+# - `phi_factors.csv` — Two-column file mapping observation group patterns to their
+#   target phi fraction (must sum to 1.0).
+# - `prior_mc_reweight.pst` — Updated control file referencing the phi factors.
+# - `prior_mc_reweight_gsa.pst` — Variant control file configured for global
+#   sensitivity analysis (Morris method).
+# - `loc.mat` — Updated localization matrix with zero-weighted groups removed.
+# - `postprocessing/reweighting_<subdomain>.pdf` — Pie chart comparing original vs.
+#   target phi contributions.
+#
+# **How phi factors work in PEST++ IES:**
+# Rather than specifying absolute weights, the user defines the *relative* contribution
+# each observation group should have to the total objective function. PEST++ internally
+# scales weights so that each group's phi contribution matches the specified fraction.
+# This simplifies weight balancing across heterogeneous observation types.
+#
+# **Workflow steps:**
+# 1. Load the localized control file (`prior_mc_loc.pst`).
+# 2. Define target phi fractions for each observation group.
+# 3. Visualize original vs. target phi contributions.
+# 4. Write `phi_factors.csv` and update the control file.
+# 5. Remove zero-weighted groups from the localization matrix.
+# 6. Run `noptmax=0` verification, then set `noptmax=-1` for the full run.
+# 7. (Optional) Write a GSA variant of the control file.
+
+# %% [markdown]
+# ## Define Target Phi Fractions
+# Each key is a pattern matched against observation group names. The values are
+# the target fractional contribution to the total objective function. These must
+# sum to 1.0.
 
 # %%
-# Assign relative contributions to the objective function
-# Check with Mike: Is PEST remapping and combining obs based on the key in this dict?
 phi_new_comps = {
     "actet_mean_mon": 0.08,
     "actet_mon": 0.04,
@@ -217,7 +251,10 @@ pst.control_data.noptmax = 0
 pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
-# ### update the localization matrix to remove groups with only 0-weighted obs
+# ## Update Localization Matrix
+# Remove observation groups that have only zero-weighted observations (e.g.,
+# `streamflow_nodata`) from the localization matrix to avoid unnecessary
+# computation.
 
 # %%
 # read in the localization matrix from the run directory
@@ -246,7 +283,10 @@ pst.control_data.noptmax = -1
 pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
-# ### spit out control file for GSA
+# ## Write GSA Control File (Optional)
+# Create a variant of the control file configured for Morris-method global
+# sensitivity analysis. This can be run independently to identify the most
+# influential parameters before committing to a full IES run.
 
 # %%
 pst.pestpp_options["gsa_morris_r"] = 18

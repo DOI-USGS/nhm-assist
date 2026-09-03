@@ -47,7 +47,6 @@ root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
 sys.path.append(str(root_dir))
 
 from assist.nhf.sf_data_retrieval_v2_1 import (
-    create_nwis_sf_df,
     create_OR_sf_df,
     create_ecy_sf_df,
     create_sf_efc_df,

@@ -84,25 +84,39 @@ from assist.nhm import efc
 config = load_subdomain_config(root_dir)
 
 # %% [markdown]
-# # Introduction
-# This notebook will make files for the pest-ies setup: 
-# `allobs.dat`
-# This file is observations that pest will match with model output in the model calibration.
+# # Prepare Observations for PEST++ IES Parameter Estimation
 #
-# The pest instruction  file is a file that connects the pywatershed model output after each model run to the calibration targets listed in the pest observation file. For clarity, each line in the `allobs.dat` file corresponds to the same indexed line in the `modelobs.dat.ins` file, and aslo the model output file, `modelobs.dat`. 
+# This notebook consolidates observation datasets into the files required by
+# PEST++ iterative ensemble smoother (IES) for model parameter estimation:
 #
-# This notebook will first consolidate the hru observation files that were written with notebook `Subset_NHM_baselines`for the model, assign observation names for each observation, and write observations names and observations into a single file with 2 columns for PEST++ to read.
+# **Output files:**
+# - `allobs.dat` — Two-column file (observation name, observation value) containing
+#   all parameter estimation targets that PEST++ will compare against model output.
+# - `allobs_bounds.dat` — Range bounds (min/max) for each observation, used to
+#   define the observation uncertainty in the PEST++ control file (notebook 03).
 #
-# Then, the instruction file is made from the observations file with
+# **How PEST++ uses these files:**
+# Each line in `allobs.dat` corresponds to the same indexed line in the instruction
+# file (`modelobs.dat.ins`) and the model output file (`modelobs.dat`). PEST++ reads
+# the instruction file to extract simulated values from model output, then compares
+# them against the observed values listed here.
 #
-# Lastly, this notebook will run the model and postprocess the model output to mirror the observations listed in the instruction file and perform checks to ensure that the lines in the model output file, instruction file, and observation file coorelate to the same observation name. If and error is found, some tips are offered for the corrective approach.
+# **Workflow steps:**
+# 1. Set up the PEST++ workspace directories and copy ancillary files.
+# 2. Read HRU-based observation NetCDF files (created by the `Subset_NHM_baselines` notebook).
+# 3. Format each observation type (AET, recharge, soil moisture, runoff, snow cover, streamflow)
+#    with structured names and write to `allobs.dat`.
+# 4. Build the corresponding bounds file for observation uncertainty.
 #
-#
+# **Observation naming convention:** `<variable>_<timestep>:<time_index>:<spatial_id>`
 
 # %% [markdown]
-# # Workspace Setup
-# Create `pestpp_ies` folder in the model directory
-# All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
+# ## Workspace Setup
+# Create the `pestpp_ies/` directory structure within the model folder. All files
+# needed to run PEST++ IES will be organized here:
+# - `observation_data/` — source NetCDF observation files
+# - `ancillary/` — configuration CSVs (localization, weighting, bounds)
+# - `output/` — model output from parameter estimation runs
 
 # %%
 if not (config["model_dir"] / "pestpp_ies").exists():
@@ -231,10 +245,16 @@ ofp = open(
 ofp = open(pestpp_model_dir / "allobs_bounds.dat", "w")
 
 # %% [markdown]
-# # Format Observations
+# ## Format HRU Observations
+# The following cells read each observation NetCDF file, construct structured
+# observation names, compute the midpoint between min/max bounds as the target
+# value, and append to `allobs.dat`. Bounds are tracked in `obs_bounds_df` for
+# later export.
+#
+# ### Actual Evapotranspiration (AET) — Monthly
+# Values are in inches/day (daily average rate for the month).
 
 # %%
-##  AET  monthly (Note that these values are in inches/day, and a daily average rate for the month--Jacob verified)
 cdat = xr.open_dataset(obsdir / "AET_monthly.nc")
 # set up the indices in sequence
 inds = [
@@ -261,8 +281,10 @@ obs_bounds_df = pd.DataFrame(
     }
 )
 
+# %% [markdown]
+# ### AET — Mean Monthly (climatological average by month)
+
 # %%
-##  AET mean monthly
 cdat = xr.open_dataset(obsdir / "AET_mean_monthly.nc")
 # set up the indices in sequence
 inds = [
@@ -293,8 +315,10 @@ obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 # %%
 # aet_mean_obs.sel(month= 1)
 
+# %% [markdown]
+# ### Recharge — Annual
+
 # %%
-##  RCH  annual
 cdat = xr.open_dataset(obsdir / "RCH_annual.nc")
 # set up the indices in sequence
 inds = [
@@ -325,8 +349,10 @@ obs_bounds_df_new = pd.DataFrame(
 
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 
+# %% [markdown]
+# ### Soil Moisture — Monthly
+
 # %%
-##  Soil Moisture  monthly
 cdat = xr.open_dataset(obsdir / "Soil_Moisture_monthly.nc")
 # set up the indices in sequence
 inds = [
@@ -358,8 +384,10 @@ obs_bounds_df_new = pd.DataFrame(
 
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 
+# %% [markdown]
+# ### Soil Moisture — Annual
+
 # %%
-##  Soil_Moisture annual
 cdat = xr.open_dataset(obsdir / "Soil_Moisture_annual.nc")
 # set up the indices in sequence
 inds = [
@@ -389,8 +417,10 @@ obs_bounds_df_new = pd.DataFrame(
 )
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 
+# %% [markdown]
+# ### HRU Runoff — Monthly (average daily rate in cfs for each month)
+
 # %%
-##  RUN  monthly (This is an average daily rate in cfs for the month)
 cdat = xr.open_dataset(obsdir / "hru_streamflow_monthly.nc")
 # set up the indices in sequence
 inds = [
@@ -420,10 +450,12 @@ obs_bounds_df_new = pd.DataFrame(
 obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 
 # %% [markdown]
-# ## the following has NaNs for SCA daily that got rejected by the filter. Need to decide if totally drop, or give a dummary value (-999) or whatnot
+# ### Snow Covered Area (SCA) — Daily
+# NaN values from cloud-filtered pixels are filled with -9999 (a PEST++ no-data
+# sentinel). These observations will be zero-weighted in the PEST++ control file
+# where the sentinel value appears.
 
 # %%
-##  Snow_covered_area daily
 cdat = xr.open_dataset(obsdir / "SCA_daily.nc")
 cdat = cdat.fillna(-9999)
 # set up the indices in sequence
@@ -455,8 +487,17 @@ obs_bounds_df = pd.concat([obs_bounds_df, obs_bounds_df_new], ignore_index=True)
 obs_bounds_df.to_csv(pestpp_model_dir / "allobs_bounds.dat", index=False)
 
 # %% [markdown]
-# ##  Streamflow daily
-# Warning: You must run the EFC notebook prior to this block to create the new sf file with EFC codes "EFC_netcdf"
+# ## Format Streamflow Observations
+# Streamflow observations are handled separately from HRU observations because
+# they are indexed by POI gage ID rather than HRU ID, and include EFC
+# (Environmental Flow Component) classifications and hydrograph position (ascending/
+# descending limb) as suffixes in the observation name.
+#
+# Calibration and validation years are split by alternating water years (odd = cal,
+# even = val). Mean monthly streamflow is computed separately for each set.
+#
+# **Prerequisite:** The EFC notebook (notebook 1 in nhm-assist) must be run first
+# to create the `sf_efc.nc` file with EFC codes.
 
 # %%
 seg_outflow_start = "1999-10-01"
@@ -484,8 +525,8 @@ paramfile_poi_gage_id_list = pardat.parameters.get("poi_gage_id").tolist()
 cdat = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc").sel(
     time=slice(seg_outflow_start, seg_outflow_end),
 )
-cdat = cdat.sel(poi_id=cdat.poi_id.isin(paramfile_poi_gage_id_list))
-cdat = cdat.reindex(poi_id=paramfile_poi_gage_id_list)
+cdat = cdat.sel(poi_gage_id=cdat.poi_gage_id.isin(paramfile_poi_gage_id_list))
+cdat = cdat.reindex(poi_gage_id=paramfile_poi_gage_id_list)
 
 cdat = cdat[["discharge", "efc", "high_low"]]
 
@@ -505,7 +546,7 @@ cdat_monthly["wateryear"] = [
 ]
 
 # %%
-# Creates dataframe time series of mean monthly (mean of all jan, feb, mar....) for calibration and validation
+# Creates dataframe time series of mean monthly (mean of all jan, feb, mar....) for parameter estimation and validation
 # years separately
 # cdat_mean_monthly = cdat_monthly.groupby('time.month').mean(skipna=True)
 
@@ -536,8 +577,8 @@ cdat = cdat.fillna(-9999)
 
 # set up the indices in sequence
 inds = [
-    f'_{int(cdat["efc"].sel(poi_id=j, time=i).item())}_{int(cdat["high_low"].sel(poi_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
-    for j in cdat.indexes["poi_id"]
+    f'_{int(cdat["efc"].sel(poi_gage_id=j, time=i).item())}_{int(cdat["high_low"].sel(poi_gage_id=j, time=i).item())}:{i.year}_{i.month}_{i.day}:{j}'
+    for j in cdat.indexes["poi_gage_id"]
     for i in cdat.indexes["time"]
 ]
 
@@ -556,7 +597,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # Now write to the pest obs file
 inds = [
     f"{i.year}_{i.month}:{j}"
-    for j in cdat_monthly.indexes["poi_id"]
+    for j in cdat_monthly.indexes["poi_gage_id"]
     for i in cdat_monthly.indexes["time"]
 ]  # set up the indices in sequence
 varvals = np.ravel(
@@ -572,7 +613,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_cal.indexes["poi_id"]
+    for j in cdat_mean_monthly_cal.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_cal.indexes["month"]
 ]
 varvals = np.ravel(
@@ -588,7 +629,7 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 # %%
 inds = [
     f"{i}:{j}"
-    for j in cdat_mean_monthly_val.indexes["poi_id"]
+    for j in cdat_mean_monthly_val.indexes["poi_gage_id"]
     for i in cdat_mean_monthly_val.indexes["month"]
 ]
 varvals = np.ravel(

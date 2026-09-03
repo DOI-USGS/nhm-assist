@@ -16,6 +16,62 @@ def resolve_repo_root(env: Mapping[str, str] | None = None) -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+# Only nhf keeps its working data outside the repo root; nhm and pest both use
+# the repo root itself (see the per-workflow `root_dir` in the templates).
+WORKFLOW_ROOT_SUBDIRS = {"nhf": "nhf_assist"}
+
+
+def infer_workflow(
+    cwd: str | Path | None = None,
+) -> str | None:
+    """Best-effort guess at which workflow a notebook belongs to, from ``cwd``.
+
+    Generated notebooks live at ``<project>/notebooks/<workflow>/`` (see
+    ``get_project_workflow_notebooks_dir``), so the directory a notebook runs
+    in is normally named after its workflow. The legacy in-repo layout put
+    them at ``<root>/notebooks`` instead, where the workflow is identified by
+    the enclosing directory. Returns ``None`` when neither pattern matches.
+    """
+    here = Path(os.getcwd() if cwd is None else cwd).expanduser().resolve()
+
+    if here.name in WORKFLOW_NAMES:
+        return here.name
+
+    if here.name == "notebooks":
+        for workflow, subdir in WORKFLOW_ROOT_SUBDIRS.items():
+            if here.parent.name == subdir:
+                return workflow
+        return "nhm"
+
+    return None
+
+
+def resolve_workflow_root(
+    workflow: str | None = None,
+    *,
+    cwd: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Path:
+    """Return the working root for one workflow's notebooks.
+
+    A single shared template set serves every workflow, so a template cannot
+    hardcode its root the way the per-workflow copies used to
+    (``resolve_repo_root() / "nhf_assist"``). The workflow is either passed in
+    or inferred from ``cwd``; its root is then the repo root, plus the one
+    subdirectory in ``WORKFLOW_ROOT_SUBDIRS`` if it has one.
+
+    Deliberately *not* ``resolve_nhm_runtime_paths``, which always reports the
+    repo root: a shared template trusting that would silently point nhf's
+    notebooks at the nhm workspace's config and model directory.
+    """
+    repo_root = resolve_repo_root(env)
+    if workflow is None:
+        workflow = infer_workflow(cwd)
+
+    subdir = WORKFLOW_ROOT_SUBDIRS.get(workflow) if workflow else None
+    return repo_root / subdir if subdir else repo_root
+
+
 def resolve_workspace_root(
     workspace_root: str | Path | None = None,
     *,

@@ -108,7 +108,7 @@ class PairingModeTests(unittest.TestCase):
         )
 
     def test_dev_pairing_formats_is_relative_and_resolves_to_the_template(self):
-        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"][0]
 
         formats = notebook_builder.dev_pairing_formats(
             template_dir, self.notebook_dir
@@ -149,7 +149,7 @@ class PairingModeTests(unittest.TestCase):
 
         notebook = jupytext.read(created[0])
         formats = notebook.metadata["jupytext"]["formats"]
-        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"][0]
         self.assertEqual(
             formats,
             notebook_builder.dev_pairing_formats(template_dir, self.notebook_dir),
@@ -166,10 +166,12 @@ class PairingModeTests(unittest.TestCase):
         # the template dir so the sync-triggered write never touches the
         # real, tracked template.
         scratch_template_dir = self.workspace_root / "template_scratch" / "nhm"
-        shutil.copytree(notebook_builder.WORKFLOW_INPUT_DIRS["nhm"], scratch_template_dir)
+        shutil.copytree(
+            notebook_builder.WORKFLOW_INPUT_DIRS["nhm"][0], scratch_template_dir
+        )
 
         with patch.dict(
-            notebook_builder.WORKFLOW_INPUT_DIRS, {"nhm": scratch_template_dir}
+            notebook_builder.WORKFLOW_INPUT_DIRS, {"nhm": (scratch_template_dir,)}
         ):
             created = self._generate("dev")
             target = created[0]
@@ -314,7 +316,7 @@ class PairingModeTests(unittest.TestCase):
             self.assertEqual(payload, third[path], f"{path} changed on a repeat run")
 
     def test_dev_pairing_rejects_a_workspace_it_cannot_reach(self):
-        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"]
+        template_dir = notebook_builder.WORKFLOW_INPUT_DIRS["nhm"][0]
         # Only common ancestor with the repo is the filesystem root, so
         # jupytext would silently resolve the pairing into the current working
         # directory instead of the repo.

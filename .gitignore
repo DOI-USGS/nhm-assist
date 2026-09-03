@@ -259,5 +259,9 @@ pestpp_ies_calibration/data_dependencies/
 .claude/
 CLAUDE.md
 
+# Personal issue tracking
+issues_for_eddie.md
+/hydrofabric_domain_data
+
 # hatch-vcs generated version file
 src/assist/_version.py
