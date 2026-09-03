@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/nhm///py:percent
+#     formats: notebooks///ipynb,src/workflow_templates/common///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -43,12 +43,12 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-# One template set serves every workflow, so the root cannot be hardcoded:
-# nhm's is the repo, nhf's is <repo>/nhf_assist, pest's is
-# <repo>/pestpp_ies_calibration. Each keeps its notebooks at <root>/notebooks,
-# so the root is derived from where this notebook is running.
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
 from assist.workspace.bridge import resolve_workflow_root
-
 root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context

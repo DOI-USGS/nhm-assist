@@ -1,7 +1,7 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
+#     formats: notebooks///ipynb,src/workflow_templates/common///py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -35,9 +35,11 @@ con = Console()
 
 import sys
 import os
-
-# One template set serves every workflow, so the root cannot be hardcoded --
-# this used to string-split cwd on the literal "nhf_assist".
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
 from assist.workspace.bridge import resolve_workflow_root
 root_dir = resolve_workflow_root(cwd=os.getcwd())
 sys.path.append(str(root_dir))
@@ -60,7 +62,7 @@ config = load_subdomain_config(config_root)
 
 # %%
 import xarray as xr
-from assist.nhm.streamflow_postprocess import subset_seg_outflow_to_poi_gages
+from assist.common.streamflow_postprocess import subset_seg_outflow_to_poi_gages
 
 # %% [markdown]
 # ## Introduction
