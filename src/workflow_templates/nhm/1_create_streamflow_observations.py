@@ -46,6 +46,7 @@ with redirect_stdout(f):
 # Find the repo root via the editable-installed `assist` package — robust
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
+
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
 from assist.workspace.bridge import resolve_project_notebook_context

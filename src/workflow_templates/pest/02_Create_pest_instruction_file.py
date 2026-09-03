@@ -84,29 +84,36 @@ from assist.nhm import efc
 config = load_subdomain_config(root_dir)
 
 # %% [markdown]
-# # Introduction
-# Andy thoughts:
-# Related files and definitions:
-# read ---> written
-# Matt's flow chart idea too!
-# maybe say something about the difference in the iunstruction file and the template file here.
+# # Create PEST++ Instruction File
 #
-# This notebook will make two needed files for the pest-ies setup: the PEST instruction file, `modelobs.dat.ins`
+# This notebook creates the PEST++ instruction file (`modelobs.dat.ins`) that tells
+# PEST++ how to read simulated values from model output and match them to the
+# observations defined in `allobs.dat` (created in notebook 01).
 #
-# The pest instruction  file is a file that connects the pywatershed model output after each model run to the calibration targets listed in the observation file. For clarity, each line in the `allobs.dat` file corresponds to the same indexed line in the `modelobs.dat.ins` file, and also the model output file, `modelobs.dat`. 
+# **Output files:**
+# - `modelobs.dat.ins` — The PEST++ instruction file. Each line maps an observation
+#   name to a position in the model output file (`modelobs.dat`).
+# - `forward_run.py` — The combined model run + post-processing script that PEST++
+#   executes for each parameter realization.
+# - `parameters.json` — JSON export of the PRMS parameter file for use by `forward_run.py`.
 #
-# `The 01_Create_allobs_dat.ipynb` notebook consolidated the hru observation files that were written with notebook `Subset_NHM_baselines` for the model, assigned observation names for each observation, and wrote observations names and observations into a single file with 2 columns for PEST++ to read, `allobs.dat`.
+# **How PEST++ uses these files:**
+# On each iteration, PEST++ calls `forward_run.py` which runs pywatershed and
+# writes simulated values to `modelobs.dat`. PEST++ then reads `modelobs.dat.ins`
+# to extract the simulated values and compares them line-by-line against the
+# observed values in `allobs.dat`.
 #
-# Then, the instruction file is made from the observations file with
-#
-# Lastly, this notebook will run the model and postprocess the model output to mirror the observations listed in the instruction file and perform checks to ensure that the lines in the model output file, instruction file, and observation file coorelate to the same observation name. If and error is found, some tips are offered for the corrective approach.
-#
-# This notebook will read in the consolidated NC files that were written with notebook  `Subset_NHM_baselines`for each subbasin extraction, assign names for each obs, and write names and observations into a single file with 2 columns for PEST++ to read.
+# **Workflow steps:**
+# 1. Set up workspace directories and copy ancillary/model files.
+# 2. Read `allobs.dat` and write the instruction file with one line per observation.
+# 3. Copy the forward run script and export parameters to JSON.
+# 4. (Optional) Run the model and verify that the instruction file, model output,
+#    and observation file are consistent.
 
 # %% [markdown]
-# # Workspace Setup
-# Create `pestpp_ies` folder in the model directory
-# All pestpp-ies files needed to run the model usng pestpp-ies will be placed here.
+# ## Workspace Setup
+# Create the `pestpp_ies/` directory structure and copy ancillary configuration
+# files and model input files needed for remote PEST++ runs.
 
 # %%
 if not (config["model_dir"] / "pestpp_ies").exists():
@@ -153,8 +160,10 @@ for file in model_file_list:
     shutil.copy2(source, destination)
 
 # %% [markdown]
-# ## Create PEST instruction file `.ins`
-# Map observation name from allobs.dat (created in notebook 01_Create_allobs_dat) to the instruction file `modelobs.dat.ins`
+# ## Write the Instruction File (`modelobs.dat.ins`)
+# Read observation names from `allobs.dat` and write the PEST++ instruction file.
+# Each observation gets a `l1 w !obsname!` directive that tells PEST++ to read
+# whitespace-delimited values line by line from `modelobs.dat`.
 
 # %%
 obsvals = pd.read_csv(pestpp_model_dir / "allobs.dat", delim_whitespace=True)
@@ -170,13 +179,10 @@ with open(os.path.join(pestpp_model_dir, "modelobs.dat.ins"), "w") as ofp:
     [ofp.write(f"l1 w !{i}!\n") for i in obsvals.obsname]
 
 # %% [markdown]
-# ## Check model output
-
-# %% [markdown]
-# #### Consolidate the run script (run-pynhm.py) and the model output post-processing script (post-process_model_output.py) into a single script.
-
-# %% [markdown]
-# #### Write out combined script (forward_run.py)
+# ## Prepare the Forward Run Script
+# The forward run script (`forward_run.py`) is the executable that PEST++ calls
+# for each parameter realization. It runs pywatershed with updated parameters and
+# post-processes output into the `modelobs.dat` format that the instruction file expects.
 
 # %%
 # Instead of the code below that is commented out,  we will read in the .py version of
@@ -199,7 +205,9 @@ params.parameters_to_json(parameters_json_file)
 # params = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
 
 # %% [markdown]
-# #### Run the model
+# ## Run the Forward Model (Optional)
+# Execute `forward_run.py` to produce `modelobs.dat`. This step is optional during
+# setup but required before the consistency check below can pass.
 
 # %%
 cwd = os.getcwd()
@@ -208,8 +216,15 @@ cwd = os.getcwd()
 # %cd "{cwd}"
 
 # %% [markdown]
-# #### Read in the model output and check against the instruction file
+# ## Verify Instruction File Consistency
+# Check that the instruction file (`modelobs.dat.ins`), model output (`modelobs.dat`),
+# and observation file (`allobs.dat`) are aligned:
+# - Same number of observations
+# - Same observation names in the same order
+# - No duplicate observation names
 #
+# If a mismatch is found, the error message identifies which names are missing
+# or out of order.
 
 # %% jupyter={"source_hidden": true}
 # check_ins_and_outs function

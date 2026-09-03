@@ -7,7 +7,7 @@ from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from assist.nhm.nhm_assist_utilities import (fetch_nwis_gage_info,
-                                              find_missing_gage_info,
+                                              find_missing_gage_metadata,
                                               make_HW_cal_level_files)
 pretty.install()
 warnings.filterwarnings("ignore")
@@ -243,6 +243,22 @@ def create_segment_gdf(
     return seg_gdf, seg_txt
 
 
+def _load_byhwobs_cal_gages(root_dir):
+    """Load the fixed NHM byHWobs calibration-gages CSV.
+
+    This file is a fixed data dependency shipped with NHM v1.1; its header uses
+    the native `poi_id` name. Read it under that name so the ``str`` dtype keeps
+    leading zeros (e.g. ``"08049300"``), then canonicalize the column to the
+    project-wide `poi_gage_id` at the boundary.
+    """
+    cal_gages_file = (
+        root_dir / "data_dependencies/NHM_v1_1/nhm_v1_1_byhwobs_cal_gages.csv"
+    )
+    cols = {"poi_id": np.str_, "latitude": float, "longitude": float}
+    byHWobs_poi_df = pd.read_csv(cal_gages_file, sep="\t", dtype=cols).fillna(0)
+    return byHWobs_poi_df.rename(columns={"poi_id": "poi_gage_id"})
+
+
 def create_poi_df(
     *,
     root_dir,
@@ -320,33 +336,10 @@ def create_poi_df(
 
     """
     This reads in the csv file that has the gages used to calibrate the byHWobs part for CONUS.
-    Read in format for station file columns needed (You may need to tailor this to the particular file.
+    The file is a fixed NHM data dependency with a native `poi_id` header; the
+    loader canonicalizes it to `poi_gage_id` at the boundary.
     """
-    col_names = [
-        "poi_gage_id",
-        #'poi_name',
-        "latitude",
-        "longitude",
-        #'drainage_area',
-        #'drainage_area_contrib'
-    ]
-    col_types = [
-        np.str_,
-        # np.str_,
-        float,
-        float,
-        # float,
-        # float
-    ]
-    cols = dict(
-        zip(col_names, col_types)
-    )  # Creates a dictionary of column header and datatype called below.
-
-    byHWobs_poi_df = pd.read_csv(
-        root_dir / "data_dependencies/NHM_v1_1/nhm_v1_1_byhwobs_cal_gages.csv",
-        sep="\t",
-        dtype=cols,
-    ).fillna(0)
+    byHWobs_poi_df = _load_byhwobs_cal_gages(root_dir)
 
     # Identify the byHWobs calibration gages in our current poi database (ammended in the model prams file to include more gages)
     poi_df["nhm_calib"] = "N"
@@ -569,7 +562,7 @@ def create_default_gages_file(
         missing_ids = (
             default_gages_df.loc[pre_fill_missing_mask, "poi_gage_id"].astype(str).tolist()
         )
-        fetched = find_missing_gage_info(
+        fetched = find_missing_gage_metadata(
             gage_ids=missing_ids,
             poi_df=poi_df,
             resource_file_path=resource_gages_file,

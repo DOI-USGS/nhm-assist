@@ -29,16 +29,41 @@ pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+# Find and set the "nhm-assist" root directory
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+import assist as _assist_pkg
+
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+
+
+from assist.nhf.nhm_hydrofabric_v2 import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+
+from assist.nhf.nhm_assist_utilities_v2 import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
+
+from assist.nhf import efc
+
+# import topojson
+
+
+config = load_subdomain_config(root_dir)
+# con.print(config)
+
 
 import pandas as pd
-import pywatershed as pws
 import xarray as xr
 import numpy as np
 import datetime
 
-# import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -49,20 +74,19 @@ with redirect_stdout(f):
 # Find and set the "nhm-assist" root directory
 # Find the repo root via the editable-installed `assist` package — robust
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 
-from assist.workspace.bridge import resolve_project_notebook_context
-from assist.workspace.service import get_active_model_root
 
-project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
-if project_context:
-    active_model_root = get_active_model_root(
-        project_context["workspace_root"], project_context["project_root"].name
-    )
-    config_root = active_model_root / "config"
-else:
-    config_root = root_dir
+# from assist.workspace.bridge import resolve_project_notebook_context
+# from assist.workspace.service import get_active_model_root
+
+# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+# if project_context:
+#     active_model_root = get_active_model_root(
+#         project_context["workspace_root"], project_context["project_root"].name
+#     )
+#     config_root = active_model_root / "config"
+# else:
+#     config_root = root_dir
 
 from dotenv import load_dotenv
 
@@ -77,8 +101,8 @@ load_dotenv(dotenv_path=dotenv_path)
 ############################################
 
 
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
-from assist.nhm import efc
+# from assist.nhm.nhm_assist_utilities import load_subdomain_config
+# from assist.nhm import efc
 
 config = load_subdomain_config(root_dir)
 
@@ -97,7 +121,7 @@ config["model_dir"]
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = root_dir / "pestpp_ies_calibration"
+pestpp_dir = pl.Path("../").resolve()
 
 # %% [markdown]
 # ### Make observation_data folder in the subbasin model directory
@@ -120,6 +144,9 @@ nhm_ids = pws.parameters.PrmsParameters.load(
     config["model_dir"] / config["param_file"]
 ).parameters["nhm_id"]
 
+# %%
+pestpp_dir
+
 # %% [markdown]
 # ### assign `wkdir` to indicate where the raw CONUS netCDF files live
 
@@ -138,7 +165,8 @@ lu = pd.read_csv(ancillary_dir / "target_and_output_vars_table.csv", index_col=0
 lu
 
 # %%
-conus_baselines_dir = pestpp_dir / "data_dependencies/NHM_v1_1/CONUS_baselines"
+# conus_baselines_dir = pestpp_dir / "data_dependencies/NHM_v1_1/CONUS_baselines"
+#
 [i for i in conus_baselines_dir.glob("*.nc")]
 
 # %% [markdown]

@@ -86,7 +86,7 @@ sys.path.append(str(root_dir))
 v2_gpkg_path = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\GIS\model_layers.gpkg")
 land_sea_mask = pl.Path(r"D:\nhm-assist\data_dependencies\nhm_v1.1_workflows-master\tmax_allstar\land_sea_mask_upk.nc")
 era5_data_dir = pl.Path(r"D:\ERA5_data")  # Where downloaded ERA5 files will be stored
-output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\created_hru_params")
+output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
 output_dir.mkdir(parents=True, exist_ok=True)
 
 # === PARAMETERS ===
