@@ -90,6 +90,10 @@ def _accepted_by(fn, *names: str) -> list:
     return [name for name in names if name in params]
 
 
+# NOTE: HW_basins/HW_basins_gdf are deliberately absent from every
+# _require_state list. Since concern 4 the unified map_template advertises them
+# on all four map builders (defaulted to None) and guards each render on
+# `is not None`, so a GFv2 notebook that never sets them is correct, not broken.
 def _supported(fn, **kwargs) -> dict:
     """Drop the kwargs `fn` does not accept (see `_accepted_by`)."""
     keep = set(_accepted_by(fn, *kwargs))
@@ -144,7 +148,6 @@ def generate_map() -> None:
         "Folium_maps_dir",
         "subdomain",
         "v",
-        *_accepted_by(make_var_map, "HW_basins"),
     ):
         return
     _ensure_output_dirs()
@@ -330,7 +333,6 @@ def on_map_clicked(b: widgets.Button) -> None:
         "subdomain",
         "output_netcdf_filename",
         "gage_txt",
-        *_accepted_by(make_streamflow_map, "HW_basins_gdf", "HW_basins"),
     ):
         return
     _ensure_output_dirs()
