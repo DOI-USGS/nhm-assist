@@ -510,7 +510,7 @@ def create_poi_marker_cluster(
             ),
             radius=3,
             weight=2,
-            color="black",
+            color=None,
             fill=True,
             fill_color="Black",
             fill_opacity=1.0,
@@ -596,7 +596,7 @@ def create_non_poi_marker_cluster(
                 ),
                 radius=3,
                 weight=2,
-                color="gray",
+                color=None,
                 fill=True,
                 fill_color="Gray",
                 fill_opacity=1.0,
@@ -2646,28 +2646,37 @@ def create_poi_obs_marker_cluster(
             ),
         ).add_to(poi_marker_cluster_label)
 
-        marker = folium.CircleMarker(
-            location=[row["latitude"], row["longitude"]],
-            name=row["poi_gage_id"],
-            popup=folium.Popup(
-                iframe,
-                # max_width=500,
-                # max_height=300,
-                parse_html=True,
-            ),
-            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
-            # popup=folium.Popup(
-            #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
-            #     max_width=280,
-            #     max_height=2000,
-            # ),
-            radius=3,
-            weight=1,
-            color="black",
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
-        ).add_to(poi_marker_cluster)
+        # marker = folium.CircleMarker(
+        #     location=[row["latitude"], row["longitude"]],
+        #     name=row["poi_gage_id"],
+        #     popup=folium.Popup(
+        #         iframe,
+        #         # max_width=500,
+        #         # max_height=300,
+        #         parse_html=True,
+        #     ),
+        #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+        #     # popup=folium.Popup(
+        #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
+        #     #     max_width=280,
+        #     #     max_height=2000,
+        #     # ),
+        #     radius=4,
+        #     weight=1,
+        #     color="black",
+        #     fill=True,
+        #     fill_color="Black",
+        #     fill_opacity=1.0,
+        # ).add_to(poi_marker_cluster)
+        marker = folium.Marker(
+        location=[row["latitude"], row["longitude"]],
+        icon=make_polygon_icon(num_sides=3, radius=6, color="black", fill_opacity=1.0),
+        popup=folium.Popup(
+            iframe,
+            parse_html=True,
+        ),
+        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+    ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
 
@@ -2770,28 +2779,37 @@ def create_non_poi_obs_marker_cluster(
                 ),
             ).add_to(non_poi_marker_cluster_label)
 
-            marker = folium.CircleMarker(
-                location=[row["latitude"], row["longitude"]],
-                name=row["poi_gage_id"],
-                popup=folium.Popup(
+            # marker = folium.CircleMarker(
+            #     location=[row["latitude"], row["longitude"]],
+            #     name=row["poi_gage_id"],
+            #     popup=folium.Popup(
+            #     iframe,
+            #     # max_width=500,
+            #     # max_height=300,
+            #     parse_html=True,
+            #     ),
+            #     # popup=folium.Popup(
+            #     #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
+            #     #     max_width=280,
+            #     #     max_height=2000,
+            #     # ),
+            #     tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+            #     radius=4,
+            #     weight=1,
+            #     color="gray",
+            #     fill=True,
+            #     fill_color="Gray",
+            #     fill_opacity=1.0,
+            # ).add_to(non_poi_marker_cluster)
+            marker = folium.Marker(
+            location=[row["latitude"], row["longitude"]],
+            icon=make_polygon_icon(num_sides=3, radius=6, color="white", fill_opacity=1.0),
+            popup=folium.Popup(
                 iframe,
-                # max_width=500,
-                # max_height=300,
                 parse_html=True,
-                ),
-                # popup=folium.Popup(
-                #     f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br></font>',
-                #     max_width=280,
-                #     max_height=2000,
-                # ),
-                tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
-                radius=3,
-                weight=1,
-                color="gray",
-                fill=True,
-                fill_color="Gray",
-                fill_opacity=1.0,
-            ).add_to(non_poi_marker_cluster)
+            ),
+            tooltip= f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}--Not in {param_filename.name})<br>{row["poi_name"]}<br></font>',
+        ).add_to(non_poi_marker_cluster)
         else:
             pass
 

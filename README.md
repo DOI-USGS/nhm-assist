@@ -47,7 +47,7 @@ If you have been provided an NHM subdomain model, it can be downloaded from the 
 pixi run python pull_domain.py --name=willamette_river
 ```
 
-This creates a `domain_data/` folder and adds the example subdomain for the Willamette River watershed.
+This creates a `domain_data/` folder and adds the example subdomain for the Willamette River watershed. `domain_data/` is where the workspace flow looks for bundled examples, so anything downloaded there can then be copied into a project with `pixi run model-copy-example` (or set `NHM_ASSIST_EXAMPLES_DIR` to keep them elsewhere).
 
 ## Quick start (interactive)
 
@@ -164,7 +164,7 @@ That command:
 1. Generates `<workspace-root>/my-test-project/notebooks/nhm/*.ipynb` — the same
    location a real user sees.
 2. Pairs each notebook back to its real source template in
-   `src/workflow_templates/nhm/*.py` via jupytext metadata, so **saving the
+   `src/workflow_templates/common/*.py` via jupytext metadata, so **saving the
    notebook writes your edit straight into the repo**, where git can see it.
 3. Registers and stamps the `Python (nhm-assist dev)` kernel, so the notebook
    opens against the `dev` pixi environment without you picking it each time.
@@ -176,6 +176,17 @@ tells you which of "created", "already configured", or "metadata updated"
 applied to each file.
 
 Only the `.py` templates are committed — `*.ipynb` is gitignored.
+
+> **The numbered notebooks are one shared set.** `0`–`6` and
+> `add_pois_to_parameters` live once, in `src/workflow_templates/common/`, and
+> both the `nhm` and `nhf` workflows render them. NHF's own
+> parameter-building notebooks stay in `src/workflow_templates/nhf/`, and PEST
+> is separate — it renders only `src/workflow_templates/pest/`.
+>
+> So a dev-mode edit to notebook 2 in an `nhm` project changes the template
+> NHF renders too; check both if your change is not fabric-neutral. The
+> templates read fabric-specific behaviour from the active model's config
+> rather than from per-workflow copies.
 
 ### Switching a project back to local mode
 
@@ -225,7 +236,7 @@ paired `.py` file lives:
 
 | | `notebooks-create-project` (and `setup`) | `dev-mode` |
 | --- | --- | --- |
-| Paired `.py` | Same folder as the notebook, via the project's `jupytext.toml` | The real template in `src/workflow_templates/<workflow>/` |
+| Paired `.py` | Same folder as the notebook, via the project's `jupytext.toml` | The real template in `src/workflow_templates/` |
 | Kernel | `Python (nhm-assist)` (default env) | `Python (nhm-assist dev)` (dev env) |
 | Edits land in | Your project | The nhm-assist repo |
 
@@ -234,9 +245,9 @@ is identical, which is the point.
 
 ## nhm-assist plots and maps
 
-nhm-assist interactive plots are created using [plotly](https://plotly.com/python-api-reference/). These figures facilitate evaluation of NHM subdomain model parameters and output. Interactive plots will open in new browser tabs and are exported to `./domain_data/subdomain/notebook_output_files/html_plots`.
+nhm-assist interactive plots are created using [plotly](https://plotly.com/python-api-reference/). These figures facilitate evaluation of NHM subdomain model parameters and output. Interactive plots will open in new browser tabs and are exported to `notebook_output_files/html_plots` under the active model's runtime folder (`<workspace-root>/<project>/models/<model>/outputs/runtime/`).
 
-Additionally, nhm-assist interactive maps are created using [folium v0.18.0](https://python-visualization.github.io/folium/v0.18.0/index.html). These maps visualize geospatial elements of the NHM subdomain. Additionally, select maps include embedded plotly figures. Folium maps will open in new browser tabs and are exported as html files to `./domain_data/subdomain/notebook_output_files/html_maps`. Users may interact with these maps and embed them in webpages, presentations, or other places external to the jupyter notebook repository.
+Additionally, nhm-assist interactive maps are created using [folium v0.18.0](https://python-visualization.github.io/folium/v0.18.0/index.html). These maps visualize geospatial elements of the NHM subdomain. Additionally, select maps include embedded plotly figures. Folium maps will open in new browser tabs and are exported as html files to `notebook_output_files/html_maps` under the same runtime folder. Users may interact with these maps and embed them in webpages, presentations, or other places external to the jupyter notebook repository.
 
 **Note:** In some map outputs, the field labeled `nhru` corresponds to the NHM hydrologic response unit identifier, `nhm_id` in the map outputs.
 
