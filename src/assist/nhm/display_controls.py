@@ -97,7 +97,7 @@ def _get_valid_poi() -> str:
     """
     if not _require_state("poi_df", "v2"):
         return None
-    ids = poi_df.poi_id.values
+    ids = poi_df.poi_gage_id.values
     return v2.value if v2.value in ids else ids[0]
 
 
@@ -124,8 +124,8 @@ def generate_map() -> None:
     ):
         return
     _ensure_output_dirs()
-    poi_id = _get_valid_poi()
-    if poi_id is None:
+    poi_gage_id = _get_valid_poi()
+    if poi_gage_id is None:
         return
     map_file = make_var_map(
         root_dir=root_dir,
@@ -136,7 +136,7 @@ def generate_map() -> None:
         water_years=water_years,
         hru_gdf=hru_gdf,
         poi_df=poi_df,
-        poi_id_sel=poi_id,
+        poi_gage_id_sel=poi_gage_id,
         seg_gdf=seg_gdf,
         html_maps_dir=html_maps_dir,
         year_list=year_list,
@@ -167,8 +167,8 @@ def generate_summary() -> None:
     ):
         return
     _ensure_output_dirs()
-    poi_id = _get_valid_poi()
-    if poi_id is None:
+    poi_gage_id = _get_valid_poi()
+    if poi_gage_id is None:
         return
     plot_file = make_plot_var_for_hrus_in_poi_basin(
         out_dir=out_dir,
@@ -177,7 +177,7 @@ def generate_summary() -> None:
         hru_gdf=hru_gdf,
         poi_df=poi_df,
         output_var_sel=v.value,
-        poi_id_sel=poi_id,
+        poi_gage_id_sel=poi_gage_id,
         plot_start_date=plot_start_date,
         plot_end_date=plot_end_date,
         plot_colors=plot_colors,
@@ -207,8 +207,8 @@ def generate_flux() -> None:
     ):
         return
     _ensure_output_dirs()
-    poi_id = _get_valid_poi()
-    if poi_id is None:
+    poi_gage_id = _get_valid_poi()
+    if poi_gage_id is None:
         return
     plot_file = oopla(
         out_dir=out_dir,
@@ -218,7 +218,7 @@ def generate_flux() -> None:
         poi_df=poi_df,
         output_var_list=output_var_list,
         output_var_sel=v.value,
-        poi_id_sel=poi_id,
+        poi_gage_id_sel=poi_gage_id,
         plot_start_date=plot_start_date,
         plot_end_date=plot_end_date,
         plot_colors=plot_colors,
@@ -280,7 +280,7 @@ def _get_valid_poi1() -> str:
     """
     if not _require_state("poi_df", "gage_txt"):
         return None
-    ids = set(poi_df.poi_id.values)
+    ids = set(poi_df.poi_gage_id.values)
     raw = gage_txt.value.strip() or next(iter(ids))
     return raw if raw in ids else next(iter(ids))
 
@@ -310,8 +310,8 @@ def on_map_clicked(b: widgets.Button) -> None:
     _ensure_output_dirs()
     with map_out:
         clear_output()
-        poi_id_sel = _get_valid_poi1()
-        if poi_id_sel is None:
+        poi_gage_id_sel = _get_valid_poi1()
+        if poi_gage_id_sel is None:
             return
 
         try:
@@ -323,7 +323,7 @@ def on_map_clicked(b: widgets.Button) -> None:
                 water_years=water_years,
                 hru_gdf=hru_gdf,
                 poi_df=poi_df,
-                poi_id_sel=poi_id_sel,
+                poi_gage_id_sel=poi_gage_id_sel,
                 seg_gdf=seg_gdf,
                 html_maps_dir=html_maps_dir,
                 subdomain=subdomain,
@@ -335,7 +335,7 @@ def on_map_clicked(b: widgets.Button) -> None:
 
         except (KeyError, IndexError):
             warn(
-                f"The POI or streamgage ID “{poi_id_sel}” is not in the dataset. "
+                f"The POI or streamgage ID “{poi_gage_id_sel}” is not in the dataset. "
                 "Please check the ID and try again."
             )
         except Exception as e:
@@ -362,13 +362,13 @@ def on_plot_clicked(b: widgets.Button) -> None:
     _ensure_output_dirs()
     with plot_out:
         clear_output()
-        poi_id_sel = _get_valid_poi1()
-        if poi_id_sel is None:
+        poi_gage_id_sel = _get_valid_poi1()
+        if poi_gage_id_sel is None:
             return
 
         try:
             fplot = create_streamflow_plot(
-                poi_id_sel=poi_id_sel,
+                poi_gage_id_sel=poi_gage_id_sel,
                 plot_start_date=plot_start_date,
                 plot_end_date=plot_end_date,
                 water_years=water_years,
@@ -381,7 +381,7 @@ def on_plot_clicked(b: widgets.Button) -> None:
 
         except (KeyError, IndexError):
             warn(
-                f"The streamgage ID “{poi_id_sel}” is not in the dataset. "
+                f"The streamgage ID “{poi_gage_id_sel}” is not in the dataset. "
                 "Please check the ID and try again."
             )
         except Exception as e:

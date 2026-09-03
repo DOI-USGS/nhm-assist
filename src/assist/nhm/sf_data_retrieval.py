@@ -234,25 +234,25 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 
                 # Rename and format
                 field_map = {
-                    "station_nbr": "poi_id",
+                    "station_nbr": "poi_gage_id",
                     "record_date": "time",
                     "mean_daily_flow_cfs": "discharge",
                     "station_name": "poi_name",
                 }
                 owrd_df.rename(columns=field_map, inplace=True)
-                dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
+                dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
                 owrd_df = owrd_df.astype(dtype_map)
                 drop_cols = ["download_date", "estimated", "revised", "published_status"]
                 owrd_df.drop(columns=[col for col in drop_cols if col in owrd_df.columns], inplace=True)
                 owrd_df["agency_id"] = "OWRD"
-                owrd_df.set_index(["poi_id", "time"], inplace=True)
+                owrd_df.set_index(["poi_gage_id", "time"], inplace=True)
 
                 # Write to NetCDF
                 owrd_ds = xr.Dataset.from_dataframe(owrd_df)
                 owrd_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-                owrd_ds["poi_id"].attrs = {"role": "timeseries_id", "long_name": "Point-of-Interest ID", "_Encoding": "ascii"}
+                owrd_ds["poi_gage_id"].attrs = {"role": "timeseries_id", "long_name": "Point-of-Interest ID", "_Encoding": "ascii"}
                 owrd_ds["agency_id"].attrs = {"_Encoding": "ascii"}
-                owrd_ds["poi_id"].encoding.update({"dtype": "S15", "char_dim_name": "poiid_nchars"})
+                owrd_ds["poi_gage_id"].encoding.update({"dtype": "S15", "char_dim_name": "poiid_nchars"})
                 owrd_ds["time"].encoding.update({
                     "_FillValue": None,
                     "standard_name": "time",
@@ -345,13 +345,13 @@ def ecy_scrape(station, ecy_years, ecy_start_date, ecy_end_date):
                 print(f"no Quality for {station} {ecy_year}")
             df["time"] = pd.to_datetime(df["time"], errors="coerce")
             df = df.dropna(subset=["time"])
-            df["poi_id"] = station
+            df["poi_gage_id"] = station
             df["discharge"] = pd.to_numeric(df["discharge"], errors="coerce")
             # specify data types
-            dtype_map = {"poi_id": str, "time": "datetime64[ns]"}
+            dtype_map = {"poi_gage_id": str, "time": "datetime64[ns]"}
             df = df.astype(dtype_map)
 
-            df.set_index(["poi_id", "time"], inplace=True)
+            df.set_index(["poi_gage_id", "time"], inplace=True)
             # next two lines are new if this breaks...
             idx = pd.IndexSlice
             df = df.loc[
@@ -495,7 +495,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
                     )  # Converts the list of ecy gage df's to a single df
 
                     # set the multiIndex
-                    # ecy_df.set_index(['poi_id', 'time'], inplace=True)
+                    # ecy_df.set_index(['poi_gage_id', 'time'], inplace=True)
 
                     ecy_df = ecy_df[
                         ~ecy_df.index.duplicated(keep="first")
@@ -514,7 +514,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
                         "units": "ft3 s-1",
                         "long_name": "discharge",
                     }
-                    ecy_ds["poi_id"].attrs = {
+                    ecy_ds["poi_gage_id"].attrs = {
                         "role": "timeseries_id",
                         "long_name": "Point-of-Interest ID",
                         "_Encoding": "ascii",
@@ -523,7 +523,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
 
                     # Set encoding
                     # See 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html
-                    ecy_ds["poi_id"].encoding.update(
+                    ecy_ds["poi_gage_id"].encoding.update(
                         {"dtype": "S15", "char_dim_name": "poiid_nchars"}
                     )
 
@@ -779,7 +779,7 @@ def create_waterdata_sf_df(
     waterdata_end = pd.to_datetime(str(control.end_time)).strftime("%Y-%m-%d")
 
     # Build Water Data API monitoring_location_ids
-    site_ids = waterdata_gage_info_aoi["poi_id"].tolist()
+    site_ids = waterdata_gage_info_aoi["poi_gage_id"].tolist()
     monitoring_ids = _as_monitoring_location_ids(site_ids)
 
     # Download in batches
@@ -837,7 +837,7 @@ def create_waterdata_sf_df(
     waterdata_raw_df = pd.concat(all_parts, ignore_index=True)
 
     # Normalize to expected schema
-    waterdata_raw_df["poi_id"] = (
+    waterdata_raw_df["poi_gage_id"] = (
         waterdata_raw_df["monitoring_location_id"]
         .astype(str)
         .str.split("-", n=1)
@@ -854,12 +854,12 @@ def create_waterdata_sf_df(
     # De-dupe in case multiple rows exist per site/time
     waterdata_raw_df = (
         waterdata_raw_df.sort_values(
-            ["poi_id", "time", "discharge"], ascending=[True, True, False]
-        ).drop_duplicates(subset=["poi_id", "time"], keep="first")
+            ["poi_gage_id", "time", "discharge"], ascending=[True, True, False]
+        ).drop_duplicates(subset=["poi_gage_id", "time"], keep="first")
     )
 
-    keep_always = set(poi_df["poi_id"].astype(str).unique().tolist())
-    obs_counts = waterdata_raw_df.groupby("poi_id")["discharge"].apply(
+    keep_always = set(poi_df["poi_gage_id"].astype(str).unique().tolist())
+    obs_counts = waterdata_raw_df.groupby("poi_gage_id")["discharge"].apply(
         lambda s: s.notna().sum()
     )
     too_few = obs_counts[
@@ -873,7 +873,7 @@ def create_waterdata_sf_df(
             f"and will be omitted unless they appear in the parameter file.\n{too_few}"
         )
         waterdata_raw_df = waterdata_raw_df[
-            ~waterdata_raw_df["poi_id"].isin(too_few)
+            ~waterdata_raw_df["poi_gage_id"].isin(too_few)
         ]
 
     # Report missing sites (not found / no data in range)
@@ -886,22 +886,22 @@ def create_waterdata_sf_df(
 
     # Final index + xarray write
     waterdata_df = waterdata_raw_df[
-        ["poi_id", "time", "discharge", "agency_id"]
+        ["poi_gage_id", "time", "discharge", "agency_id"]
     ].copy()
-    waterdata_df.set_index(["poi_id", "time"], inplace=True)
+    waterdata_df.set_index(["poi_gage_id", "time"], inplace=True)
 
     waterdata_ds = xr.Dataset.from_dataframe(waterdata_df)
 
     # attrs/encodings
     waterdata_ds["discharge"].attrs = {"units": "ft3 s-1", "long_name": "discharge"}
-    waterdata_ds["poi_id"].attrs = {
+    waterdata_ds["poi_gage_id"].attrs = {
         "role": "timeseries_id",
         "long_name": "Point-of-Interest ID",
         "_Encoding": "ascii",
     }
     waterdata_ds["agency_id"].attrs = {"_Encoding": "ascii"}
 
-    waterdata_ds["poi_id"].encoding.update(
+    waterdata_ds["poi_gage_id"].encoding.update(
         {"dtype": "S15", "char_dim_name": "poiid_nchars"}
     )
     waterdata_ds["time"].encoding.update(
@@ -934,7 +934,7 @@ def create_waterdata_sf_df(
 
     # Write gage list CSV (exclude too_few)
     out_gage_info = waterdata_gage_info_aoi[
-        ~waterdata_gage_info_aoi["poi_id"].astype(str).isin(too_few)
+        ~waterdata_gage_info_aoi["poi_gage_id"].astype(str).isin(too_few)
     ]
     out_gage_info.to_csv(waterdata_gages_file, index=False)
 
@@ -1019,9 +1019,9 @@ def create_sf_efc_df(
         xr_streamflow = xr.merge(
             [xr_streamflow_only, xr_station_info], combine_attrs="drop_conflicts"
         )
-        # test_poi = xr_streamflow.poi_id.values[2]
+        # test_poi = xr_streamflow.poi_gage_id.values[2]
 
-        # xr_streamflow.agency_id.sel(poi_id=test_poi).to_dataframe().agency_id.unique()
+        # xr_streamflow.agency_id.sel(poi_gage_id=test_poi).to_dataframe().agency_id.unique()
         xr_streamflow = xr_streamflow.sortby(
             "time", ascending=True
         )  # bug fix for xarray
@@ -1049,7 +1049,7 @@ def create_sf_efc_df(
             "units": "degrees_east",
             "long_name": "Longitude",
         }
-        xr_streamflow["poi_id"].attrs = {
+        xr_streamflow["poi_gage_id"].attrs = {
             "role": "timeseries_id",
             "long_name": "Point-of-Interest ID",
             "_Encoding": "ascii",
@@ -1064,7 +1064,7 @@ def create_sf_efc_df(
 
         # Set encoding
         # See 'String Encoding' section at https://crusaderky-xarray.readthedocs.io/en/latest/io.html
-        xr_streamflow["poi_id"].encoding.update(
+        xr_streamflow["poi_gage_id"].encoding.update(
             {"dtype": "S15", "char_dim_name": "poiid_nchars"}
         )
 
@@ -1168,17 +1168,17 @@ def create_sf_efc_df(
         """
         flow_col = "discharge"
 
-        for pp in xr_streamflow.poi_id.data:
+        for pp in xr_streamflow.poi_gage_id.data:
             try:
                 df = efc(
-                    xr_streamflow.discharge.sel(poi_id=pp).to_dataframe(),
+                    xr_streamflow.discharge.sel(poi_gage_id=pp).to_dataframe(),
                     flow_col=flow_col,
                 )
 
                 # Add EFC values to the xarray dataset for the poi
-                xr_streamflow["efc"].sel(poi_id=pp).data[:] = df.efc.values
-                xr_streamflow["high_low"].sel(poi_id=pp).data[:] = df.high_low.values
-                xr_streamflow["ri"].sel(poi_id=pp).data[:] = df.ri.values
+                xr_streamflow["efc"].sel(poi_gage_id=pp).data[:] = df.efc.values
+                xr_streamflow["high_low"].sel(poi_gage_id=pp).data[:] = df.high_low.values
+                xr_streamflow["ri"].sel(poi_gage_id=pp).data[:] = df.ri.values
             except TypeError:
                 pass
 

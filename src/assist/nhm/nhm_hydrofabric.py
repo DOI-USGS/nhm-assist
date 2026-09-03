@@ -302,8 +302,6 @@ def create_poi_df(
         pdb["nhm_seg"].as_dataframe, left_on="poi_gage_segment", right_index=True
     )
 
-    poi.rename(columns={"poi_gage_id": "poi_id"}, inplace=True)
-
     """
     Create a dataframe for poi_gages from the parameter file with NWIS gage information data.
 
@@ -317,7 +315,7 @@ def create_poi_df(
         seg_gdf=seg_gdf,
     )
 
-    poi = poi.merge(nwis_gage_info_aoi, left_on="poi_id", right_on="poi_id", how="left")
+    poi = poi.merge(nwis_gage_info_aoi, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
 
     """
@@ -325,7 +323,7 @@ def create_poi_df(
     Read in format for station file columns needed (You may need to tailor this to the particular file.
     """
     col_names = [
-        "poi_id",
+        "poi_gage_id",
         #'poi_name',
         "latitude",
         "longitude",
@@ -352,7 +350,7 @@ def create_poi_df(
 
     # Identify the byHWobs calibration gages in our current poi database (ammended in the model prams file to include more gages)
     poi_df["nhm_calib"] = "N"
-    poi_df.loc[poi_df["poi_id"].isin(byHWobs_poi_df["poi_id"]), "nhm_calib"] = "Y"
+    poi_df.loc[poi_df["poi_gage_id"].isin(byHWobs_poi_df["poi_gage_id"]), "nhm_calib"] = "Y"
 
     """
     Updates the poi_df with user altered metadata in the gages.csv file, if present, or the default_gages.csv file
@@ -374,7 +372,7 @@ def create_poi_df(
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             for item in columns:
                 if pd.isnull(row[item]):
-                    new_poi_id = row["poi_id"]
+                    new_poi_id = row["poi_gage_id"]
                     matches = gages_df.loc[
                         gages_df.index == new_poi_id, item
                     ]
@@ -401,7 +399,7 @@ def create_poi_df(
             columns = ["latitude", "longitude", "poi_name", "poi_agency"]
             for item in columns:
                 if pd.isnull(row[item]):
-                    new_poi_id = row["poi_id"]
+                    new_poi_id = row["poi_gage_id"]
                     matches = gages_df.loc[
                         gages_df.index == new_poi_id, item
                     ]
@@ -421,9 +419,9 @@ def create_poi_df(
             f"WARNING: {len(missing_metadata_gages)} gage(s) are missing "
             f"required metadata and will be dropped from default_gages.csv."
         )
-        for poi_id in sorted(missing_metadata_gages):
-            missing_cols = ", ".join(sorted(missing_metadata_gages[poi_id]))
-            print(f"  {poi_id}: needs {missing_cols}")
+        for poi_gage_id in sorted(missing_metadata_gages):
+            missing_cols = ", ".join(sorted(missing_metadata_gages[poi_gage_id]))
+            print(f"  {poi_gage_id}: needs {missing_cols}")
         print(
             f"Add poi_agency, poi_name, latitude, and longitude for these "
             f"gages in:\n  {resource_gages_file}\nthen re-run this notebook."
@@ -491,10 +489,10 @@ def create_default_gages_file(
         # print(NWIS_obs_list)
         del NWIS_ds
     """ But we need to add gages without obs back in to the list, if they are in the param file """
-    keep_list = list(set(NWIS_obs_list + poi_df.poi_id.to_list()))
+    keep_list = list(set(NWIS_obs_list + poi_df.poi_gage_id.to_list()))
     #print(keep_list)
 
-    #_nwis_gages_aoi = nwis_gages_aoi.loc[nwis_gages_aoi["poi_id"].isin(keep_list)]
+    #_nwis_gages_aoi = nwis_gages_aoi.loc[nwis_gages_aoi["poi_gage_id"].isin(keep_list)]
 
 
     """Read in additional non-nwis gages from the resource gage file. These are a list of user requested gages that may or may not be in the parameter file or the nwis gage file, and likely include non NWIS gages.
@@ -503,7 +501,7 @@ def create_default_gages_file(
 
     #if len(drop_list) > 0:
     nan_list = [np.nan] * len(keep_list)
-    default_gages_df = pd.DataFrame({'poi_id': keep_list,
+    default_gages_df = pd.DataFrame({'poi_gage_id': keep_list,
                                      'poi_agency': nan_list,
                                      'poi_name': nan_list,
                                      'latitude': nan_list, 
@@ -514,7 +512,7 @@ def create_default_gages_file(
 
     if resource_gages_file.exists():
         col_names = [
-            "poi_id",
+            "poi_gage_id",
             "poi_agency",
             "poi_name",
             "latitude",
@@ -529,7 +527,7 @@ def create_default_gages_file(
         resource_gages_file_df = pd.read_csv(resource_gages_file, dtype=cols)
 
     else:    
-        resource_gages_file_df = pd.DataFrame({'poi_id': [np.nan],
+        resource_gages_file_df = pd.DataFrame({'poi_gage_id': [np.nan],
                                                'poi_agency': [np.nan],
                                                'poi_name': [np.nan],
                                                'latitude': [np.nan], 
@@ -541,25 +539,25 @@ def create_default_gages_file(
 
     for idx, row in default_gages_df.iterrows():
         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = nwis_gages_aoi["poi_id"].to_list()
+        check_list = nwis_gages_aoi["poi_gage_id"].to_list()
         for item in columns:
             if pd.isnull(row[item]):
-                new_poi_id = row["poi_id"]
+                new_poi_id = row["poi_gage_id"]
                 if new_poi_id in check_list:
                     new_item = nwis_gages_aoi.loc[
-                        nwis_gages_aoi.poi_id == new_poi_id, item].values[0]
+                        nwis_gages_aoi.poi_gage_id == new_poi_id, item].values[0]
                     default_gages_df.loc[idx, item] = new_item
 
     for idx, row in default_gages_df.iterrows():
         columns = ["latitude", "longitude", "poi_name", "poi_agency"]
-        check_list = resource_gages_file_df["poi_id"].to_list()
+        check_list = resource_gages_file_df["poi_gage_id"].to_list()
         #print(check_list)
         for item in columns:
             if pd.isnull(row[item]):
-                new_poi_id = row["poi_id"]
+                new_poi_id = row["poi_gage_id"]
                 if new_poi_id in check_list:
                     new_item = resource_gages_file_df.loc[
-                        resource_gages_file_df.poi_id == new_poi_id, item
+                        resource_gages_file_df.poi_gage_id == new_poi_id, item
                     ].values[0]
                     default_gages_df.loc[idx, item] = new_item
                 else:
@@ -569,7 +567,7 @@ def create_default_gages_file(
     pre_fill_missing_mask = default_gages_df[list(REQUIRED_METADATA_COLUMNS)].isnull().any(axis=1)
     if pre_fill_missing_mask.any():
         missing_ids = (
-            default_gages_df.loc[pre_fill_missing_mask, "poi_id"].astype(str).tolist()
+            default_gages_df.loc[pre_fill_missing_mask, "poi_gage_id"].astype(str).tolist()
         )
         fetched = find_missing_gage_info(
             gage_ids=missing_ids,
@@ -579,7 +577,7 @@ def create_default_gages_file(
         )
         if not fetched.empty:
             default_gages_df = (
-                default_gages_df.set_index("poi_id")
+                default_gages_df.set_index("poi_gage_id")
                 .combine_first(fetched)
                 .reset_index()
             )
@@ -587,9 +585,9 @@ def create_default_gages_file(
     #drop from defualt missing data
     mask_missing = default_gages_df[list(REQUIRED_METADATA_COLUMNS)].isnull().any(axis=1)
 
-    for poi_id in default_gages_df.loc[mask_missing, "poi_id"]:
+    for poi_gage_id in default_gages_df.loc[mask_missing, "poi_gage_id"]:
         print(
-            f"Gage {poi_id} was dropped from the default_gages.csv "
+            f"Gage {poi_gage_id} was dropped from the default_gages.csv "
             "due to missing metadata. Add to resource_gages_file.csv and rerun notebook."
         )
 
@@ -598,7 +596,7 @@ def create_default_gages_file(
 
     resource_gages_file_df = pd.concat([resource_gages_file_df, missing_meta_df])
 
-    #resource_gages_file_df.loc[resource_gages_file_df.index[: len(missing_meta_poi_ids)], "poi_id"] = missing_meta_poi_ids            
+    #resource_gages_file_df.loc[resource_gages_file_df.index[: len(missing_meta_poi_ids)], "poi_gage_id"] = missing_meta_poi_ids            
 
     default_gages_file = model_dir / "default_gages.csv"
     default_gages_df.to_csv(default_gages_file, index=False)
@@ -643,7 +641,7 @@ def read_gages_file(
 
     # Read in station file columns needed (You may need to tailor this to the particular file.
     col_names = [
-        "poi_id",
+        "poi_gage_id",
         "poi_agency",
         "poi_name",
         "latitude",
@@ -660,9 +658,9 @@ def read_gages_file(
 
         gages_df = pd.read_csv(gages_file, dtype=cols)
 
-        # Make poi_id the index
-        # gages_df["poi_id"] = gages_df.poi_id.astype(str)
-        gages_df.set_index("poi_id", inplace=True)
+        # Make poi_gage_id the index
+        # gages_df["poi_gage_id"] = gages_df.poi_gage_id.astype(str)
+        gages_df.set_index("poi_gage_id", inplace=True)
 
         gages_agencies_txt = ", ".join(
             f"{item}" for item in list(set(gages_df.poi_agency))
@@ -687,8 +685,8 @@ def read_gages_file(
     else:
         gages_df = pd.read_csv(default_gages_file, dtype=cols)
 
-        # Make poi_id the index
-        gages_df.set_index("poi_id", inplace=True)
+        # Make poi_gage_id the index
+        gages_df.set_index("poi_gage_id", inplace=True)
 
         gages_agencies_txt = ", ".join(
             f"{item}" for item in list(set(gages_df.poi_agency))
