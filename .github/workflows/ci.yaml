@@ -1,3 +1,14 @@
+# Primary development, issues, and merge review for this repository now
+# happen on GitLab (code.usgs.gov/wma/hytest/nhm-assist). GitLab does not
+# read this file at all -- it only ever executes .gitlab-ci.yml -- so this
+# workflow only fires on pushes to the read-only GitHub mirror
+# (github.com/DOI-USGS/nhm-assist), not on GitLab merge requests.
+#
+# A GitLab CI migration is designed but not yet implemented; see
+# docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md for the
+# design and its open questions. Until that lands, this workflow is kept
+# as the real, working CI (pixi + pytest) rather than deleted, so its
+# schedule/matrix/logic aren't lost as reference.
 name: NHM-Assist continuous integration
 on:
   # run at 6 AM UTC every day
@@ -51,7 +62,6 @@ jobs:
       fail-fast: false
       matrix:
         os: ["macos-latest", "windows-latest", "ubuntu-latest"]
-        python-version: ["3.11"] #  "3.11"]
 
     defaults:
       run:
@@ -61,12 +71,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup micromamba
-        uses: mamba-org/setup-micromamba@v1
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0
         with:
-          environment-file: environment.yaml
-          cache-environment: true
-          cache-downloads: true
+          environment: dev
+          cache: true
 
       # Osx and Linux start with nearly the same speed, Windows is slower.
       - name: Scheduled - delay Linux to not hit ORDWR servers simultaneously
@@ -74,7 +83,5 @@ jobs:
         run: |
           python -c "import time; time.sleep(210)"
 
-      - name: Test notebooks
-        working-directory: .github/scripts
-        run: |
-          python test_notebooks.py
+      - name: Run tests
+        run: pixi run test
