@@ -122,13 +122,15 @@ def test_no_template_hardcodes_a_workflow_root(name):
 
 @pytest.mark.parametrize("name", SHARED_TEMPLATES)
 def test_shared_templates_import_only_unified_helpers(name):
-    """Imports must go to assist.common, not a per-fabric shim.
+    """Imports must go to assist.common, with no exceptions.
 
-    `streamflow_postprocess` is the one exception: it is nhm-only, has no nhf
-    counterpart, and was never unified -- and it was nhf's own notebook 4 that
-    already imported it across that boundary.
+    `streamflow_postprocess` used to be one: nhm-only, no nhf counterpart, so
+    it was never part of the nine-pair unification. Sharing the templates made
+    that untenable -- notebook 4 was a shared template reaching into a
+    per-fabric package -- so it moved to assist.common too and this check is
+    now absolute.
     """
-    allowed = {"assist.nhm.streamflow_postprocess"}
+    allowed: set[str] = set()
     offenders = []
     for node in ast.walk(ast.parse(_template(name))):
         if isinstance(node, ast.ImportFrom) and node.module:
@@ -145,17 +147,30 @@ def test_shared_templates_import_only_unified_helpers(name):
 class TestResolveWorkflowRoot:
     """The resolver that replaced every hardcoded root."""
 
-    def test_each_workflow_notebook_dir_maps_to_its_own_root(self):
-        from assist.workspace.bridge import (
-            REPO_NOTEBOOK_DIRS,
-            resolve_repo_root,
-            resolve_workflow_root,
-        )
+    def test_each_workflow_maps_to_its_own_root(self):
+        """Generated notebooks live at <project>/notebooks/<workflow>, so the
+        workflow is read off the directory name. Only nhf's data root differs
+        from the repo root."""
+        from assist.workspace.bridge import resolve_repo_root, resolve_workflow_root
 
         repo = resolve_repo_root()
-        for workflow, relative in REPO_NOTEBOOK_DIRS.items():
-            notebooks = repo / relative
-            assert resolve_workflow_root(cwd=notebooks) == notebooks.parent, workflow
+        expected = {"nhm": repo, "nhf": repo / "nhf_assist", "pest": repo}
+        for workflow, root in expected.items():
+            assert resolve_workflow_root(workflow) == root, workflow
+            probe = pathlib.Path("/tmp/ws/proj/notebooks") / workflow
+            assert resolve_workflow_root(cwd=probe) == root, workflow
+
+    def test_the_legacy_in_repo_layout_still_resolves(self):
+        """main removed the in-repo notebooks/ dirs, but a workspace left over
+        from before the change must still resolve to the right root."""
+        from assist.workspace.bridge import resolve_repo_root, resolve_workflow_root
+
+        repo = resolve_repo_root()
+        assert resolve_workflow_root(cwd=repo / "notebooks") == repo
+        assert (
+            resolve_workflow_root(cwd=repo / "nhf_assist" / "notebooks")
+            == repo / "nhf_assist"
+        )
 
     def test_nhf_root_is_not_the_repo_root(self):
         """The bug this exists to prevent: resolve_nhm_runtime_paths reports the
@@ -184,9 +199,35 @@ class TestResolveWorkflowRoot:
         assert resolve_workflow_root(cwd=repo) == repo
         assert resolve_workflow_root(cwd=repo / "src") == repo
 
-    def test_out_of_tree_workspace_follows_the_convention(self, tmp_path):
-        from assist.workspace.bridge import resolve_workflow_root
+    def test_an_unrecognisable_cwd_falls_back_to_the_repo_root(self, tmp_path):
+        """Nothing in the path names a workflow, so the repo root is the only
+        safe answer -- which is what every non-nhf workflow uses anyway."""
+        from assist.workspace.bridge import (
+            infer_workflow,
+            resolve_repo_root,
+            resolve_workflow_root,
+        )
 
-        notebooks = tmp_path / "somewhere" / "notebooks"
-        notebooks.mkdir(parents=True)
-        assert resolve_workflow_root(cwd=notebooks) == notebooks.parent
+        odd = tmp_path / "somewhere" / "else"
+        odd.mkdir(parents=True)
+        assert infer_workflow(odd) is None
+        assert resolve_workflow_root(cwd=odd) == resolve_repo_root()
+
+
+def test_streamflow_postprocess_moved_with_a_working_shim():
+    """It had no nhf counterpart, so it was never part of the nine-pair
+    unification; it moved anyway once a shared template imported it."""
+    import assist.common.streamflow_postprocess as impl
+    import assist.nhm.streamflow_postprocess as shim
+
+    assert shim.subset_seg_outflow_to_poi_gages is impl.subset_seg_outflow_to_poi_gages
+
+    shim_source = (
+        REPO_ROOT / "src/assist/nhm/streamflow_postprocess.py"
+    ).read_text(encoding="utf-8")
+    functions = [
+        node.name
+        for node in ast.parse(shim_source).body
+        if isinstance(node, ast.FunctionDef)
+    ]
+    assert not functions, f"the shim still defines {functions}"
