@@ -362,7 +362,6 @@ try:
     npoigages_df = npoigages_df[cols]
     npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
 
-
     npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
     npoigages_df.to_csv(npoigages_info_file_path, index=False)
 except FileNotFoundError:
