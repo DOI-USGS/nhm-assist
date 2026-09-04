@@ -1892,6 +1892,10 @@ def make_hf_map(
         create_non_poi_obs_marker_cluster(poi_df, waterdata_gages_aoi, gages_df, Folium_maps_dir, param_filename, cluster_zoom)
     )
 
+    bor_marker_cluster, bor_marker_cluster_label = create_bor_obs_marker_cluster(
+        gages_df, cluster_zoom, Folium_maps_dir
+    )
+
     fmi_poi_marker_cluster, fmi_poi_marker_cluster_label = create_FMI_poi_markers(
         root_dir,
         root_dir / "domain_data" / subdomain,
@@ -1964,6 +1968,9 @@ def make_hf_map(
 
     non_poi_marker_cluster.add_to(m2)
     non_poi_marker_cluster_label.add_to(m2)
+
+    bor_marker_cluster.add_to(m2)
+    bor_marker_cluster_label.add_to(m2)
 
     fmi_poi_marker_cluster.add_to(m2)
     fmi_poi_marker_cluster_label.add_to(m2)
@@ -2660,6 +2667,125 @@ def create_poi_obs_marker_cluster(
     ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
+
+
+def create_bor_obs_marker_cluster(
+    gages_df,
+    cluster_zoom,
+    Folium_maps_dir,
+):
+    """
+    Creates folium marker clusters for BOR Hydromet unregulated-flow (QU) gages.
+
+    BOR-QU gages are not in the parameter file (poi_df); they live in gages_df
+    with poi_agency == "BOR-QU". This layer plots them with a distinct blue
+    pentagon symbol and reuses the same streamflow-observation popup produced by
+    make_obs_plot_files (the "{poi_gage_id}_streamflow_obs.txt" files).
+
+    Parameters
+    ----------
+    gages_df : pandas DataFrame
+        Gages dataframe (indexed by poi_gage_id) that includes BOR-QU rows.
+    cluster_zoom : int
+        Zoom (out) level at which gages get clustered on the folium map.
+    Folium_maps_dir : pathlib Path
+        Directory containing the "{poi_gage_id}_streamflow_obs.txt" plot files.
+
+    Returns
+    -------
+    bor_marker_cluster : folium MarkerCluster
+        BOR-QU gages.
+    bor_marker_cluster_label : folium MarkerCluster
+        BOR-QU gage id labels.
+    """
+
+    bor_marker_cluster = MarkerCluster(
+        name="BOR unregulated-flow (QU) gage",
+        overlay=True,
+        control=True,
+        icon_create_function=None,
+        disableClusteringAtZoom=cluster_zoom,
+    )
+    bor_marker_cluster_label = MarkerCluster(
+        name="BOR-QU gage ID",
+        overlay=True,
+        control=True,
+        show=False,
+        icon_create_function=None,
+        disableClusteringAtZoom=cluster_zoom,
+    )
+
+    # gages_df is normally indexed by poi_gage_id; work off a reset copy so the
+    # id is available as a column and filter to BOR-QU stations only.
+    bor_df = gages_df.reset_index()
+    if "poi_agency" not in bor_df.columns:
+        return bor_marker_cluster, bor_marker_cluster_label
+    bor_df = bor_df[bor_df["poi_agency"] == "BOR-QU"]
+
+    for _idx, row in bor_df.iterrows():
+        poi_gage_id = row["poi_gage_id"]
+
+        # Skip rows without coordinates (can't place a marker).
+        if pd.isnull(row.get("latitude")) or pd.isnull(row.get("longitude")):
+            continue
+
+        obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
+        if not obs_plot_file.exists():
+            div_txt = f"<p>No observation plot available for {poi_gage_id}</p>"
+        else:
+            with open(obs_plot_file, "r") as f:
+                div_txt = f.read()
+
+        html = (
+            """
+        <html>
+        <head>
+             <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+        </head>
+        <body>
+             <!-- Output from the Python script above: -->"""
+            + div_txt
+            + """</body>
+        </html>"""
+        )
+
+        iframe = folium.IFrame(
+            html=html,
+            width=525,
+            height=325,
+        )
+
+        text = f'{poi_gage_id}'
+        label_lat = row["latitude"]
+        label_lon = row["longitude"]
+
+        folium.map.Marker(
+            [label_lat, label_lon],
+            icon=DivIcon(
+                icon_size=(10, 10),
+                icon_anchor=(0, 0),
+                html='<div style="font-size: 12pt; font-weight: bold; color: #1f4fd8">%s</div>'
+                % text,
+            ),
+        ).add_to(bor_marker_cluster_label)
+
+        folium.Marker(
+            location=[row["latitude"], row["longitude"]],
+            icon=make_polygon_icon(
+                num_sides=5, radius=6, color="#1f4fd8", fill_opacity=1.0
+            ),
+            popup=folium.Popup(
+                iframe,
+                parse_html=True,
+            ),
+            tooltip=(
+                f'<font size="3px">{poi_gage_id} ({row["poi_agency"]})<br>'
+                f'{row.get("poi_name", "")}<br>Estimated unregulated flow (QU)</font>'
+            ),
+        ).add_to(bor_marker_cluster)
+
+    return bor_marker_cluster, bor_marker_cluster_label
+
 
 def create_non_poi_obs_marker_cluster(
     poi_df,

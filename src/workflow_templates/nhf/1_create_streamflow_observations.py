@@ -177,8 +177,6 @@ default_gages_file = create_default_gages_file(
 )
 
 # %%
-
-# %%
 gages_df, gages_txt, gages_txt_nb2 = read_gages_file(
     model_dir=config["model_dir"],
     poi_df=poi_df,
@@ -221,6 +219,179 @@ ecy_df = create_ecy_sf_df(
 )
 
 # %% [markdown]
+# ## Bureau of Reclamation Hydromet — Unregulated Flow (QU)
+#
+# Reads the reviewed BOR QU domain file (`BOR_QU_domain_review.csv`) produced
+# by the BOR mapping notebook. Stations marked `good=1` use `nearest_poi_id`,
+# stations marked `good=2` use `alt_poi_id`. Composite poi_gage_id format:
+# `<usgs_poi_id>-<CBTT>`, agency = `BOR-QU`.
+#
+# Daily QU data is read from the local cache (`data_dependencies/bor_qu_cache/individual/`)
+# and integrated into `sf_efc.nc` alongside USGS/OWRD/ECY observations.
+
+# %%
+# Look for the reviewed BOR domain file
+bor_review_file = (
+    root_dir
+    / "hydrofabric_domain_data"
+    / "OHM_2026_02_21"
+    / "npoigages_data"
+    / "BOR_QU_domain_review.csv"
+)
+bor_qu_cache_dir = root_dir / "data_dependencies" / "bor_qu_cache" / "individual"
+bor_qu_streamflow_df = pd.DataFrame()
+
+if bor_review_file.exists():
+    bor_review = pd.read_csv(bor_review_file)
+    # Drop empty rows and filter to good > 0
+    bor_review = bor_review.dropna(subset=["cbtt"])
+    bor_review["good"] = (
+        pd.to_numeric(bor_review["good"], errors="coerce").fillna(0).astype(int)
+    )
+    bor_active = bor_review[bor_review["good"] > 0].copy()
+
+    # Determine which poi_id to use
+    bor_active["use_poi_id"] = bor_active.apply(
+        lambda r: (
+            str(int(float(r["alt_poi_id"])))
+            if r["good"] == 2 and pd.notna(r.get("alt_poi_id"))
+            else str(int(float(r["nearest_poi_id"])))
+        ),
+        axis=1,
+    )
+    bor_active["poi_gage_id"] = bor_active["use_poi_id"] + "-" + bor_active["cbtt"]
+    bor_active["poi_agency"] = "BOR-QU"
+
+    print(f"BOR-QU stations to retrieve: {len(bor_active)}")
+    print(bor_active[["cbtt", "poi_gage_id", "name"]].to_string(index=False))
+
+    # Filter to child domain using HRU bounding geometry
+    import geopandas as gpd
+
+    bor_gdf = gpd.GeoDataFrame(
+        bor_active,
+        geometry=gpd.points_from_xy(bor_active["longitude"], bor_active["latitude"]),
+        crs="EPSG:4326",
+    )
+    bor_gdf = bor_gdf.to_crs(hru_gdf.crs)
+    bor_clipped = gpd.clip(bor_gdf, hru_gdf.dissolve())
+    bor_active = bor_active[bor_active["cbtt"].isin(bor_clipped["cbtt"])].copy()
+
+    if len(bor_active) == 0:
+        print("  No BOR-QU gages intersect the child domain.")
+    else:
+        print(f"  BOR-QU stations in child domain: {len(bor_active)}")
+        print(bor_active[["cbtt", "poi_gage_id", "name"]].to_string(index=False))
+
+        # Parse model period for time filtering
+        control = pws.Control.load_prms(
+            pl.Path(config["model_dir"] / config["control_file_name"]),
+            warn_unused_options=False,
+        )
+        start_date = pd.to_datetime(str(control.start_time))
+        end_date = pd.to_datetime(str(control.end_time))
+
+        # Read QU data from local cache
+        all_bor_data = []
+        for _, row in bor_active.iterrows():
+            station = row["cbtt"]
+            cache_file = bor_qu_cache_dir / f"{station}.csv"
+            if cache_file.exists():
+                df_tmp = pd.read_csv(cache_file, parse_dates=["date"])
+                # Filter to model period
+                df_tmp = df_tmp[
+                    (df_tmp["date"] >= start_date) & (df_tmp["date"] <= end_date)
+                ]
+                if len(df_tmp) > 0:
+                    df_tmp = df_tmp.rename(
+                        columns={
+                            "station": "station_nbr",
+                            "date": "record_date",
+                            "qu_cfs": "discharge",
+                        }
+                    )
+                    df_tmp["station_nbr"] = station
+                    all_bor_data.append(df_tmp)
+                    print(f"  {station}: {len(df_tmp)} days (from cache)")
+            else:
+                print(f"  {station}: ⚠ No cache file found at {cache_file}")
+
+        if all_bor_data:
+            bor_raw = pd.concat(all_bor_data, ignore_index=True)
+        else:
+            bor_raw = pd.DataFrame(columns=["station_nbr", "record_date", "discharge"])
+            print("  No BOR QU data found in cache.")
+
+        # Reshape BOR data to match waterdata_df/owrd_df/ecy_df format
+        # Expected: MultiIndex (poi_gage_id, time) with column 'discharge'
+        if not bor_raw.empty:
+            # Map CBTT -> composite poi_gage_id
+            cbtt_to_poi = bor_active.set_index("cbtt")["poi_gage_id"].to_dict()
+            bor_raw["poi_gage_id"] = bor_raw["station_nbr"].map(cbtt_to_poi)
+            bor_raw = bor_raw.dropna(subset=["poi_gage_id"])
+
+            bor_qu_streamflow_df = bor_raw.rename(columns={"record_date": "time"})[
+                ["poi_gage_id", "time", "discharge"]
+            ].copy()
+            bor_qu_streamflow_df = bor_qu_streamflow_df.set_index(
+                ["poi_gage_id", "time"]
+            )
+
+            print(
+                f"\n  BOR-QU streamflow: {len(bor_qu_streamflow_df)} records, "
+                f"{bor_qu_streamflow_df.index.get_level_values('poi_gage_id').nunique()} stations"
+            )
+
+        # Add BOR stations to gages_df
+        bor_gages_info = bor_active[
+            ["poi_gage_id", "poi_agency", "name", "latitude", "longitude"]
+        ].copy()
+        bor_gages_info = bor_gages_info.rename(columns={"name": "poi_name"})
+        bor_gages_info["drainage_area"] = pd.NA
+        bor_gages_info["drainage_area_contrib"] = pd.NA
+        # gages_df is indexed by poi_gage_id (see read_gages_file); match that
+        # convention so downstream xr_streamflow.sel(poi_gage_id=...) works.
+        bor_gages_info = bor_gages_info.set_index("poi_gage_id")
+        gages_df = pd.concat([gages_df, bor_gages_info])
+        gages_df = gages_df[~gages_df.index.duplicated(keep="first")]
+        print(f"  gages_df now has {len(gages_df)} entries (including BOR-QU)")
+
+        # Persist the BOR-QU gages so downstream notebooks (e.g. notebook 2's
+        # hydrofabric map) see them. read_gages_file rebuilds gages_df from the
+        # gages CSV, so BOR rows must be written back or they won't appear.
+        # Prefer the user-editable gages.csv if present, else default_gages.csv.
+        import pathlib as _pl
+
+        _gages_file = _pl.Path(config["gages_file"])
+        _default_gages_file = _pl.Path(config["default_gages_file"])
+        _target_gages_file = (
+            _gages_file if _gages_file.exists() else _default_gages_file
+        )
+
+        _gages_out = pd.read_csv(_target_gages_file, dtype={"poi_gage_id": str})
+        _bor_out = bor_gages_info.reset_index()[
+            [
+                "poi_gage_id",
+                "poi_agency",
+                "poi_name",
+                "latitude",
+                "longitude",
+                "drainage_area",
+                "drainage_area_contrib",
+            ]
+        ]
+        _gages_out = pd.concat([_gages_out, _bor_out], ignore_index=True)
+        _gages_out = _gages_out.drop_duplicates(subset="poi_gage_id", keep="last")
+        _gages_out.to_csv(_target_gages_file, index=False)
+        print(
+            f"  Wrote {len(_bor_out)} BOR-QU gage(s) to {_target_gages_file.name} "
+            f"({len(_gages_out)} total rows)"
+        )
+
+else:
+    print("No BOR_QU_domain_review.csv found — skipping BOR Hydromet retrieval.")
+
+# %% [markdown]
 # # Create streamflow observations file with appended EFC values (sf_efc.nc)
 # The following cell creates the efc classification codes for the WaterData daily streamflow data, and daily streamflow data if collected from Washington or Oregon the data as an encoded netCDf file formatted to match the `sf.nc` file created during the NHM subdomain model extraction routine.
 #
@@ -233,6 +404,7 @@ xr_streamflow = create_sf_efc_df(
     ecy_df=ecy_df,
     waterdata_df=waterdata_df,
     gages_df=gages_df,
+    bor_df=bor_qu_streamflow_df,
 )
 
 # %%

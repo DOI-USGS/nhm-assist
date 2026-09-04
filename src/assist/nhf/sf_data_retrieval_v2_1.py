@@ -740,6 +740,7 @@ def create_waterdata_sf_df(
         waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         hru_gdf=hru_gdf,
         seg_gdf=seg_gdf,
+        poi_df=poi_df,
     )
 
     if waterdata_cache_file.exists():
@@ -921,10 +922,11 @@ def create_sf_efc_df(
     ecy_df,
     waterdata_df,
     gages_df,
+    bor_df=None,
 ):
     """
-    Combines daily streamflow dataframes from various database retrievals, currently WaterData, OWRD, and ECY into
-    one xarray dataset.
+    Combines daily streamflow dataframes from various database retrievals, currently WaterData, OWRD, ECY,
+    and optionally BOR Hydromet QU into one xarray dataset.
 
     Note: all WaterData data is mirrored the OWRD database without any primary source tag/flag, so
     this section will also determine the original source agency of each daily observation, OWRD vs. WaterData.
@@ -984,9 +986,19 @@ def create_sf_efc_df(
             streamflow_df = streamflow_df[~streamflow_df.index.duplicated(keep="last")]
         else:
             pass
+
+        if bor_df is not None and not bor_df.empty:
+            streamflow_df = pd.concat([streamflow_df, bor_df])
+            streamflow_df = streamflow_df[~streamflow_df.index.duplicated(keep="last")]
+
+        # Ensure gages_df is indexed by poi_gage_id to match streamflow_df
+        gages_for_xr = gages_df.copy()
+        if "poi_gage_id" in gages_for_xr.columns:
+            gages_for_xr = gages_for_xr.drop_duplicates(subset="poi_gage_id", keep="first")
+            gages_for_xr = gages_for_xr.set_index("poi_gage_id")
             
         xr_station_info = xr.Dataset.from_dataframe(
-            gages_df
+            gages_for_xr
         )  # gages_df is the new source of gage metadata
         xr_streamflow_only = xr.Dataset.from_dataframe(streamflow_df)
         xr_streamflow = xr.merge(
