@@ -227,10 +227,13 @@ def create_hru_gdf(
     # If the GIS file doesn't have 'hru_id', fall back to 'model_idx' or 'model_hru_idx'
     # (v1.1 uses 'model_idx' or 'model_hru_idx' where v2 uses 'hru_id' — they are the same value)
     if "hru_id" not in hru_gdb.columns:
-        if "model_idx" in hru_gdb.columns:
-            hru_gdb["hru_id"] = hru_gdb["model_idx"]
-        elif "model_hru_idx" in hru_gdb.columns:
-            hru_gdb["hru_id"] = hru_gdb["model_hru_idx"]
+        # The DBF format behind a shapefile truncates field names to 10
+        # characters, so a .shp carries "model_hru_" where a .gpkg carries
+        # "model_hru_idx". Both spellings mean the same column.
+        for candidate in ("model_idx", "model_hru_idx", "model_hru_", "model_id"):
+            if candidate in hru_gdb.columns:
+                hru_gdb["hru_id"] = hru_gdb[candidate]
+                break
    
     # GFv1.1 parameter files carry hru_segment_nhm; GFv2 ones need not. Drop only
     # the built-in extras that this parameter file lacks -- a name the user supplied
@@ -271,6 +274,11 @@ def create_hru_gdf(
         df.drop(columns=["hru_id"], inplace=True)
     else:
         print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")
+        # `same` was previously never assigned, so this diagnostic branch raised
+        # NameError instead of printing the mismatch it exists to print. It only
+        # fires for models whose GIS order differs from the parameter file's,
+        # which is why it went unnoticed.
+        same = df_by_nhm_id["hru_id"].eq(hru_gdb["hru_id"]).fillna(False)
         diff = df_by_nhm_id.loc[~same, ["hru_id"]].join(
             hru_gdb.loc[~same, ["hru_id"]],
             lsuffix="_df_by_nhm_id",
@@ -388,12 +396,14 @@ def create_segment_gdf(
         )  # Set an index for segment geodatabase.
         seg_gdb.index.name = "index"  # Index column must be renamed
 
-    # if GIS_format == ".shp":
-    #     seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)
-    #     seg_gdb = seg_gdb.set_index(
-    #         "nhm_seg", drop=False
-    #     )  # Set an index for segment geodatabase(GIS)
-    #     seg_gdb.index.name = "index"  # Index column must be renamed of the hru
+    if GIS_format == ".shp":
+        seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)
+        if "nhm_seg" not in seg_gdb.columns and "nhm_seg_id" in seg_gdb.columns:
+            seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)
+        seg_gdb = seg_gdb.set_index(
+            "nhm_seg", drop=False
+        )  # Set an index for segment geodatabase(GIS)
+        seg_gdb.index.name = "index"  # Index column must be renamed of the hru
 
     seg_gdb = seg_gdb.to_crs(crs)  # reprojects to the defined crs projection
 
@@ -424,10 +434,22 @@ def create_segment_gdf(
     ids_seg = seg_gdb["nhm_seg"].tolist()
     print(len(ids_seg))
     
-    if ids_df != ids_seg:
-        raise ValueError("nhm_seg indices in the parameter file and the .gpkg are not the same.")
+    # Compare as sets, not ordered lists. The check exists to ensure both
+    # sides describe the same segments (see the comment above), and the merge
+    # below is `on="nhm_seg"`, so row order is irrelevant. Comparing ordered
+    # lists rejected valid models whose GIS happens to be stored in a
+    # different order -- the v1.1 byHWobs New England subdomain has all 956
+    # segments in both places, just not in the same sequence.
+    missing_from_gis = sorted(set(ids_df) - set(ids_seg))
+    missing_from_param = sorted(set(ids_seg) - set(ids_df))
+    if missing_from_gis or missing_from_param:
+        raise ValueError(
+            "nhm_seg indices in the parameter file and the GIS are not the same. "
+            f"Missing from GIS: {missing_from_gis[:10]}. "
+            f"Missing from the parameter file: {missing_from_param[:10]}."
+        )
     else:
-        print("nhm_seg indices in the parameter file and the .gpkg match")
+        print("nhm_seg indices in the parameter file and the GIS match")
     
     # if df_by_segment_id["segment_id"].equals(seg_gdb["segment_id"]):
     #     print("GIS segment_id matches order found in myparam.param")

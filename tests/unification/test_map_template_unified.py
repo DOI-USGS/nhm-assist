@@ -200,7 +200,7 @@ NHF_MARKER_FUNCTIONS = [
 ]
 
 
-def _nhf_baseline_source() -> str:
+def _nhf_baseline_source_for(_name: str = "") -> str:
     import subprocess
 
     source = subprocess.run(
@@ -224,14 +224,81 @@ def _function_source(source: str, name: str) -> str:
     raise AssertionError(f"{name} not found")
 
 
+# The one deliberate departure from nhf in these functions: folium raises on a
+# NaN latitude/longitude instead of skipping the marker, so a single gage with
+# no location takes down the whole map. GFv2 subdomains hit this routinely
+# (Rogue River). Each marker builder now filters first, using the same check
+# `create_poi_paramplot_marker_cluster` and `create_streamflow_poi_markers`
+# already had inline. Modelled here as (frame, label) so everything *else* in
+# these functions stays provably verbatim nhf.
+NAN_LOCATION_GUARD = {
+    "create_poi_marker_cluster": ("poi_df", "hydrofabric map"),
+    "create_non_poi_marker_cluster": ("waterdata_gages_aoi", "hydrofabric map"),
+    "create_poi_obs_marker_cluster": ("poi_df", "hydrofabric map"),
+    "create_non_poi_obs_marker_cluster": ("gages_df", "hydrofabric map"),
+}
+
+
+def _apply_intended_edits(source: str, name: str) -> str:
+    """Splice the NaN-location guard into nhf's baseline for one function."""
+    if name not in NAN_LOCATION_GUARD:
+        return source
+    frame, label = NAN_LOCATION_GUARD[name]
+    lines = source.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("for ") and f"{frame}.iterrows()" in stripped:
+            indent = line[: len(line) - len(line.lstrip())]
+            lines.insert(i, f'{indent}{frame} = _with_locatable_gages({frame}, "{label}")')
+            lines.insert(i + 1, "")
+            return "\n".join(lines)
+    raise AssertionError(
+        f"nhf's {name} no longer iterates {frame}; this intended-edit entry is "
+        "stale and the test needs updating"
+    )
+
+
 @pytest.mark.parametrize("name", NHF_MARKER_FUNCTIONS)
 def test_marker_functions_are_verbatim_nhf(name, common):
     """Compared against nhf's own source rather than hardcoded values, so the
-    assertion cannot drift away from what the maps actually looked like."""
-    baseline = _nhf_baseline_source()
-    actual = pathlib.Path(inspect.getfile(common)).read_text(encoding="utf-8")
-    assert _function_source(actual, name) == _function_source(baseline, name), (
-        f"{name} has drifted from nhf's version"
+    assertion cannot drift away from what the maps actually looked like. The
+    only permitted difference is the NaN-location guard above."""
+    # splice into the extracted function, not the whole file -- several of
+    # these iterate the same frame name, so a file-wide insert lands in the
+    # wrong function
+    expected = _apply_intended_edits(
+        _function_source(_nhf_baseline_source_for(name), name), name
+    )
+    actual_file = pathlib.Path(inspect.getfile(common)).read_text(encoding="utf-8")
+    assert _function_source(actual_file, name) == expected, (
+        f"{name} has drifted from nhf's version beyond the intended edit"
+    )
+
+
+def test_every_marker_builder_guards_against_nan_locations(common):
+    """The bug this guards: folium's ValueError, not a skipped marker."""
+    builders = [
+        "create_poi_marker_cluster",
+        "create_non_poi_marker_cluster",
+        "create_poi_obs_marker_cluster",
+        "create_non_poi_obs_marker_cluster",
+        "create_FMI_poi_markers",
+        "create_ref_gages_markers",
+        "create_non_ref_gages_markers",
+        "create_poi_paramplot_marker_cluster",
+        "create_streamflow_poi_markers",
+    ]
+    unguarded = []
+    for name in builders:
+        source = inspect.getsource(getattr(common, name))
+        live = "\n".join(
+            line for line in source.splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        )
+        if "_with_locatable_gages(" not in live and "location_complete" not in live:
+            unguarded.append(name)
+    assert unguarded == [], (
+        f"these place markers without filtering NaN coordinates: {unguarded}"
     )
 
 
@@ -292,3 +359,28 @@ def test_fmi_markers_keep_their_polygon_encoding(common):
         "FMI markers lost the data-driven side count"
     )
     assert "fmi_style.get(" in live
+
+
+def test_make_hf_map_does_not_guess_the_model_directory(common):
+    """It used to derive `root_dir / "domain_data" / subdomain` for the
+    reference-gage layer. Under the workspace flow the model lives at
+    <workspace>/<project>/models/<name>/outputs/runtime, so that guess either
+    raised or -- when the model name happened to match a folder in the repo's
+    domain_data/ -- silently wrote ref-gage metadata back into the repo."""
+    import inspect
+
+    source = inspect.getsource(common.make_hf_map)
+    assert '"domain_data"' not in source, (
+        "make_hf_map is guessing the model directory from domain_data again"
+    )
+    assert "model_dir" in inspect.signature(common.make_hf_map).parameters
+
+
+def test_make_hf_map_model_dir_defaults_to_the_param_file_folder(common):
+    """Callers that predate the parameter still land in the right place."""
+    import inspect
+
+    signature = inspect.signature(common.make_hf_map)
+    assert signature.parameters["model_dir"].default is None
+    source = inspect.getsource(common.make_hf_map)
+    assert "pl.Path(param_filename).parent" in source

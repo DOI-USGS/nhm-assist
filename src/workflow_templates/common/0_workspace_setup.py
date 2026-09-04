@@ -173,7 +173,17 @@ if project_dir and active_model_name:
 # <font size = '3'>The default format is a geopackage (**.gpkg**) but other formats such as ESRI shape file (**.shp**) may have been provided.
 
 # %%
-GIS_format = ".gpkg"
+# Detected from the model rather than assumed: most NHM subdomains ship a
+# geopackage, but some (e.g. the v1.1 byHWobs Maine subdomain) ship only
+# shapefiles, and the hydrofabric readers have a .shp branch that a hardcoded
+# ".gpkg" never selects. Override on the next line if the detection is wrong.
+if (model_dir / "GIS" / "model_layers.gpkg").exists():
+    GIS_format = ".gpkg"
+elif list((model_dir / "GIS").glob("model_nhru.shp")):
+    GIS_format = ".shp"
+else:
+    GIS_format = ".gpkg"
+# GIS_format = ".gpkg"
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **parameter file name**. </font><br>
@@ -189,7 +199,22 @@ param_filename = model_dir / param_file
 # <font size = '3'> The default file name, **control.default.bandit** is the name of the control file provided with NHM subdomain models. If another control file is desired or the name has been changed, modify `control_file_name` here:
 
 # %%
-control_file_name = "control.default.bandit"
+# Detected from the model, preferring the bandit-subset control file. Models
+# differ: most ship control.default.bandit, but the v1.1 byHWobs New England
+# subdomain ships control.bandit, and pywatershed raises rather than falling
+# back. Override on the last line if a different control file is wanted.
+control_file_name = next(
+    (
+        candidate
+        for candidate in (
+            "control.default.bandit",
+            "control.bandit",
+            "control.default",
+        )
+        if (model_dir / candidate).exists()
+    ),
+    "control.default.bandit",
+)
 #control_file_name = "control.bandit"
 
 control = pws.Control.load_prms(

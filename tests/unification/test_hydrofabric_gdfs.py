@@ -54,6 +54,48 @@ def test_segment_gdf_is_nhf_verbatim_except_the_restored_nhm_params(nhf_baseline
             '    seg_params = [vv for vv in seg_params if vv in pdb.parameters]\n',
         ),
     ]
+    edits.append(
+        # nhf left the .shp branch commented out, so a shapefile model reached
+        # `seg_gdb.to_crs(...)` with seg_gdb unbound (UnboundLocalError). The
+        # v1.1 byHWobs Maine subdomain ships only shapefiles.
+        (
+            '    # if GIS_format == ".shp":\n'
+            '    #     seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)\n'
+            '    #     seg_gdb = seg_gdb.set_index(\n'
+            '    #         "nhm_seg", drop=False\n'
+            "    #     )  # Set an index for segment geodatabase(GIS)\n"
+            '    #     seg_gdb.index.name = "index"  # Index column must be renamed of the hru\n',
+            '    if GIS_format == ".shp":\n'
+            '        seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)\n'
+            '        if "nhm_seg" not in seg_gdb.columns and "nhm_seg_id" in seg_gdb.columns:\n'
+            '            seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)\n'
+            "        seg_gdb = seg_gdb.set_index(\n"
+            '            "nhm_seg", drop=False\n'
+            "        )  # Set an index for segment geodatabase(GIS)\n"
+            '        seg_gdb.index.name = "index"  # Index column must be renamed of the hru\n',
+        )
+    )
+    edits.append(
+        # The ID check compared ordered lists, so a model whose GIS stores the
+        # same segments in a different order was rejected outright. The merge
+        # below is on="nhm_seg", so order does not matter.
+        (
+            "    if ids_df != ids_seg:\n"
+            '        raise ValueError("nhm_seg indices in the parameter file and the .gpkg are not the same.")\n'
+            "    else:\n"
+            '        print("nhm_seg indices in the parameter file and the .gpkg match")\n',
+            "    missing_from_gis = sorted(set(ids_df) - set(ids_seg))\n"
+            "    missing_from_param = sorted(set(ids_seg) - set(ids_df))\n"
+            "    if missing_from_gis or missing_from_param:\n"
+            "        raise ValueError(\n"
+            '            "nhm_seg indices in the parameter file and the GIS are not the same. "\n'
+            '            f"Missing from GIS: {missing_from_gis[:10]}. "\n'
+            '            f"Missing from the parameter file: {missing_from_param[:10]}."\n'
+            "        )\n"
+            "    else:\n"
+            '        print("nhm_seg indices in the parameter file and the GIS match")\n',
+        )
+    )
     nhf_source = inspect.getsource(nhf_baseline.create_segment_gdf)
     for old, new in edits:
         assert old in nhf_source, (
@@ -118,6 +160,34 @@ def _restore_calibration_block(nhf_source: str) -> str:
             "    ]\n"
             "\n"
             "    # Create a dataframe for parameter values\n    first = True\n",
+        )
+    )
+    replacements.append(
+        # A shapefile's DBF truncates field names to 10 chars, so a .shp
+        # carries "model_hru_" where a .gpkg carries "model_hru_idx". Without
+        # this, create_hru_gdf raised KeyError('hru_id') on any shapefile
+        # model (the v1.1 byHWobs Maine subdomain).
+        (
+            '    if "hru_id" not in hru_gdb.columns:\n'
+            '        if "model_idx" in hru_gdb.columns:\n'
+            '            hru_gdb["hru_id"] = hru_gdb["model_idx"]\n'
+            '        elif "model_hru_idx" in hru_gdb.columns:\n'
+            '            hru_gdb["hru_id"] = hru_gdb["model_hru_idx"]\n',
+            '    if "hru_id" not in hru_gdb.columns:\n'
+            '        for candidate in ("model_idx", "model_hru_idx", "model_hru_", "model_id"):\n'
+            '            if candidate in hru_gdb.columns:\n'
+            '                hru_gdb["hru_id"] = hru_gdb[candidate]\n'
+            '                break\n',
+        )
+    )
+    replacements.append(
+        # `same` was never assigned, so the order-mismatch diagnostic raised
+        # NameError instead of printing the mismatch. Only models whose GIS
+        # order differs from the parameter file reach it (New England).
+        (
+            "        diff = df_by_nhm_id.loc[~same, [\"hru_id\"]].join(\n",
+            '        same = df_by_nhm_id["hru_id"].eq(hru_gdb["hru_id"]).fillna(False)\n'
+            "        diff = df_by_nhm_id.loc[~same, [\"hru_id\"]].join(\n",
         )
     )
     result = nhf_source

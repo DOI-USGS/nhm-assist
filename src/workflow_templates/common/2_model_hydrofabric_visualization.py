@@ -115,6 +115,7 @@ map_file = make_hf_map(
     Folium_maps_dir=config["Folium_maps_dir"],
     param_filename=config["param_filename"],
     subdomain=config["subdomain"],
+    model_dir=config["model_dir"],
 )
 
 # %% [markdown]

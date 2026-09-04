@@ -446,6 +446,59 @@ def create_segment_map_hide(seg_gdf):
     return seg_map_hide
 
 
+def _step_colormap_bins(edges, value_min, value_max, n_colors=8):
+    """Return `n_colors + 1` strictly increasing edges for a StepColormap.
+
+    The edges are derived from a parameter's min/mean/max, which collapse to a
+    single repeated value whenever the parameter is uniform across HRUs --
+    branca then raises `ValueError: bins must be monotonically increasing or
+    decreasing` and the whole parameter map fails. GFv2 subdomains ship
+    several uniform defaults (Umatilla River has six: potet_sublim,
+    slowcoef_sq, smidx_exp, snowinfil_max, soil_rechr_max_frac, ssr2gw_exp),
+    so this is routine rather than exceptional.
+
+    A uniform parameter has nothing to grade, so the range is straddled to
+    keep the colormap valid and render it as a single band.
+    """
+    wanted = n_colors + 1
+    cleaned = [float(e) for e in edges if e is not None and np.isfinite(e)]
+    if len(cleaned) == wanted and all(a < b for a, b in zip(cleaned, cleaned[1:])):
+        return cleaned
+
+    lo, hi = float(value_min), float(value_max)
+    if not (np.isfinite(lo) and np.isfinite(hi)):
+        lo, hi = 0.0, 1.0
+    if hi <= lo:
+        pad = abs(lo) * 1e-6 if lo else 1e-6
+        lo, hi = lo - pad, hi + pad
+    return [float(v) for v in np.linspace(lo, hi, wanted)]
+
+
+def _with_locatable_gages(gages, label):
+    """Drop rows with no latitude/longitude before handing them to folium.
+
+    folium raises `ValueError: Location values cannot contain NaNs` rather than
+    skipping an unplaceable marker, so one gage with missing coordinates takes
+    down the whole map. GFv2 subdomains hit this routinely -- Rogue River has
+    POIs with no location -- and `create_poi_paramplot_marker_cluster` and
+    `create_streamflow_poi_markers` already guarded themselves this way; this
+    is the same check, shared.
+    """
+    locatable = gages[["latitude", "longitude"]].notna().all(axis=1)
+    if (~locatable).any():
+        missing = gages.loc[~locatable]
+        ids = (
+            missing["poi_gage_id"].tolist()
+            if "poi_gage_id" in missing.columns
+            else [str(i) for i in missing.index]
+        )
+        print(
+            f"Skipping {len(ids)} gage(s) without latitude/longitude on the "
+            f"{label}: {', '.join(map(str, ids))}"
+        )
+    return gages.loc[locatable]
+
+
 def create_poi_marker_cluster(
     poi_df,
     cluster_zoom,
@@ -486,6 +539,8 @@ def create_poi_marker_cluster(
         disableClusteringAtZoom=cluster_zoom,
     )
     ##add POI markers and labels using row df.interowss loop
+    poi_df = _with_locatable_gages(poi_df, "hydrofabric map")
+
     for idx, row in poi_df.iterrows():
         text = f'{row["poi_gage_id"]}'
         label_lat = row["latitude"]  # -0.01
@@ -568,6 +623,8 @@ def create_non_poi_marker_cluster(
     ##add Non-poi gage markers and labels using row df.interowss loop
     gages_list = gages_df.index.to_list()
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
+
+    waterdata_gages_aoi = _with_locatable_gages(waterdata_gages_aoi, "hydrofabric map")
 
     for idx, row in waterdata_gages_aoi.iterrows():
         if row["poi_gage_id"] in additional_gages:
@@ -725,7 +782,7 @@ def create_nhru_par_map(
                 "#484863",
                 "#00008B",
             ],
-            index=par_bins,
+            index=_step_colormap_bins(par_bins, value_min, value_max),
             vmin=0.00,
             vmax=0.05,
             caption="Total Standard deviation at the point[mm]",
@@ -876,7 +933,7 @@ def create_nhru_par_map(
                 "#484863",
                 "#00008B",
             ],
-            index=par_bins,
+            index=_step_colormap_bins(par_bins, value_min, value_max),
             vmin=0.00,
             vmax=0.05,
             caption="Total Standard deviation at the point[mm]",
@@ -1264,7 +1321,7 @@ def create_annual_output_var_map(
             "#484863",
             "#00008B",
         ],
-        index=var_bins,
+        index=_step_colormap_bins(var_bins, value_min, value_max),
         vmin=0.00,
         vmax=0.05,
         caption="Total Standard deviation at the point[mm]",
@@ -1761,6 +1818,7 @@ def make_hf_map(
     Folium_maps_dir,
     param_filename,
     subdomain,
+    model_dir=None,
 ):
     """
     Creates interactive folium.map of all hydrofabric folium.map objects.
@@ -1794,6 +1852,20 @@ def make_hf_map(
     -------
     map_file : folium.map of HF elements
     """
+
+    # The active model's directory. This used to be guessed as
+    # `resolved_model_dir`, which only held while models
+    # lived inside the repo under a folder named exactly like the subdomain.
+    # Under the workspace flow they live at
+    # <workspace>/<project>/models/<name>/outputs/runtime, so the guess either
+    # raised or -- when the names happened to coincide -- silently wrote
+    # ref-gage metadata back into the repo. Falls back to the parameter file's
+    # own folder, which is the model directory in every workflow.
+    resolved_model_dir = (
+        pl.Path(model_dir)
+        if model_dir is not None
+        else pl.Path(param_filename).parent
+    )
     
     # Make dataframe of the parameter file using pyPRMS
     prms_meta = MetaData().metadata
@@ -1862,7 +1934,7 @@ def make_hf_map(
         huc10_map_layer = None
     try:
         huc12_pp_map = gpd.read_file(
-        root_dir / "domain_data" / subdomain / "GIS" / "model_layers.gpkg",
+        resolved_model_dir / "GIS" / "model_layers.gpkg",
         layer="huc12_pp",
     ).to_crs(epsg=4326)
     
@@ -1894,19 +1966,19 @@ def make_hf_map(
 
     fmi_poi_marker_cluster, fmi_poi_marker_cluster_label = create_FMI_poi_markers(
         root_dir,
-        root_dir / "domain_data" / subdomain,
+        resolved_model_dir,
         poi_df,
     )
 
     ref_poi_marker_cluster, ref_poi_marker_cluster_label = create_ref_gages_markers(
         root_dir,
-        root_dir / "domain_data" / subdomain,
+        resolved_model_dir,
         hru_gdf,
     )
 
     non_ref_poi_marker_cluster, non_ref_poi_marker_cluster_label = create_non_ref_gages_markers(
         root_dir,
-        root_dir / "domain_data" / subdomain,
+        resolved_model_dir,
         hru_gdf,
     )
 
@@ -2596,6 +2668,8 @@ def create_poi_obs_marker_cluster(
         disableClusteringAtZoom=cluster_zoom,
     )
     ##add POI markers and labels using row df.interowss loop
+    poi_df = _with_locatable_gages(poi_df, "hydrofabric map")
+
     for idx, row in poi_df.iterrows():
 
 ##############        #####
@@ -2732,6 +2806,8 @@ def create_non_poi_obs_marker_cluster(
     gages_list = gages_df.index.to_list()
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
     gages_df.reset_index(inplace=True, drop=False)
+
+    gages_df = _with_locatable_gages(gages_df, "hydrofabric map")
 
     for idx, row in gages_df.iterrows():
         if row["poi_gage_id"] in additional_gages:
@@ -3041,6 +3117,8 @@ def create_FMI_poi_markers(
    
     fmi_gages_child = fetch_FMI_npoigages_info(root_dir, model_dir, gages_df)
 
+    fmi_gages_child = _with_locatable_gages(fmi_gages_child, "FMI map")
+
     for idx, row in fmi_gages_child.iterrows():
         fmi_val = row["flow_management_index"]
 
@@ -3144,6 +3222,8 @@ def create_ref_gages_markers(
     # )
     
     
+    ref_df = _with_locatable_gages(ref_df, "reference-gage layer")
+
     for idx, row in ref_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
 
@@ -3249,6 +3329,8 @@ def create_non_ref_gages_markers(
     # )
     
     
+    non_ref_df = _with_locatable_gages(non_ref_df, "non-reference-gage layer")
+
     for idx, row in non_ref_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
 
