@@ -22,12 +22,16 @@ Deliberately NOT preserved from nhm, because nhf's versions supersede them:
 the tooltip identifiers (nhm_seg/nhm_id -> poi_gage_segment/hru_id) and the
 nhm_calib outline ring that distinguished calibration gages.
 
-Marker styling went the other way. nhf had replaced nhm's CircleMarkers with
-triangle icons via make_polygon_icon; circles were restored on request. The one
-exception is create_FMI_poi_markers, where the polygon's side count is not
-styling at all -- it *encodes* the Flow Management Index
-(`color, num_sides = fmi_style.get(fmi_val, ("Gray", 4))`), so turning those
-into circles would erase the data.
+Marker styling is nhf's. nhf had replaced nhm's CircleMarkers with triangle
+icons via make_polygon_icon; those were briefly reverted to circles, then
+restored to nhf's triangles once that became the intended default. The
+triangles carry a halo -- make_polygon_icon draws the polygon with
+`stroke="black" stroke-width="1"`, which is what makes the white non-POI
+triangles legible against the map.
+
+create_FMI_poi_markers was never in question: its polygon side count is not
+styling at all, it *encodes* the Flow Management Index
+(`color, num_sides = fmi_style.get(fmi_val, ("Gray", 4))`).
 """
 import ast
 import inspect
@@ -172,102 +176,116 @@ def test_the_nhm_duplicate_is_a_shim_not_an_implementation():
     assert len(path.read_text(encoding="utf-8").splitlines()) < 120
 
 
-CIRCLE_MARKER_CLUSTERS = [
+# nhf's map_template as it landed in common/ via the bare `git mv`, before any
+# adaptation -- the reference for "the nhf way of doing things".
+NHF_MARKER_BASELINE = "d977633"
+COMMON_MAP_TEMPLATE_PATH = "src/assist/common/map_template.py"
+
+TRIANGLE_MARKER_CLUSTERS = [
     "create_poi_obs_marker_cluster",
     "create_non_poi_obs_marker_cluster",
 ]
 
+# every marker function that must match nhf byte for byte
+NHF_MARKER_FUNCTIONS = [
+    "create_poi_marker_cluster",
+    "create_non_poi_marker_cluster",
+    "create_poi_obs_marker_cluster",
+    "create_non_poi_obs_marker_cluster",
+    "create_streamflow_poi_markers",
+    "make_polygon_icon",
+]
 
-@pytest.mark.parametrize("name", CIRCLE_MARKER_CLUSTERS)
-def test_poi_markers_are_circles_not_polygons(name, common):
-    """Requested revert of nhf's triangle restyling."""
-    source = inspect.getsource(getattr(common, name))
-    live = [
-        line
-        for line in source.splitlines()
-        if line.strip() and not line.strip().startswith("#")
-    ]
-    body = "\n".join(live)
-    assert "folium.CircleMarker(" in body, f"{name} no longer draws circles"
-    assert "make_polygon_icon(" not in body, (
-        f"{name} draws polygon icons again; circles were requested"
+
+def _nhf_baseline_source() -> str:
+    import subprocess
+
+    source = subprocess.run(
+        ["git", "show", f"{NHF_MARKER_BASELINE}:{COMMON_MAP_TEMPLATE_PATH}"],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=True,
+    ).stdout
+    assert "def make_polygon_icon" in source, (
+        f"{NHF_MARKER_BASELINE} no longer holds nhf's map_template; this test "
+        "needs a new baseline revision"
+    )
+    return source
+
+
+def _function_source(source: str, name: str) -> str:
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return ast.get_source_segment(source, node)
+    raise AssertionError(f"{name} not found")
+
+
+@pytest.mark.parametrize("name", NHF_MARKER_FUNCTIONS)
+def test_marker_functions_are_verbatim_nhf(name, common):
+    """Compared against nhf's own source rather than hardcoded values, so the
+    assertion cannot drift away from what the maps actually looked like."""
+    baseline = _nhf_baseline_source()
+    actual = pathlib.Path(inspect.getfile(common)).read_text(encoding="utf-8")
+    assert _function_source(actual, name) == _function_source(baseline, name), (
+        f"{name} has drifted from nhf's version"
     )
 
 
-def test_fmi_markers_keep_their_polygon_encoding(common):
-    """The FMI layer's side count carries the index value, so it must stay a
-    polygon even though the POI clusters went back to circles."""
-    source = inspect.getsource(common.create_FMI_poi_markers)
+@pytest.mark.parametrize("name", TRIANGLE_MARKER_CLUSTERS)
+def test_poi_markers_are_triangles_not_circles(name, common):
+    """The reverted decision: nhf's triangle icons are the default."""
     live = "\n".join(
-        line for line in source.splitlines()
+        line
+        for line in inspect.getsource(getattr(common, name)).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+    assert "make_polygon_icon(" in live, f"{name} no longer draws triangles"
+    assert "folium.CircleMarker(" not in live, (
+        f"{name} draws circles again; nhf's triangles are the default"
+    )
+    assert "num_sides=3" in live
+
+
+def test_triangles_keep_their_halo(common):
+    """The halo is the SVG stroke around the fill; without it the white
+    non-POI triangles disappear against a light basemap."""
+    source = inspect.getsource(common.make_polygon_icon)
+    assert 'stroke="black"' in source
+    assert 'stroke-width="1"' in source
+
+
+def test_poi_and_non_poi_triangles_are_distinguishable(common):
+    """Black fill for gages in the parameter file, white for potential ones."""
+    fills = {}
+    for name in TRIANGLE_MARKER_CLUSTERS:
+        live = "\n".join(
+            line
+            for line in inspect.getsource(getattr(common, name)).splitlines()
+            if line.strip() and not line.strip().startswith("#")
+        )
+        for node in ast.walk(ast.parse(live)):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "make_polygon_icon"
+            ):
+                kw = {k.arg: ast.unparse(k.value) for k in node.keywords}
+                fills[name] = kw.get("color")
+    assert fills == {
+        "create_poi_obs_marker_cluster": "'black'",
+        "create_non_poi_obs_marker_cluster": "'white'",
+    }, fills
+
+
+def test_fmi_markers_keep_their_polygon_encoding(common):
+    """The FMI layer's side count carries the index value."""
+    live = "\n".join(
+        line
+        for line in inspect.getsource(common.create_FMI_poi_markers).splitlines()
         if line.strip() and not line.strip().startswith("#")
     )
     assert "make_polygon_icon(num_sides=num_sides" in live, (
         "FMI markers lost the data-driven side count"
     )
     assert "fmi_style.get(" in live
-
-
-# nhm's map_template implementation, before the concern-4 shim replaced it.
-NHM_MARKER_BASELINE = "d977633"
-NHM_MAP_TEMPLATE_PATH = "src/assist/nhm/map_template.py"
-
-# POI gages are black, potential (non-POI) gages are gray, both radius 3.
-# nhf had dropped the outline `color` on the plain clusters and bumped the obs
-# clusters to radius 4; restored on request.
-MARKER_SCHEMA_FUNCTIONS = [
-    "create_poi_marker_cluster",
-    "create_non_poi_marker_cluster",
-    "create_poi_obs_marker_cluster",
-    "create_non_poi_obs_marker_cluster",
-]
-
-
-def _circle_marker_schema(source: str, name: str):
-    """(color, fill_color, radius) of every CircleMarker in one function."""
-    for node in ast.parse(source).body:
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            found = []
-            for call in ast.walk(node):
-                if (
-                    isinstance(call, ast.Call)
-                    and isinstance(call.func, ast.Attribute)
-                    and call.func.attr == "CircleMarker"
-                ):
-                    kw = {k.arg: ast.unparse(k.value) for k in call.keywords}
-                    found.append(
-                        (kw.get("color"), kw.get("fill_color"), kw.get("radius"))
-                    )
-            return found
-    raise AssertionError(f"{name} not found")
-
-
-@pytest.mark.parametrize("name", MARKER_SCHEMA_FUNCTIONS)
-def test_marker_schema_matches_nhm_exactly(name):
-    """Black POI / gray potential-gage circles at radius 3, compared against
-    nhm's own pre-unification source rather than hardcoded values, so the
-    assertion cannot quietly drift away from what the maps used to look like."""
-    import subprocess
-
-    import assist.common.map_template as common
-
-    baseline = subprocess.run(
-        ["git", "show", f"{NHM_MARKER_BASELINE}:{NHM_MAP_TEMPLATE_PATH}"],
-        capture_output=True,
-        text=True,
-        cwd=REPO_ROOT,
-        check=True,
-    ).stdout
-    assert "def create_poi_marker_cluster" in baseline, (
-        f"{NHM_MARKER_BASELINE} no longer holds nhm's map_template "
-        "implementation; this test needs a new baseline revision"
-    )
-
-    expected = _circle_marker_schema(baseline, name)
-    actual = _circle_marker_schema(
-        pathlib.Path(inspect.getfile(common)).read_text(encoding="utf-8"), name
-    )
-    assert actual == expected, (
-        f"{name} marker schema drifted from nhm: expected "
-        f"(color, fill, radius) {expected}, got {actual}"
-    )
