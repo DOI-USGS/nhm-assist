@@ -33,9 +33,9 @@ jupyter_black.load()
 # fallback to the package location — works for editable and non-editable installs.
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import create_poi_df, make_hf_map_elements
-# from assist.nhf.map_template_v2 import make_hf_map
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.hydrofabric import create_poi_df, make_hf_map_elements
+# from assist.common.map_template import make_hf_map
+from assist.common.assist_utilities import load_subdomain_config
 import topojson
 
 config = load_subdomain_config(root_dir)

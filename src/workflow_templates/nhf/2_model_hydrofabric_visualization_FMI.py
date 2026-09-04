@@ -33,10 +33,10 @@ jupyter_black.load()
 # fallback to the package location — works for editable and non-editable installs.
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
-from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+from assist.common.hydrofabric import make_hf_map_elements, evaluate_and_fix_nhru_geometry
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,

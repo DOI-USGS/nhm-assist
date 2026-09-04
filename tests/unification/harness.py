@@ -5,6 +5,7 @@ act as the oracle for the new `common/` implementation.
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import pathlib as pl
 import subprocess
@@ -40,6 +41,58 @@ ID_ALIASES: dict[str, str] = {
 
 _module_cache: dict[tuple[str, str], ModuleType] = {}
 
+# Historical fabric module path -> the unified module that replaced it.
+#
+# The shipped package no longer carries `assist.nhm.*` / `assist.nhf.*`
+# re-export shims. Pre-unification sources still import through those paths
+# (`from assist.nhm.nhm_helpers import hrus_by_poi`), so loading one as an
+# oracle needs the old names resolvable for the duration of the load. These
+# aliases exist only inside the test harness: they are installed around
+# `exec_module` and removed again, so nothing here makes a deleted path
+# importable for application code.
+_BASELINE_MODULE_ALIASES: dict[str, str] = {
+    "assist.nhm.efc": "assist.common.efc",
+    "assist.nhm.nhm_helpers": "assist.common.helpers",
+    "assist.nhm.nhm_assist_utilities": "assist.common.assist_utilities",
+    "assist.nhm.nhm_hydrofabric": "assist.common.hydrofabric",
+    "assist.nhm.nhm_output_visualization": "assist.common.output_visualization",
+    "assist.nhm.output_plots": "assist.common.output_plots",
+    "assist.nhm.sf_data_retrieval": "assist.common.sf_data_retrieval",
+    "assist.nhm.map_template": "assist.common.map_template",
+    "assist.nhm.streamflow_postprocess": "assist.common.streamflow_postprocess",
+    "assist.nhf.efc": "assist.common.efc",
+    "assist.nhf.nhm_helpers_v2": "assist.common.helpers",
+    "assist.nhf.nhm_assist_utilities_v2": "assist.common.assist_utilities",
+    "assist.nhf.nhm_hydrofabric_v2": "assist.common.hydrofabric",
+    "assist.nhf.nhm_output_visualization_v2": "assist.common.output_visualization",
+    "assist.nhf.output_plots_v2": "assist.common.output_plots",
+    "assist.nhf.sf_data_retrieval_v2_1": "assist.common.sf_data_retrieval",
+    "assist.nhf.map_template_v2": "assist.common.map_template",
+    "assist.nhf.display_controls_v2": "assist.common.display_controls",
+}
+
+
+@contextlib.contextmanager
+def _baseline_import_aliases():
+    """Make the retired fabric module paths resolvable, then take them away."""
+    import importlib
+
+    installed = []
+    try:
+        for old_path, new_path in _BASELINE_MODULE_ALIASES.items():
+            if old_path in sys.modules:
+                continue
+            try:
+                sys.modules[old_path] = importlib.import_module(new_path)
+            except ModuleNotFoundError:
+                # A baseline that predates this module simply will not ask.
+                continue
+            installed.append(old_path)
+        yield
+    finally:
+        for old_path in installed:
+            sys.modules.pop(old_path, None)
+
 
 def load_module_from_git(rev: str, repo_path: str, module_name: str) -> ModuleType:
     """Import the version of `repo_path` recorded at `rev` as `module_name`."""
@@ -63,7 +116,8 @@ def load_module_from_git(rev: str, repo_path: str, module_name: str) -> ModuleTy
         raise ImportError(f"could not build a spec for {repo_path} at {rev}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+    with _baseline_import_aliases():
+        spec.loader.exec_module(module)
 
     _module_cache[key] = module
     return module

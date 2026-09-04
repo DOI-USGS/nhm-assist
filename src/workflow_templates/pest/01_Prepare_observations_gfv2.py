@@ -37,20 +37,20 @@ import assist as _assist_pkg
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 
-from assist.nhf.nhm_hydrofabric_v2 import (
+from assist.common.hydrofabric import (
     make_hf_map_elements,
     evaluate_and_fix_nhru_geometry,
 )
-from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,
     fetch_ref_npoigages_info,
 )
 
-from assist.nhf import efc
+from assist.common import efc
 
 # import topojson
 
@@ -102,8 +102,8 @@ load_dotenv(dotenv_path=dotenv_path)
 ############################################
 
 
-# from assist.nhm.nhm_assist_utilities import load_subdomain_config
-# from assist.nhm import efc
+# from assist.common.assist_utilities import load_subdomain_config
+# from assist.common import efc
 
 config = load_subdomain_config(root_dir)
 
@@ -143,20 +143,20 @@ config = load_subdomain_config(root_dir)
 # root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 
-# from assist.nhf.nhm_hydrofabric_v2 import (
+# from assist.common.hydrofabric import (
 #     make_hf_map_elements,
 #     evaluate_and_fix_nhru_geometry,
 # )
-# from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+# from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-# from assist.nhf.nhm_assist_utilities_v2 import (
+# from assist.common.assist_utilities import (
 #     load_subdomain_config,
 #     find_missing_gage_info,
 #     fetch_non_ref_npoigages_info,
 #     fetch_ref_npoigages_info,
 # )
 
-# from assist.nhf import efc
+# from assist.common import efc
 
 # # import topojson
 

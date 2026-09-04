@@ -259,14 +259,17 @@ def test_sweep_covers_every_template_file():
         assert skipped not in names, f"{skipped} should have been filtered out"
 
 
-def test_nhf_fetch_imports_make_hf_map_elements_from_current_shim():
+def test_nhf_fetch_imports_make_hf_map_elements_from_common():
+    """This import was broken on main -- the call site existed with no import
+    at all -- and the fabric shim it was repaired through is now gone, so it
+    must resolve to assist.common."""
     imports = _template_imports("nhf/Fetch_poi_supplimental_information.py")
 
     assert any(
-        node.module == "assist.nhf.nhm_hydrofabric_v2"
+        node.module == "assist.common.hydrofabric"
         and any(alias.name == "make_hf_map_elements" for alias in node.names)
         for node in imports
-    ), "Fetch_poi_supplimental_information.py must import make_hf_map_elements from the NHF shim"
+    ), "Fetch_poi_supplimental_information.py must import make_hf_map_elements from assist.common.hydrofabric"
 
 
 def test_pest_ranking_reaches_used_common_helpers_without_legacy_imports():

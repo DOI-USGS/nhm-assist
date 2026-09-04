@@ -33,7 +33,7 @@ import warnings
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 config = load_subdomain_config(root_dir)
 
 # %% jupyter={"source_hidden": true}

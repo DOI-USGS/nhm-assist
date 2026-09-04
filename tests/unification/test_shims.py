@@ -1,10 +1,14 @@
-# tests/unification/test_shims.py
-"""Both shims must expose the same objects as common/, and contain no logic."""
+"""assist_utilities lives only at assist.common; the fabric shims are gone.
+
+This file used to assert that `assist.nhm.nhm_assist_utilities` and
+`assist.nhf.nhm_assist_utilities_v2` re-exported the same objects as common/.
+Those shims have been removed, so what remains worth asserting is that common/
+still exposes the whole surface they used to forward, and that the things
+retired during the unification stay retired.
+"""
 import pytest
 
 import assist.common.assist_utilities as common
-import assist.nhf.nhm_assist_utilities_v2 as nhf
-import assist.nhm.nhm_assist_utilities as nhm
 
 EXPECTED = [
     "bynhru_parameter_list",
@@ -27,24 +31,15 @@ EXPECTED = [
 
 
 @pytest.mark.parametrize("name", EXPECTED)
-def test_both_shims_export_the_same_object(name):
-    assert getattr(nhm, name) is getattr(common, name), f"nhm/{name}"
-    assert getattr(nhf, name) is getattr(common, name), f"nhf/{name}"
-
-
-@pytest.mark.parametrize("module", [nhm, nhf])
-def test_shim_defines_no_logic_of_its_own(module):
-    source = open(module.__file__, encoding="utf-8").read()
-    assert "def " not in source, f"{module.__name__} still defines functions"
-    assert "from assist.common.assist_utilities import" in source
+def test_common_exposes_the_whole_former_shim_surface(name):
+    assert callable(getattr(common, name, None)), f"{name} missing from common"
 
 
 def test_private_helpers_are_not_exported():
-    for module in (nhm, nhf):
-        assert "_load_nldi_cached" not in (module.__all__ or [])
-        assert "_translate_waterdata_columns" not in (module.__all__ or [])
+    assert not any(n.startswith("_") for n in getattr(common, "__all__", []))
 
 
 def test_metadata_lookup_is_public_now():
     assert not hasattr(common, "find_missing_gage_metadata")
     assert not hasattr(common, "_find_missing_gage_metadata")
+    assert callable(common.find_missing_gage_info)

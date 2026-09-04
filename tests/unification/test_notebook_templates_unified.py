@@ -214,20 +214,14 @@ class TestResolveWorkflowRoot:
         assert resolve_workflow_root(cwd=odd) == resolve_repo_root()
 
 
-def test_streamflow_postprocess_moved_with_a_working_shim():
+def test_streamflow_postprocess_lives_only_in_common():
     """It had no nhf counterpart, so it was never part of the nine-pair
-    unification; it moved anyway once a shared template imported it."""
+    unification; it moved anyway once a shared template imported it, and its
+    nhm shim is now removed along with all the others."""
+    import importlib
+
     import assist.common.streamflow_postprocess as impl
-    import assist.nhm.streamflow_postprocess as shim
 
-    assert shim.subset_seg_outflow_to_poi_gages is impl.subset_seg_outflow_to_poi_gages
-
-    shim_source = (
-        REPO_ROOT / "src/assist/nhm/streamflow_postprocess.py"
-    ).read_text(encoding="utf-8")
-    functions = [
-        node.name
-        for node in ast.parse(shim_source).body
-        if isinstance(node, ast.FunctionDef)
-    ]
-    assert not functions, f"the shim still defines {functions}"
+    assert callable(impl.subset_seg_outflow_to_poi_gages)
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("assist.nhm.streamflow_postprocess")

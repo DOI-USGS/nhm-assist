@@ -37,9 +37,9 @@ import assist as _assist_pkg
 
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]/ "nhf_assist"
 
-# from assist.nhf.sf_data_retrieval_v2_1 import fetch_single_nwis_gage
-from assist.nhf.sf_data_retrieval_v2_1 import fetch_daily_discharge_batch
-from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info
+# from assist.common.sf_data_retrieval import fetch_single_nwis_gage
+from assist.common.sf_data_retrieval import fetch_daily_discharge_batch
+from assist.common.assist_utilities import find_missing_gage_info
 
 
 # %%

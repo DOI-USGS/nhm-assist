@@ -551,7 +551,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
     def test_create_default_gages_file_calls_find_missing_for_missing_metadata(self):
         from unittest.mock import patch
-        from assist.nhm import nhm_hydrofabric
+        from assist.common import hydrofabric as nhm_hydrofabric
 
         captured_args: dict = {}
 

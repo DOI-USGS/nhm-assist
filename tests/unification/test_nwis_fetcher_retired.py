@@ -2,14 +2,10 @@
 import pathlib as pl
 
 import assist.common.assist_utilities as cu
-import assist.nhf.nhm_assist_utilities_v2 as nhf
-import assist.nhm.nhm_assist_utilities as nhm
 
 
 def test_the_nwis_fetcher_is_gone():
     assert not hasattr(cu, "fetch_nwis_gage_info")
-    assert not hasattr(nhm, "fetch_nwis_gage_info")
-    assert not hasattr(nhf, "fetch_nwis_gage_info")
 
 
 def test_the_waterdata_fetcher_remains():

@@ -1,92 +1,76 @@
+"""The shared helpers are reachable only at assist.common.
+
+This file used to assert that the `assist.nhm.*` / `assist.nhf.*` re-export
+shims forwarded the same objects as common/. Those shims are gone, so what is
+worth asserting now is the surface itself -- every name the shims used to
+forward is still present on the unified module -- and that the retired fabric
+paths really are unimportable, so nothing silently depends on them again.
+"""
 from __future__ import annotations
 
+import importlib
 import unittest
 
+# module under assist.common -> names it must expose. These are exactly the
+# names the removed shims were checked against.
+COMMON_SURFACE = {
+    "efc": ("efc", "plot_efc", "compute_efc"),
+    "helpers": ("subset_stream_network", "hrus_by_poi", "create_poi_group"),
+    "output_visualization": (
+        "retrieve_hru_output_info",
+        "create_sum_var_annual_df",
+        "create_streamflow_obs_datasets",
+        "create_var_ts_for_poi_basin_df",
+    ),
+    "output_plots": (
+        "is_wsl",
+        "make_webbrowser_map",
+        "stats_table",
+        "make_plot_var_for_hrus_in_poi_basin",
+        "oopla",
+        "calculate_monthly_kge_in_poi_df",
+        "create_streamflow_plot",
+    ),
+}
 
-class CommonEfcTests(unittest.TestCase):
-    def test_efc_reexported_from_common_in_nhm(self):
-        from assist.common import efc as common_efc
-        from assist.nhm import efc as nhm_efc
+OUTPUT_PLOTS_CONSTANTS = ("plot_colors", "var_colors_dict", "leg_only_dict")
 
-        self.assertIs(nhm_efc.efc, common_efc.efc)
-        self.assertIs(nhm_efc.plot_efc, common_efc.plot_efc)
-        self.assertIs(nhm_efc.compute_efc, common_efc.compute_efc)
-
-    def test_efc_reexported_from_common_in_nhf(self):
-        from assist.common import efc as common_efc
-        from assist.nhf import efc as nhf_efc
-
-        self.assertIs(nhf_efc.efc, common_efc.efc)
-        self.assertIs(nhf_efc.plot_efc, common_efc.plot_efc)
-
-
-class CommonHelpersTests(unittest.TestCase):
-    def test_helpers_reexported_from_common_in_nhm(self):
-        from assist.common import helpers as common_helpers
-        from assist.nhm import nhm_helpers
-
-        self.assertIs(
-            nhm_helpers.subset_stream_network, common_helpers.subset_stream_network
-        )
-        self.assertIs(nhm_helpers.hrus_by_poi, common_helpers.hrus_by_poi)
-        self.assertIs(nhm_helpers.create_poi_group, common_helpers.create_poi_group)
-
-    def test_helpers_reexported_from_common_in_nhf(self):
-        # Both sides now speak `poi_gage_id`, so nhf is a pure re-export of common.
-        from assist.common import helpers as common_helpers
-        from assist.nhf import nhm_helpers_v2 as nhf_helpers
-
-        self.assertIs(
-            nhf_helpers.subset_stream_network, common_helpers.subset_stream_network
-        )
-        self.assertIs(nhf_helpers.hrus_by_poi, common_helpers.hrus_by_poi)
-        self.assertIs(nhf_helpers.create_poi_group, common_helpers.create_poi_group)
+RETIRED_PATHS = (
+    "assist.nhm.efc",
+    "assist.nhm.nhm_helpers",
+    "assist.nhm.nhm_output_visualization",
+    "assist.nhm.output_plots",
+    "assist.nhf.efc",
+    "assist.nhf.nhm_helpers_v2",
+    "assist.nhf.nhm_output_visualization_v2",
+    "assist.nhf.output_plots_v2",
+)
 
 
-class OutputVisualizationShimTests(unittest.TestCase):
-    def test_reexport_identity_in_nhm(self):
-        from assist.common import output_visualization as common_ov
-        from assist.nhm import nhm_output_visualization as nhm_ov
+class CommonSurfaceTests(unittest.TestCase):
+    def test_every_former_shim_name_is_on_common(self):
+        for module_name, names in COMMON_SURFACE.items():
+            module = importlib.import_module(f"assist.common.{module_name}")
+            for name in names:
+                with self.subTest(module=module_name, name=name):
+                    self.assertTrue(
+                        callable(getattr(module, name, None)),
+                        f"assist.common.{module_name}.{name} is missing",
+                    )
 
-        for name in ("retrieve_hru_output_info", "create_sum_var_annual_df",
-                     "create_streamflow_obs_datasets"):
-            self.assertIs(getattr(nhm_ov, name), getattr(common_ov, name))
-
-    def test_reexport_identity_in_nhf(self):
-        from assist.common import output_visualization as common_ov
-        from assist.nhf import nhm_output_visualization_v2 as nhf_ov
-
-        for name in ("create_sum_var_annual_df", "create_var_ts_for_poi_basin_df"):
-            self.assertIs(getattr(nhf_ov, name), getattr(common_ov, name))
+    def test_output_plots_module_constants_survived(self):
+        module = importlib.import_module("assist.common.output_plots")
+        for name in OUTPUT_PLOTS_CONSTANTS:
+            with self.subTest(name=name):
+                self.assertIsNotNone(getattr(module, name, None))
 
 
-class OutputPlotsShimTests(unittest.TestCase):
-    def test_reexport_identity_nhm(self):
-        from assist.common import output_plots as common_op
-        from assist.nhm import output_plots as nhm_op
-
-        for name in ("is_wsl", "make_webbrowser_map", "stats_table",
-                     "make_plot_var_for_hrus_in_poi_basin", "oopla",
-                     "calculate_monthly_kge_in_poi_df", "create_streamflow_plot"):
-            self.assertIs(getattr(nhm_op, name), getattr(common_op, name))
-
-    def test_reexport_identity_nhf(self):
-        from assist.common import output_plots as common_op
-        from assist.nhf import output_plots_v2 as nhf_op
-
-        for name in ("is_wsl", "make_webbrowser_map", "stats_table",
-                     "make_plot_var_for_hrus_in_poi_basin", "oopla",
-                     "calculate_monthly_kge_in_poi_df", "create_streamflow_plot"):
-            self.assertIs(getattr(nhf_op, name), getattr(common_op, name))
-
-    def test_module_constants_reexported(self):
-        from assist.common import output_plots as common_op
-        from assist.nhm import output_plots as nhm_op
-        from assist.nhf import output_plots_v2 as nhf_op
-
-        for name in ("plot_colors", "var_colors_dict", "leg_only_dict"):
-            self.assertIs(getattr(nhm_op, name), getattr(common_op, name))
-            self.assertIs(getattr(nhf_op, name), getattr(common_op, name))
+class RetiredFabricPathTests(unittest.TestCase):
+    def test_the_fabric_module_paths_are_gone(self):
+        for path in RETIRED_PATHS:
+            with self.subTest(path=path):
+                with self.assertRaises(ModuleNotFoundError):
+                    importlib.import_module(path)
 
 
 if __name__ == "__main__":

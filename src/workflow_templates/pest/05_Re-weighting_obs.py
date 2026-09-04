@@ -76,8 +76,8 @@ else:
 
 load_dotenv(dotenv_path=dotenv_path)
 
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
-from assist.nhm import efc
+from assist.common.assist_utilities import load_subdomain_config
+from assist.common import efc
 
 from assist.pest.pest_utils import (
     pars_to_tpl_entries,

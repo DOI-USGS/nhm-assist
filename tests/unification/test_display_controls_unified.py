@@ -29,31 +29,32 @@ def dc():
         setattr(module, k, v)
 
 
-def test_nhf_module_path_is_an_alias_not_a_reexport(dc):
+def test_the_retired_nhf_module_path_is_gone(dc):
     """`display_controls` holds mutable state that notebooks assign
-    (`dc.hru_gdf = ...`). A `from ... import *` shim would copy those names and
-    assignments would never reach the implementation, so the shim rebinds
-    `sys.modules` instead."""
-    import assist.nhf.display_controls_v2 as shim
+    (`dc.hru_gdf = ...`), which is why the old nhf path was a `sys.modules`
+    alias rather than a `from ... import *` re-export. That shim is now
+    removed outright: the only path is assist.common.display_controls, and
+    state assignment reaches the implementation because there is no longer a
+    second module object to assign into."""
+    import pytest
 
-    assert shim is dc
+    with pytest.raises(ModuleNotFoundError):
+        import assist.nhf.display_controls_v2  # noqa: F401
 
-    shim.subdomain = "AliasProbe"
+    dc.subdomain = "AliasProbe"
     assert dc.subdomain == "AliasProbe"
 
 
 def test_accepted_by_reads_the_unified_map_backend(dc):
-    """Since concern 4 both fabric paths resolve to the same
-    `assist.common.map_template`, which advertises HW_basins on all four map
-    builders (defaulted to None) and guards each render on `is not None`. So
-    both sides now accept them -- the adapter's job shifted from bridging two
-    signatures to tolerating backends that lack the parameter at all, which is
-    what `test_accepted_by_passes_everything_to_a_kwargs_backend` and the
-    GFv2-stub test below still cover."""
-    import assist.nhf.map_template_v2 as nhf
-    import assist.nhm.map_template as nhm
+    """There is one map backend now: `assist.common.map_template`. It
+    advertises HW_basins on all four map builders (defaulted to None) and
+    guards each render on `is not None`, so the adapter's job is no longer
+    bridging two signatures but tolerating a backend that lacks the parameter
+    at all -- covered by `test_accepted_by_passes_everything_to_a_kwargs_backend`
+    and the GFv2-stub test below."""
+    import assist.common.map_template as backend
 
-    for module in (nhm, nhf):
+    for module in (backend,):
         assert dc._accepted_by(module.make_var_map, "HW_basins") == ["HW_basins"]
         assert set(
             dc._accepted_by(module.make_streamflow_map, "HW_basins", "HW_basins_gdf")
@@ -212,13 +213,7 @@ def test_templates_set_every_literally_required_state():
 
 
 def test_nhf_copy_is_gone():
-    """The 213-line duplicate is replaced by the alias shim."""
+    """The 213-line duplicate became an alias shim, and the shim is now gone
+    too -- there is no file at the old nhf path at all."""
     path = REPO_ROOT / "src/assist/nhf/display_controls_v2.py"
-    source = path.read_text(encoding="utf-8")
-    assert "sys.modules[__name__] = _impl" in source
-    functions = [
-        n.name
-        for n in ast.parse(source).body
-        if isinstance(n, ast.FunctionDef)
-    ]
-    assert not functions, f"shim still defines {functions}"
+    assert not path.exists(), f"{path} is back"

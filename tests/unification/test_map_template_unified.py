@@ -57,15 +57,20 @@ def common():
 
 
 @pytest.mark.parametrize(
-    "shim_path",
+    "retired_path",
     ["assist.nhm.map_template", "assist.nhf.map_template_v2"],
 )
-def test_both_fabric_paths_resolve_to_common(shim_path, common):
+def test_the_retired_fabric_paths_are_gone(retired_path):
+    """map_template is reachable only at assist.common.map_template."""
     import importlib
 
-    shim = importlib.import_module(shim_path)
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module(retired_path)
+
+
+def test_the_unified_module_is_importable(common):
     for name in ("make_hf_map", "make_par_map", "make_var_map", "make_streamflow_map"):
-        assert getattr(shim, name) is getattr(common, name), name
+        assert callable(getattr(common, name)), name
 
 
 @pytest.mark.parametrize("name,params", sorted(MAP_BUILDERS_WITH_HW.items()))
@@ -167,13 +172,11 @@ def test_no_nwis_terminology_in_the_public_signatures(common):
     assert not offenders, f"retired NWIS naming in signatures: {offenders}"
 
 
-def test_the_nhm_duplicate_is_a_shim_not_an_implementation():
-    """2,467 lines collapsed to a re-export."""
-    path = REPO_ROOT / "src/assist/nhm/map_template.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    defs = [n.name for n in tree.body if isinstance(n, ast.FunctionDef)]
-    assert not defs, f"nhm/map_template.py still defines {defs}"
-    assert len(path.read_text(encoding="utf-8").splitlines()) < 120
+def test_the_nhm_duplicate_is_gone():
+    """2,467 lines collapsed to a re-export shim, and the shim is gone too."""
+    for retired in ("src/assist/nhm/map_template.py",
+                    "src/assist/nhf/map_template_v2.py"):
+        assert not (REPO_ROOT / retired).exists(), f"{retired} is back"
 
 
 # nhf's map_template as it landed in common/ via the bare `git mv`, before any

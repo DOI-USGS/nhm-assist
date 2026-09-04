@@ -17,12 +17,12 @@ from pyPRMS import ParameterFile
 from pyPRMS.metadata.metadata import MetaData
 from rich import pretty
 from rich.console import Console
-from assist.nhf.nhm_output_visualization_v2 import (
+from assist.common.output_visualization import (
     create_streamflow_obs_datasets, create_sum_seg_var_dataarrays,
     create_sum_var_annual_gdf)
-from assist.nhf.nhm_assist_utilities_v2 import fetch_FMI_npoigages_info, fetch_ref_npoigages_info, fetch_non_ref_npoigages_info
+from assist.common.assist_utilities import fetch_FMI_npoigages_info, fetch_ref_npoigages_info, fetch_non_ref_npoigages_info
 
-from assist.nhf.output_plots_v2 import calculate_monthly_kge_in_poi_df
+from assist.common.output_plots import calculate_monthly_kge_in_poi_df
 import subprocess
 import os
 import webbrowser

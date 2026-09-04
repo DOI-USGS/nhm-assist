@@ -45,7 +45,7 @@ load_dotenv(
 )  # this will load the environment variables from the .env file
 
 
-from assist.nhf.nhm_hydrofabric_v2 import (
+from assist.common.hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
@@ -53,7 +53,7 @@ from assist.nhf.nhm_hydrofabric_v2 import (
     read_gages_file,
 )
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
 )
 
