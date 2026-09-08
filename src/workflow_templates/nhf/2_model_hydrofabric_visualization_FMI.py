@@ -16,7 +16,6 @@
 # %%
 import sys
 import os
-import pathlib as pl
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -30,14 +29,14 @@ import jupyter_black
 
 jupyter_black.load()
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
-from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
+# fallback to the package location — works for editable and non-editable installs.
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root() / "nhf_assist"
+from assist.common.hydrofabric import make_hf_map_elements, evaluate_and_fix_nhru_geometry
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,
@@ -131,7 +130,7 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -139,8 +138,8 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],

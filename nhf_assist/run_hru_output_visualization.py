@@ -123,10 +123,10 @@ def run_setup(timeout: int = 120):
 def generate_maps_for_model(model_name: str):
     """Generate output variable maps for all variables in a single model."""
     # Import here so we only load once per process
-    from assist.nhf.map_template_v2 import make_var_map
-    from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements
-    from assist.nhf.nhm_output_visualization_v2 import retrieve_hru_output_info
-    from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+    from assist.common.map_template import make_var_map
+    from assist.common.hydrofabric import make_hf_map_elements
+    from assist.common.output_visualization import retrieve_hru_output_info
+    from assist.common.assist_utilities import load_subdomain_config
 
     # Reload config for this model
     nhf_root = root_dir / "nhf_assist"

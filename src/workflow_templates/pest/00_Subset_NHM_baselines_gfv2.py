@@ -39,17 +39,90 @@ import io
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
 
+root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+
+
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
+
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
+
+from assist.common import efc
+
+# import topojson
+
+
+config = load_subdomain_config(root_dir)
+# con.print(config)
+
+
+import pandas as pd
+import xarray as xr
+import numpy as np
+import datetime
+
 from contextlib import redirect_stdout
 
 f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+# Find and set the "nhm-assist" root directory
+# Find the repo root via the editable-installed `assist` package — robust
+# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+
+
+# from assist.workspace.bridge import resolve_project_notebook_context
+# from assist.workspace.service import get_active_model_root
+
+# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+# if project_context:
+#     active_model_root = get_active_model_root(
+#         project_context["workspace_root"], project_context["project_root"].name
+#     )
+#     config_root = active_model_root / "config"
+# else:
+#     config_root = root_dir
+
+from dotenv import load_dotenv
+
+# Use home directory for Nebari, otherwise use repo root_dir
+if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
+    dotenv_path = pl.Path.home() / ".env"
+else:
+    dotenv_path = root_dir / ".env"
+
+load_dotenv(dotenv_path=dotenv_path)
+
+############################################
+
+
+# from assist.common.assist_utilities import load_subdomain_config
+# from assist.common import efc
 
 config = load_subdomain_config(root_dir)
+
+# %%
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
+
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
 
 # %% [markdown]
 # # Introduction
@@ -85,7 +158,7 @@ config = load_subdomain_config(root_dir)
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -93,8 +166,8 @@ config = load_subdomain_config(root_dir)
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],

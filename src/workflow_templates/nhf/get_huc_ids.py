@@ -33,10 +33,10 @@ import io
 
 
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
+# fallback to the package location — works for editable and non-editable installs.
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root() / "nhf_assist"
 
 from dotenv import load_dotenv
 
@@ -45,7 +45,7 @@ load_dotenv(
 )  # this will load the environment variables from the .env file
 
 
-from assist.nhf.nhm_hydrofabric_v2 import (
+from assist.common.hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
@@ -53,7 +53,7 @@ from assist.nhf.nhm_hydrofabric_v2 import (
     read_gages_file,
 )
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
 )
 

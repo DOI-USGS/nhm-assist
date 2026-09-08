@@ -63,7 +63,7 @@ if project_context:
 else:
     config_root = root_dir
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(config_root)
 

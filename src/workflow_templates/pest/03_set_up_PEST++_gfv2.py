@@ -33,7 +33,7 @@ jupyter_black.load()
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
 import assist as _assist_pkg
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 
 
 config = load_subdomain_config(root_dir)
@@ -65,8 +65,8 @@ load_dotenv(dotenv_path=dotenv_path)
 
 config = load_subdomain_config(root_dir)
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
-from assist.nhf import efc
+from assist.common.assist_utilities import load_subdomain_config
+from assist.common import efc
 
 from assist.pest.pest_utils import (
     pars_to_tpl_entries,

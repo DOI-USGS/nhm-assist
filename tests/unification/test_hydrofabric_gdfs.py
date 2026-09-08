@@ -1,0 +1,270 @@
+"""The fabric-tolerance in these two functions is the point of taking nhf's side.
+
+`create_hru_gdf` carries one deliberate, documented exception: the HRU
+calibration-level block (reading `nhm_v1_1_HRU_cal_levels.csv` and returning
+`hru_cal_level_txt`) is nhm-only functionality that the unification initially
+dropped by taking nhf's version verbatim (nhf had it commented out). That was
+a real feature loss, not an intentional fabric-tolerance decision, so it was
+restored -- see `test_hru_gdf_is_nhf_verbatim_except_the_restored_calibration_block`
+below. `create_segment_gdf` has no such exception and stays fully verbatim.
+"""
+import ast
+import inspect
+
+import pytest
+
+from tests.unification.harness import BASELINE_REV, load_module_from_git
+
+NHF_PATH = "src/assist/nhf/nhm_hydrofabric_v2.py"
+
+
+@pytest.fixture(scope="module")
+def nhf_baseline():
+    return load_module_from_git(BASELINE_REV, NHF_PATH, "baseline_nhf_hf_gdfs")
+
+
+def _ast_of(fn):
+    return ast.dump(ast.parse(inspect.getsource(fn)))
+
+
+def test_segment_gdf_is_nhf_verbatim_except_the_restored_nhm_params(nhf_baseline):
+    """nhf commented out `model_idx`; `create_append_gages_to_param_file` selects
+    that column, so add_pois_to_parameters died with
+    `KeyError: "['model_idx'] not in index"`. Restored, and splicing the same
+    one-line change into nhf's baseline proves nothing else drifted.
+    """
+    import assist.common.hydrofabric as common
+
+    edits = [
+        # model_idx: create_append_gages_to_param_file selects that column
+        (
+            '    # df["model_idx"] = df.index + 1\n',
+            '    df["model_idx"] = df.index + 1\n',
+        ),
+        # tosegment_nhm: nhm's map_template renders it
+        (
+            '    # seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]\n'
+            '    seg_params = ["tosegment", "seg_length", "obsin_segment"]\n',
+            '    seg_params = ["tosegment_nhm", "tosegment", "seg_length", "obsin_segment"]\n',
+        ),
+        # ...guarded so GFv2 parameter files without it still load
+        (
+            '    )  # loads parmaeterfile functions for pyPRMS\n',
+            '    )  # loads parmaeterfile functions for pyPRMS\n'
+            '    seg_params = [vv for vv in seg_params if vv in pdb.parameters]\n',
+        ),
+    ]
+    edits.append(
+        # nhf left the .shp branch commented out, so a shapefile model reached
+        # `seg_gdb.to_crs(...)` with seg_gdb unbound (UnboundLocalError). The
+        # v1.1 byHWobs Maine subdomain ships only shapefiles.
+        (
+            '    # if GIS_format == ".shp":\n'
+            '    #     seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)\n'
+            '    #     seg_gdb = seg_gdb.set_index(\n'
+            '    #         "nhm_seg", drop=False\n'
+            "    #     )  # Set an index for segment geodatabase(GIS)\n"
+            '    #     seg_gdb.index.name = "index"  # Index column must be renamed of the hru\n',
+            '    if GIS_format == ".shp":\n'
+            '        seg_gdb = gpd.read_file(f"{model_dir}/GIS/model_nsegment.shp").fillna(0)\n'
+            '        if "nhm_seg" not in seg_gdb.columns and "nhm_seg_id" in seg_gdb.columns:\n'
+            '            seg_gdb.rename(columns={"nhm_seg_id": "nhm_seg"}, inplace=True)\n'
+            "        seg_gdb = seg_gdb.set_index(\n"
+            '            "nhm_seg", drop=False\n'
+            "        )  # Set an index for segment geodatabase(GIS)\n"
+            '        seg_gdb.index.name = "index"  # Index column must be renamed of the hru\n',
+        )
+    )
+    edits.append(
+        # The ID check compared ordered lists, so a model whose GIS stores the
+        # same segments in a different order was rejected outright. The merge
+        # below is on="nhm_seg", so order does not matter.
+        (
+            "    if ids_df != ids_seg:\n"
+            '        raise ValueError("nhm_seg indices in the parameter file and the .gpkg are not the same.")\n'
+            "    else:\n"
+            '        print("nhm_seg indices in the parameter file and the .gpkg match")\n',
+            "    missing_from_gis = sorted(set(ids_df) - set(ids_seg))\n"
+            "    missing_from_param = sorted(set(ids_seg) - set(ids_df))\n"
+            "    if missing_from_gis or missing_from_param:\n"
+            "        raise ValueError(\n"
+            '            "nhm_seg indices in the parameter file and the GIS are not the same. "\n'
+            '            f"Missing from GIS: {missing_from_gis[:10]}. "\n'
+            '            f"Missing from the parameter file: {missing_from_param[:10]}."\n'
+            "        )\n"
+            "    else:\n"
+            '        print("nhm_seg indices in the parameter file and the GIS match")\n',
+        )
+    )
+    nhf_source = inspect.getsource(nhf_baseline.create_segment_gdf)
+    for old, new in edits:
+        assert old in nhf_source, (
+            f"nhf baseline no longer contains {old!r}; test needs updating"
+        )
+        nhf_source = nhf_source.replace(old, new)
+    expected = ast.parse(nhf_source).body[0]
+    expected.name = "_"
+    actual = ast.parse(inspect.getsource(common.create_segment_gdf)).body[0]
+    actual.name = "_"
+    assert ast.dump(actual) == ast.dump(expected)
+
+
+def _restore_calibration_block(nhf_source: str) -> str:
+    """Reconstruct nhf's `create_hru_gdf` source with the nhm calibration-
+    level block spliced back in live, exactly as this fix restores it in
+    `assist.common.hydrofabric`. Used to prove everything *else* in the
+    function is still verbatim nhf.
+    """
+    replacements = [
+        (
+            '    # hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)\n'
+            '    # hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")\n'
+            "\n"
+            '    # hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")\n'
+            '    # hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")\n',
+            '    hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)\n'
+            '    hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")\n'
+            "\n"
+            '    hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")\n'
+            '    hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")\n',
+        ),
+        (
+            "    # hru_cal_level_txt = f'{hru_gdf[hru_gdf[\"level\"] > 1][\"level\"].count()} "
+            'HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are '
+            "within HW calibrated with streamflow observations.'\n"
+            "\n"
+            "    return hru_gdf, hru_text",
+            "    hru_cal_level_txt = f'{hru_gdf[hru_gdf[\"level\"] > 1][\"level\"].count()} "
+            'HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are '
+            "within HW calibrated with streamflow observations.'\n"
+            "\n"
+            "    return hru_gdf, hru_text, hru_cal_level_txt",
+        ),
+    ]
+    replacements.append(
+        # nhf commented out hru_segment_nhm; nhm's create_nhru_par_map reads it,
+        # so notebook 3 died with KeyError: 'hru_segment_nhm'.
+        (
+            '        # "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU\n',
+            '        "hru_segment_nhm",  # The nhm_id of the segment recieving flow from the HRU\n',
+        )
+    )
+    replacements.append(
+        # ...and the guard that keeps that restore safe on GFv2 parameter files,
+        # which need not carry every v1.1 parameter.
+        (
+            "    # Create a dataframe for parameter values\n    first = True\n",
+            "    gdb_hru_params = [\n"
+            "        vv for vv in gdb_hru_params\n"
+            "        if vv not in hru_params or vv in pdb.parameters\n"
+            "    ]\n"
+            "\n"
+            "    # Create a dataframe for parameter values\n    first = True\n",
+        )
+    )
+    replacements.append(
+        # A shapefile's DBF truncates field names to 10 chars, so a .shp
+        # carries "model_hru_" where a .gpkg carries "model_hru_idx". Without
+        # this, create_hru_gdf raised KeyError('hru_id') on any shapefile
+        # model (the v1.1 byHWobs Maine subdomain).
+        (
+            '    if "hru_id" not in hru_gdb.columns:\n'
+            '        if "model_idx" in hru_gdb.columns:\n'
+            '            hru_gdb["hru_id"] = hru_gdb["model_idx"]\n'
+            '        elif "model_hru_idx" in hru_gdb.columns:\n'
+            '            hru_gdb["hru_id"] = hru_gdb["model_hru_idx"]\n',
+            '    if "hru_id" not in hru_gdb.columns:\n'
+            '        for candidate in ("model_idx", "model_hru_idx", "model_hru_", "model_id"):\n'
+            '            if candidate in hru_gdb.columns:\n'
+            '                hru_gdb["hru_id"] = hru_gdb[candidate]\n'
+            '                break\n',
+        )
+    )
+    replacements.append(
+        # `same` was never assigned, so the order-mismatch diagnostic raised
+        # NameError instead of printing the mismatch. Only models whose GIS
+        # order differs from the parameter file reach it (New England).
+        (
+            "        diff = df_by_nhm_id.loc[~same, [\"hru_id\"]].join(\n",
+            '        same = df_by_nhm_id["hru_id"].eq(hru_gdb["hru_id"]).fillna(False)\n'
+            "        diff = df_by_nhm_id.loc[~same, [\"hru_id\"]].join(\n",
+        )
+    )
+    replacements.append(
+        # The HRU check compared hru_id with .equals(), which is order
+        # sensitive: it printed a false "STOP!" for models whose GIS is stored
+        # in a different order from the parameter file (the v1.1 byHWobs Maine
+        # subdomain), then an empty diff because the two agree once aligned by
+        # nhm_id. The merge below is on nhm_id, so only presence matters.
+        (
+            '    if df_by_nhm_id["hru_id"].equals(hru_gdb["hru_id"]):\n'
+            '        print("GIS nhm_id matches order found in myparam.param")\n'
+            '        df.drop(columns=["hru_id"], inplace=True)\n'
+            "    else:\n"
+            '        print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")\n',
+            "    missing_hrus_from_gis = sorted(set(df_by_nhm_id.index) - set(hru_gdb.index))\n"
+            "    missing_hrus_from_param = sorted(set(hru_gdb.index) - set(df_by_nhm_id.index))\n"
+            "    if not missing_hrus_from_gis and not missing_hrus_from_param:\n"
+            '        print("GIS nhm_id matches the set found in myparam.param")\n'
+            '        df.drop(columns=["hru_id"], inplace=True)\n'
+            "    else:\n"
+            '        print("STOP! GIS nhm_id does not match the HRUs in myparam.param!")\n'
+            '        print(f"  Missing from GIS: {missing_hrus_from_gis[:10]}")\n'
+            '        print(f"  Missing from the parameter file: {missing_hrus_from_param[:10]}")\n',
+        )
+    )
+    result = nhf_source
+    for old, new in replacements:
+        assert old in result, (
+            "nhf baseline's create_hru_gdf no longer has the expected "
+            "commented-out calibration block; this test needs updating"
+        )
+        result = result.replace(old, new)
+    return result
+
+
+def test_hru_gdf_is_nhf_verbatim_except_the_restored_calibration_block(nhf_baseline):
+    """The one documented exception to "took nhf's side wholesale": the nhm
+    HRU calibration-level block was restored (see module docstring). Splicing
+    that same block into nhf's baseline source and comparing ASTs proves
+    nothing else about the function drifted from nhf.
+    """
+    import assist.common.hydrofabric as common
+
+    nhf_source = inspect.getsource(nhf_baseline.create_hru_gdf)
+    expected_source = _restore_calibration_block(nhf_source)
+
+    expected_node = ast.parse(expected_source).body[0]
+    expected_node.name = "_"
+    actual_node = ast.parse(inspect.getsource(common.create_hru_gdf)).body[0]
+    actual_node.name = "_"
+
+    assert ast.dump(actual_node) == ast.dump(expected_node)
+
+
+def test_hru_gdf_keeps_the_missing_hru_id_fallback():
+    """GFv1.1 geopackages have no hru_id; without this fallback they break."""
+    import assist.common.hydrofabric as common
+
+    source = inspect.getsource(common.create_hru_gdf)
+    assert '"hru_id" not in hru_gdb.columns' in source
+    assert "model_hru_idx" in source
+
+
+def test_segment_gdf_keeps_the_nhm_seg_id_rename():
+    """GFv2 geopackages have nhm_seg_id, not nhm_seg; the rename bridges them."""
+    import assist.common.hydrofabric as common
+
+    source = inspect.getsource(common.create_segment_gdf)
+    assert "nhm_seg_id" in source
+    assert "nhm_seg" in source
+
+
+def test_neither_function_hardcodes_a_single_fabric_only_column():
+    """A bare set_index on nhm_seg with no fallback is the nhm bug we are avoiding."""
+    import assist.common.hydrofabric as common
+
+    seg = inspect.getsource(common.create_segment_gdf)
+    assert seg.count("nhm_seg_id") >= 1, (
+        "the rename that makes GFv2 readable has gone missing"
+    )

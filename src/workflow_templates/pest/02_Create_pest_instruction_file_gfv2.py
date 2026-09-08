@@ -36,8 +36,8 @@ import assist as _assist_pkg
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
-from assist.nhf import efc
+from assist.common.assist_utilities import load_subdomain_config
+from assist.common import efc
 
 config = load_subdomain_config(root_dir)
 

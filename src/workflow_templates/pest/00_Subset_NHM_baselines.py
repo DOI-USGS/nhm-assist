@@ -37,20 +37,20 @@ import assist as _assist_pkg
 root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
 
 
-from assist.nhf.nhm_hydrofabric_v2 import (
+from assist.common.hydrofabric import (
     make_hf_map_elements,
     evaluate_and_fix_nhru_geometry,
 )
-from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,
     fetch_ref_npoigages_info,
 )
 
-from assist.nhf import efc
+from assist.common import efc
 
 # import topojson
 
@@ -72,8 +72,10 @@ with redirect_stdout(f):
     import pywatershed as pws
 
 # Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
+# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
+# fallback to the package location — works for editable and non-editable installs.
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root()
 
 
 # from assist.workspace.bridge import resolve_project_notebook_context
@@ -101,8 +103,8 @@ load_dotenv(dotenv_path=dotenv_path)
 ############################################
 
 
-# from assist.nhm.nhm_assist_utilities import load_subdomain_config
-# from assist.nhm import efc
+# from assist.common.assist_utilities import load_subdomain_config
+# from assist.common import efc
 
 config = load_subdomain_config(root_dir)
 

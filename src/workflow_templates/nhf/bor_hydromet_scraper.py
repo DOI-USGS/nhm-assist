@@ -62,7 +62,7 @@ root_folder = "nhf_assist"
 root_dir = pl.Path(os.getcwd().rsplit(root_folder, 1)[0] + root_folder)
 sys.path.append(str(root_dir.parent))
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 
 config = load_subdomain_config(root_dir)
 

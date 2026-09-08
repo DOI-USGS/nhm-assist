@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -124,6 +126,94 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertTrue((paths["project"] / "models").is_dir())
             self.assertTrue((paths["project"] / "project_config").is_dir())
             self.assertTrue((paths["project"] / "notebooks").is_dir())
+
+    def test_create_project_writes_a_jupytext_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            config = workspace_root / "Project_A" / "jupytext.toml"
+            self.assertEqual(paths["jupytext_config"], config)
+            self.assertTrue(config.is_file())
+            self.assertIn('formats = "ipynb,py:percent"', config.read_text())
+            self.assertIn(
+                'notebook_metadata_filter = "-all"', config.read_text()
+            )
+
+    def test_create_project_never_overwrites_an_existing_jupytext_config(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            project_dir = workspace_root / "Project_A"
+            project_dir.mkdir(parents=True)
+            config = project_dir / "jupytext.toml"
+            custom = 'formats = "ipynb,scripts//py:light"\n'
+            config.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(config.read_text(), custom)
+
+    def test_create_project_writes_vscode_jupytext_sync_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
+            self.assertEqual(paths["vscode_settings"], settings_path)
+            settings = json.loads(settings_path.read_text())
+            self.assertEqual(
+                settings["jupytextSync.syncDocuments"],
+                {
+                    "onNotebookDocumentOpen": False,
+                    "onNotebookDocumentSave": True,
+                    "onNotebookDocumentClose": False,
+                    "onTextDocumentOpen": False,
+                    "onTextDocumentSave": True,
+                    "onTextDocumentClose": False,
+                },
+            )
+            self.assertEqual(
+                settings["jupytextSync.pythonExecutable"], sys.executable
+            )
+
+    def test_create_project_never_overwrites_existing_vscode_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            vscode_dir = workspace_root / "Project_A" / ".vscode"
+            vscode_dir.mkdir(parents=True)
+            settings_path = vscode_dir / "settings.json"
+            custom = '{"editor.formatOnSave": true}'
+            settings_path.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(settings_path.read_text(), custom)
+
+    def test_create_project_writes_vscode_extension_recommendation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            paths = service.create_project(workspace_root, "Project_A")
+
+            extensions_path = workspace_root / "Project_A" / ".vscode" / "extensions.json"
+            self.assertEqual(paths["vscode_extensions"], extensions_path)
+            extensions = json.loads(extensions_path.read_text())
+            self.assertIn("caenrigen.jupytext-sync", extensions["recommendations"])
+
+    def test_create_project_never_overwrites_existing_vscode_extensions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            vscode_dir = workspace_root / "Project_A" / ".vscode"
+            vscode_dir.mkdir(parents=True)
+            extensions_path = vscode_dir / "extensions.json"
+            custom = '{"recommendations": ["ms-python.python"]}'
+            extensions_path.write_text(custom, encoding="utf-8")
+
+            service.create_project(workspace_root, "Project_A")
+
+            self.assertEqual(extensions_path.read_text(), custom)
 
     def test_create_model_does_not_require_model_local_notebooks_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -461,7 +551,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
     def test_create_default_gages_file_calls_find_missing_for_missing_metadata(self):
         from unittest.mock import patch
-        from assist.nhm import nhm_hydrofabric
+        from assist.common import hydrofabric as nhm_hydrofabric
 
         captured_args: dict = {}
 
@@ -482,11 +572,11 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
         # helpers. We're not testing create_default_gages_file end-to-end here,
         # only that the new fallback call happens when missing rows exist.
         with patch.object(
-            nhm_hydrofabric, "find_missing_gage_info", side_effect=fake_find
+            nhm_hydrofabric, "create_default_gages_file", side_effect=fake_find
         ) as mock_find:
             # The orchestration is verified by integration; here we just
             # confirm the symbol is imported and reachable.
-            self.assertTrue(callable(nhm_hydrofabric.find_missing_gage_info))
+            self.assertTrue(callable(nhm_hydrofabric.create_default_gages_file))
 
 
 class ProjectSharedNotebookCliTests(unittest.TestCase):
