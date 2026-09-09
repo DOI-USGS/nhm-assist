@@ -190,6 +190,29 @@ def _restore_calibration_block(nhf_source: str) -> str:
             "        diff = df_by_nhm_id.loc[~same, [\"hru_id\"]].join(\n",
         )
     )
+    replacements.append(
+        # The HRU check compared hru_id with .equals(), which is order
+        # sensitive: it printed a false "STOP!" for models whose GIS is stored
+        # in a different order from the parameter file (the v1.1 byHWobs Maine
+        # subdomain), then an empty diff because the two agree once aligned by
+        # nhm_id. The merge below is on nhm_id, so only presence matters.
+        (
+            '    if df_by_nhm_id["hru_id"].equals(hru_gdb["hru_id"]):\n'
+            '        print("GIS nhm_id matches order found in myparam.param")\n'
+            '        df.drop(columns=["hru_id"], inplace=True)\n'
+            "    else:\n"
+            '        print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")\n',
+            "    missing_hrus_from_gis = sorted(set(df_by_nhm_id.index) - set(hru_gdb.index))\n"
+            "    missing_hrus_from_param = sorted(set(hru_gdb.index) - set(df_by_nhm_id.index))\n"
+            "    if not missing_hrus_from_gis and not missing_hrus_from_param:\n"
+            '        print("GIS nhm_id matches the set found in myparam.param")\n'
+            '        df.drop(columns=["hru_id"], inplace=True)\n'
+            "    else:\n"
+            '        print("STOP! GIS nhm_id does not match the HRUs in myparam.param!")\n'
+            '        print(f"  Missing from GIS: {missing_hrus_from_gis[:10]}")\n'
+            '        print(f"  Missing from the parameter file: {missing_hrus_from_param[:10]}")\n',
+        )
+    )
     result = nhf_source
     for old, new in replacements:
         assert old in result, (

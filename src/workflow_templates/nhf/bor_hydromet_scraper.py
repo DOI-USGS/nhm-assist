@@ -153,11 +153,11 @@ results = []
 
 for station, name, lat, lon in aoi_stations:
     url = (
-        f"https://www.usbr.gov/pn-bin/daily.pl"
+        f"https://www.usbr.gov/pn-bin/daily"
         f"?station={station}&format=csv"
         f"&year={START_YEAR}&month=1&day=1"
         f"&year={END_YEAR}&month=12&day=31"
-        f"&pcode=QU"
+        f"&pcode=qu"
     )
     try:
         resp = requests.get(url, timeout=30)
@@ -259,11 +259,11 @@ all_qu_data = []
 for _, row in stations_gdf.iterrows():
     station = row["station"]
     url = (
-        f"https://www.usbr.gov/pn-bin/daily.pl"
+        f"https://www.usbr.gov/pn-bin/daily"
         f"?station={station}&format=csv"
         f"&year={START_YEAR}&month=1&day=1"
         f"&year={END_YEAR}&month=12&day=31"
-        f"&pcode=QU"
+        f"&pcode=qu"
     )
     try:
         resp = requests.get(url, timeout=60)

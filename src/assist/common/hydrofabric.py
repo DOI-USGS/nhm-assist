@@ -269,11 +269,20 @@ def create_hru_gdf(
     df_by_nhm_id = df.set_index("nhm_id", drop=False).fillna(
             0
         )  # Set an index for HRU geodatabase.
-    if df_by_nhm_id["hru_id"].equals(hru_gdb["hru_id"]):
-        print("GIS nhm_id matches order found in myparam.param")
+    # Compare which HRUs are present, not the order they are stored in: the
+    # merge below is on nhm_id, so order is irrelevant. Comparing hru_id with
+    # .equals() printed a false "STOP!" for perfectly good models whose GIS is
+    # ordered differently from the parameter file (the v1.1 byHWobs Maine
+    # subdomain), followed by an empty diff because the two agree once aligned.
+    missing_hrus_from_gis = sorted(set(df_by_nhm_id.index) - set(hru_gdb.index))
+    missing_hrus_from_param = sorted(set(hru_gdb.index) - set(df_by_nhm_id.index))
+    if not missing_hrus_from_gis and not missing_hrus_from_param:
+        print("GIS nhm_id matches the set found in myparam.param")
         df.drop(columns=["hru_id"], inplace=True)
     else:
-        print("STOP! GIS nhm_id order is not the same as the order found in myparam.param!")
+        print("STOP! GIS nhm_id does not match the HRUs in myparam.param!")
+        print(f"  Missing from GIS: {missing_hrus_from_gis[:10]}")
+        print(f"  Missing from the parameter file: {missing_hrus_from_param[:10]}")
         # `same` was previously never assigned, so this diagnostic branch raised
         # NameError instead of printing the mismatch it exists to print. It only
         # fires for models whose GIS order differs from the parameter file's,

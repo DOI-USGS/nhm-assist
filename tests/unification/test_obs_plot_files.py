@@ -102,6 +102,25 @@ INTENDED_EDITS = [
             )
 """,
     ),
+    # Merged from feature/runner: gages_df is normally indexed by poi_gage_id,
+    # but a reset_index upstream leaves it as a column instead -- and one gage
+    # absent from xr_streamflow used to fail the whole batch rather than being
+    # skipped.
+    (
+        """    poi_list = gages_df.index.tolist()
+""",
+        """    if "poi_gage_id" in gages_df.columns:
+        poi_list = gages_df["poi_gage_id"].tolist()
+    else:
+        poi_list = gages_df.index.tolist()
+
+    available = set(xr_streamflow.poi_gage_id.values.tolist())
+    missing = [p for p in poi_list if p not in available]
+    if missing:
+        print(f"make_obs_plot_files: skipping {len(missing)} gage(s) not in xr_streamflow: {missing}")
+    poi_list = [p for p in poi_list if p in available]
+""",
+    ),
 ]
 
 

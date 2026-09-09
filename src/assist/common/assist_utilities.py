@@ -770,7 +770,20 @@ def make_obs_plot_files(*, start_date, end_date, gages_df, xr_streamflow, Folium
 
         return f"{cpoi} plot created."
 
-    poi_list = gages_df.index.tolist()
+    # gages_df is normally indexed by poi_gage_id (see read_gages_file), but be
+    # robust to a poi_gage_id column too (e.g. after a reset_index upstream).
+    if "poi_gage_id" in gages_df.columns:
+        poi_list = gages_df["poi_gage_id"].tolist()
+    else:
+        poi_list = gages_df.index.tolist()
+
+    # Only plot gages that actually exist in xr_streamflow; skip the rest so one
+    # missing station doesn't fail the whole batch.
+    available = set(xr_streamflow.poi_gage_id.values.tolist())
+    missing = [p for p in poi_list if p not in available]
+    if missing:
+        print(f"make_obs_plot_files: skipping {len(missing)} gage(s) not in xr_streamflow: {missing}")
+    poi_list = [p for p in poi_list if p in available]
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {executor.submit(_make_single_plot, cpoi): cpoi for cpoi in poi_list}
@@ -1636,6 +1649,7 @@ def fetch_waterdata_gage_info(
     waterdata_gage_nobs_min,
     hru_gdf,
     seg_gdf,
+    poi_df=None,
 ):
     """
     This function creates a pandas DataFrame of information for all gages in the model domain that
@@ -1752,7 +1766,32 @@ def fetch_waterdata_gage_info(
         )
 
         # Step 2: Filter points that are within 1000 meters of the nearest line
-        filtered_points_gdf = points_gdf[points_gdf["distance_to_line"] <= 1000]
+        # Within 1 km of the stream network, BUT always keep gages that are in
+        # the parameter file (poi_df): a POI the model already references must
+        # not be filtered out just because the nearest segment is far away.
+        if poi_df is not None:
+            param_gage_ids = set(poi_df["poi_gage_id"].astype(str).unique())
+            # Extract site number from monitoring_location_id (format: "USGS-01017550")
+            points_gdf["_site_no"] = (
+                points_gdf["monitoring_location_id"]
+                .astype(str)
+                .str.split("-", n=1)
+                .str[-1]
+            )
+            in_param_file = points_gdf["_site_no"].isin(param_gage_ids)
+            filtered_points_gdf = points_gdf[
+                (points_gdf["distance_to_line"] <= 1000) | in_param_file
+            ]
+            n_rescued = in_param_file.sum() - (
+                (points_gdf["distance_to_line"] <= 1000) & in_param_file
+            ).sum()
+            if n_rescued > 0:
+                print(
+                    f"  {n_rescued} parameter-file gage(s) kept despite being >1000m from nearest segment."
+                )
+            filtered_points_gdf = filtered_points_gdf.drop(columns="_site_no")
+        else:
+            filtered_points_gdf = points_gdf[points_gdf["distance_to_line"] <= 1000]
 
         # Drop the distance column if no longer needed
         filtered_points_gdf = filtered_points_gdf.drop(columns="distance_to_line")
@@ -1769,6 +1808,7 @@ def fetch_waterdata_gage_info(
             site_list[i : i + chunk_size] for i in range(0, len(site_list), chunk_size)
         ]
         domain_locations = pd.DataFrame()
+        chunk_errors: list[str] = []
         for site_group in chunks:
             try:
                 chunk_data, _ = waterdata.get_monitoring_locations(
@@ -1790,6 +1830,21 @@ def fetch_waterdata_gage_info(
                     domain_locations = pd.concat([domain_locations, chunk_data])
             except Exception as e:
                 print(f"Chunk failed: {e}")
+                chunk_errors.append(str(e))
+
+        if domain_locations.empty:
+            # Every chunk failed, so `domain_locations` is still the empty plain
+            # DataFrame it started as, and reaching `.geometry` on that raised
+            # `AttributeError: 'DataFrame' object has no attribute 'geometry'` --
+            # which says nothing about the cause. Most often it is an HTTP 429
+            # from WaterData when several runs share a rate-limit window.
+            detail = "; ".join(dict.fromkeys(chunk_errors)) or "no reason reported"
+            raise RuntimeError(
+                "WaterData returned no monitoring locations for this domain, so "
+                "gage information could not be built. Every request failed: "
+                f"{detail}. If that mentions HTTP 429 the rate-limit window "
+                "simply needs to roll over -- wait and re-run this notebook."
+            )
 
         domain_locations["latitude"] = (
             domain_locations.geometry.y
