@@ -758,8 +758,16 @@ def oopla(
 
         """
         for var in output_var_list:
-            color_sel = var_colors_dict[var]
-            leg_only = leg_only_dict[var]
+            # `output_var_list` is discovered from the model's own output files
+            # (retrieve_hru_output_info takes every variable dimensioned
+            # (time, nhm_id) in inches), while these two dicts are a fixed list
+            # of 17 names. Any model writing a qualifying variable outside that
+            # list -- Walla Walla writes `pkwater_equiv` -- raised `KeyError`
+            # here and lost the whole flux plot. Fall back instead: an
+            # unrecognized variable plots in grey, hidden behind the legend
+            # toggle like the other non-headline series.
+            color_sel = var_colors_dict.get(var, "grey")
+            leg_only = leg_only_dict.get(var, "legendonly")
 
             var_daily, mean_var_monthly, mean_var_annual, var_units, var_desc = (
                 create_mean_var_dataarrays(

@@ -195,7 +195,23 @@ def make_webbrowser_map(map_file):
                 subprocess.check_output(["wslpath", "-w", map_file_str]).decode().strip()
             )
             map_file_str = f"file:///{windows_path}"
-        webbrowser.open(map_file_str, new=2)
+        else:
+            # webbrowser wants a URL, not a filesystem path, and WSL above was
+            # the only branch that supplied one. On macOS webbrowser hands the
+            # string to AppleScript `open location`, which requires a URL:
+            # given a bare POSIX path it silently opens nothing, exits 0, and
+            # `MacOSXOSAScript.open` then returns True -- so every map "opened
+            # successfully" while no browser ever appeared. as_uri() also
+            # percent-encodes spaces and yields file:///C:/... on Windows.
+            map_file_str = pl.Path(map_file).resolve().as_uri()
+        if not webbrowser.open(map_file_str, new=2):
+            # No browser could be launched at all (headless kernel, remote
+            # JupyterHub). The html is already saved, so say where it is
+            # rather than failing silently.
+            print(
+                "Could not open a browser automatically. The map is saved at:\n"
+                f"  {map_file}"
+            )
 
 
 def folium_map_elements(hru_gdf, poi_df, poi_gage_id_sel):

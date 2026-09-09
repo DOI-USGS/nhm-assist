@@ -14,10 +14,17 @@ from assist.common.output_plots import (
 )
 from assist.common.output_plots import create_streamflow_plot
 
-# Injected map backend (supplied per-side by the consuming notebook so this
-# module stays agnostic to the diverged nhm/nhf map_template implementations).
-make_var_map = None
-make_streamflow_map = None
+# The map backend used to be a module-level `None` for the consuming notebook
+# to inject, so this module could stay agnostic to the diverged nhm/nhf
+# map_template implementations. Those are unified into one
+# assist.common.map_template, so there is nothing left to be agnostic about,
+# and the placeholder was actively harmful: only the deleted nhf
+# display_controls_v2 ever assigned it, so on the nhm side `generate_map`
+# reached `make_var_map(...)` with None and raised
+# `TypeError: 'NoneType' object is not callable` the moment the button was
+# clicked. Importing it directly makes that unrepresentable. Tests that
+# exercise an alternate backend still override these names on the module.
+from assist.common.map_template import make_streamflow_map, make_var_map
 
 root_dir = None
 out_dir = None

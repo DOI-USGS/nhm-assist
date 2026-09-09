@@ -331,8 +331,27 @@ def create_sum_var_annual_gdf(
         table["nhm_id"] = table["nhm_id"].astype(hru_gdf["nhm_id"].dtype)
 
     gdf_output_var_annual = hru_gdf.merge(table, on="nhm_id")
+    # This drop is cosmetic -- it strips bookkeeping columns that should not
+    # reach the map popup. It hardcoded `model_idx`, but create_hru_gdf treats
+    # `model_idx`, `model_hru_idx`, `model_hru_` (DBF's 10-char truncation) and
+    # `model_id` as interchangeable spellings of the same HRU index and keeps
+    # whichever the GIS file happens to use, and `model_idx` proper belongs to
+    # the segment frame. So on any model whose GIS uses another spelling this
+    # raised `KeyError: "['model_idx'] not found in axis"` and took out the
+    # whole nb5 map -- Walla Walla's geopackage carries `model_hru_idx`.
+    # Drop every spelling that is actually present, and tolerate absence.
     gdf_output_var_annual.drop(
-        columns=["hru_lat", "hru_lon", "hru_segment_nhm", "model_idx"], inplace=True
+        columns=[
+            "hru_lat",
+            "hru_lon",
+            "hru_segment_nhm",
+            "model_idx",
+            "model_hru_idx",
+            "model_hru_",
+            "model_id",
+        ],
+        inplace=True,
+        errors="ignore",
     )
 
     """
