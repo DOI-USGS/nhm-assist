@@ -26,12 +26,47 @@ def test_create_waterdata_sf_df_uses_the_waterdata_fetcher_and_metadata_path():
 
 
 def test_geos_safe_clip_survived_the_terminology_pass():
-    """nhm-only hardening that adopting nhf's side would have deleted."""
+    """nhm-only hardening that adopting nhf's side would have deleted.
+
+    Strengthened after the New England subdomain still failed here: repairing
+    only the mask is not enough, because clip() intersects the mask union
+    against the *target's* raw geometry, and HUC2.shp ships invalid polygons.
+    `_safe_clip` repairs both sides.
+    """
     import assist.common.sf_data_retrieval as common
 
     for name in ("create_OR_sf_df", "create_ecy_sf_df"):
         source = inspect.getsource(getattr(common, name))
-        assert "_safe_clip_mask(hru_gdf)" in source, f"{name} lost the GEOS-safe clip"
+        assert "_safe_clip(huc2_gdf, hru_gdf)" in source, (
+            f"{name} lost the GEOS-safe clip"
+        )
+
+
+def test_safe_clip_repairs_both_operands():
+    """The bug: HUC2 01 and 02 self-intersect near -72.016, 41.315, so every
+    subdomain overlapping them raised GEOSException while domains elsewhere
+    passed regardless of their own invalid rings."""
+    import geopandas as gpd
+    from shapely.geometry import Polygon
+
+    import assist.common.sf_data_retrieval as common
+
+    bowtie = Polygon([(0, 0), (2, 2), (2, 0), (0, 2)])  # self-intersecting
+    square = Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])
+
+    target = gpd.GeoDataFrame({"id": [1]}, geometry=[bowtie], crs=4326)
+    mask = gpd.GeoDataFrame({"id": [1]}, geometry=[bowtie], crs=4326)
+
+    # an invalid target is what the mask-only helper could not save
+    assert not target.geometry.is_valid.all()
+    clipped = common._safe_clip(target, mask)
+    assert len(clipped) >= 0  # the point is that it does not raise
+
+    # and a valid pair still clips normally
+    ok = common._safe_clip(
+        gpd.GeoDataFrame({"id": [1]}, geometry=[square], crs=4326), mask
+    )
+    assert len(ok) == 1
 
 
 def test_retry_and_stagger_survived():

@@ -555,6 +555,25 @@ def create_append_gages_to_param_file(
     Not usable from the nhf workflow (a GFv2 `seg_gdf`) until the hydrofabric
     concern settles segment-column naming; calling it there raises `KeyError`.
     """
+    # A gage with no coordinates becomes an empty point, and the sjoin_nearest
+    # below then raises a bare `GEOSException` naming nothing. Drop those first:
+    # they cannot be matched to a segment by distance anyway. Models whose gages
+    # are not all covered by WaterData hit this routinely -- the v1.1 byHWobs
+    # Maine subdomain has 26 such gages of 136, New England 6 of 407.
+    locatable = gages_df[["latitude", "longitude"]].notna().all(axis=1)
+    if (~locatable).any():
+        unplaceable = gages_df.loc[~locatable]
+        ids = (
+            unplaceable["poi_gage_id"].tolist()
+            if "poi_gage_id" in unplaceable.columns
+            else [str(i) for i in unplaceable.index]
+        )
+        print(
+            f"Skipping {len(ids)} gage(s) without latitude/longitude when matching "
+            f"gages to segments: {', '.join(map(str, ids))}"
+        )
+        gages_df = gages_df.loc[locatable]
+
     gages_gdf = gpd.GeoDataFrame(
         gages_df,
         geometry=gpd.points_from_xy(gages_df.longitude, gages_df.latitude),
@@ -648,6 +667,17 @@ def make_myparam_addl_gages_param_file(
             addl_gages_df["poi_gage_segment"].to_list(),
         )
     )
+
+    # pyPRMS's add_poi sets the global dimensions `npoigages` and `nobs`
+    # together and looks both up unconditionally, so a parameter file that
+    # does not declare `nobs` fails with `ValueError: Dimension, nobs, does
+    # not exist.` before anything is written. Bandit-written GFv1.1 files
+    # carry `nobs == npoigages`; the GFv2-derived pyPRMS subsetter emits no
+    # `nobs` at all, which took out every v1.2 and v2 subdomain. Seed it to
+    # the current POI count so the file PRMS reads follows the same
+    # convention the v1.1 files already do.
+    if not pdb.dimensions.exists("nobs"):
+        pdb.dimensions.add("nobs", size=pdb.dimensions.get("npoigages").size)
 
     pdb.add_poi(addl_gages)
     new_par_file = model_dir / "myparam_addl_gages.param"
@@ -1188,6 +1218,25 @@ def create_append_gages_to_param_file_v2(
     First, a geopandas GeoDataFrame is made for the gages_df using the lat/lon from the gages_df (WaterData or user supplied).
     Projection is set to crs=4326 and may introduce some spatial innaccuracy for older gages.
     """
+    # A gage with no coordinates becomes an empty point, and the sjoin_nearest
+    # below then raises a bare `GEOSException` naming nothing. Drop those first:
+    # they cannot be matched to a segment by distance anyway. Models whose gages
+    # are not all covered by WaterData hit this routinely -- the v1.1 byHWobs
+    # Maine subdomain has 26 such gages of 136, New England 6 of 407.
+    locatable = gages_df[["latitude", "longitude"]].notna().all(axis=1)
+    if (~locatable).any():
+        unplaceable = gages_df.loc[~locatable]
+        ids = (
+            unplaceable["poi_gage_id"].tolist()
+            if "poi_gage_id" in unplaceable.columns
+            else [str(i) for i in unplaceable.index]
+        )
+        print(
+            f"Skipping {len(ids)} gage(s) without latitude/longitude when matching "
+            f"gages to segments: {', '.join(map(str, ids))}"
+        )
+        gages_df = gages_df.loc[locatable]
+
     gages_gdf = gpd.GeoDataFrame(
         gages_df,
         geometry=gpd.points_from_xy(gages_df.longitude, gages_df.latitude),

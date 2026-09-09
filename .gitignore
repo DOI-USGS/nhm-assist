@@ -267,3 +267,6 @@ issues_for_eddie.md
 src/assist/_version.py
 *.pyc
 *.pyc
+# pixi environments
+.pixi/*
+!.pixi/config.toml

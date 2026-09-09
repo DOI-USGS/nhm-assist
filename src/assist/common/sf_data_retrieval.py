@@ -36,11 +36,34 @@ def _safe_clip_mask(hru_gdf):
     GEOSException when any source polygon is invalid (self-intersecting,
     NaN coords, unclosed ring, etc.). Repair upstream so .clip() can't trip.
     """
-    safe = hru_gdf.copy()
+    return _repair_geometry(hru_gdf)
+
+
+def _repair_geometry(gdf):
+    """Return a copy of `gdf` with invalid geometries repaired via make_valid."""
+    safe = gdf.copy()
     safe["geometry"] = safe.geometry.apply(
         lambda g: make_valid(g) if g is not None and not g.is_empty else g
     )
     return safe
+
+
+def _safe_clip(target, mask):
+    """Clip `target` by `mask` with BOTH sides repaired first.
+
+    `_safe_clip_mask` alone is not enough. geopandas.clip() unions the mask and
+    then intersects that union against the *target's* raw geometry, so an
+    invalid polygon on either side raises
+    `GEOSException: TopologyException: side location conflict`.
+
+    This bit in practice: `data_dependencies/HUC2/HUC2.shp` ships 3 invalid
+    polygons of 22, including HUC2 01 and 02 (self-intersections near
+    -72.016, 41.315). Any subdomain overlapping those regions -- the v1.1
+    byHWobs New England and Maine subdomains -- failed notebook 1 here, while
+    domains elsewhere passed no matter how many invalid rings their own nhru
+    layer carried.
+    """
+    return _repair_geometry(target).clip(_repair_geometry(mask))
 
 from rich import pretty
 from rich.progress import Progress
@@ -194,7 +217,7 @@ def create_OR_sf_df(*,root_dir, control_file_name, model_dir, output_netcdf_file
 
     # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
+    model_domain_regions = list((_safe_clip(huc2_gdf, hru_gdf).loc[:]["huc2"]).values)
 
     if any(item in owrd_regions for item in model_domain_regions):
         owrd_domain_txt = "The model domain intersects the Oregon state boundary. "
@@ -487,7 +510,7 @@ def create_ecy_sf_df(*, root_dir, control_file_name, model_dir, output_netcdf_fi
 
     # Make a list if the HUC2 region(s) the subdomain intersects for WaterData queries.
     huc2_gdf = gpd.read_file(root_dir/"data_dependencies/HUC2/HUC2.shp").to_crs(crs)
-    model_domain_regions = list((huc2_gdf.clip(_safe_clip_mask(hru_gdf)).loc[:]["huc2"]).values)
+    model_domain_regions = list((_safe_clip(huc2_gdf, hru_gdf).loc[:]["huc2"]).values)
     ecy_df = pd.DataFrame()
 
     if any(item in ecy_regions for item in model_domain_regions):
