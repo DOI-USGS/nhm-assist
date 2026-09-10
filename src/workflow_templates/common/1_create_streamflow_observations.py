@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/common///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -49,6 +34,7 @@ with redirect_stdout(f):
 # root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
 # PIXI_PROJECT_ROOT and works for non-editable installs too.
 from assist.workspace.bridge import resolve_workflow_root
+
 root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
@@ -239,12 +225,13 @@ ecy_df = create_ecy_sf_df(
 # Look for the reviewed BOR domain file
 bor_review_file = (
     root_dir
-    / "hydrofabric_domain_data"
-    / "OHM_2026_02_21"
-    / "npoigages_data"
+    / "data_dependencies"
+    / "BOR_gages"
     / "BOR_QU_domain_review.csv"
 )
-bor_qu_cache_dir = root_dir / "data_dependencies" / "bor_qu_cache" / "individual"
+bor_qu_cache_dir = (
+    root_dir / "data_dependencies" / "BOR_gages" / "bor_qu_cache" / "individual"
+)
 bor_qu_streamflow_df = pd.DataFrame()
 
 if bor_review_file.exists():
