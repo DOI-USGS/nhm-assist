@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/common///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -98,6 +83,7 @@ crs = 4326
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
     waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
+    fabric_version=config["fabric_version"],
 )
 con.print(
     f"{config['workspace_txt']}\n",

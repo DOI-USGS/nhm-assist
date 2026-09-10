@@ -47,7 +47,9 @@ REQUIRED_CONFIG_KEYS = frozenset({
 })
 
 # Present only in nhf-shaped configs; nhm-shaped ones legitimately omit it.
-OPTIONAL_CONFIG_KEYS = frozenset({"resource_gages_file"})
+# `fabric_version` was added later than the original configs, so pre-existing
+# v1.1 workspaces omit it; load_subdomain_config defaults it to "1.1".
+OPTIONAL_CONFIG_KEYS = frozenset({"resource_gages_file", "fabric_version"})
 
 # All 14 keys both baselines wrapped in pl.Path(). Omitting any of these leaves a
 # raw str in the config, and consumers doing `config["out_dir"] / "x.nc"` raise
@@ -121,6 +123,10 @@ def load_subdomain_config(root_dir: pl.Path) -> dict:
             config[key] = pd.to_datetime(value).strftime("%m/%d/%Y")
 
     config.setdefault("resource_gages_file", None)
+    # Configs written before fabric_version existed are all GFv1.1 subdomains,
+    # and "1.1" is also the safe default for the v1.1-only calibration-level map
+    # layers that read this: absent the key, they behave as they always did.
+    config.setdefault("fabric_version", "1.1")
     return config
 
 

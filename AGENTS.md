@@ -21,6 +21,25 @@ specific to working here as an agent.
 - `pixi run dev` / `pixi run setup` — contributor vs. end-user notebook
   workflows; see README's "Developing nhm-assist notebooks" section.
 
+## Editing workflow notebooks
+
+Workflow notebooks are jupytext-paired to `.py` templates under
+`src/workflow_templates/`. In dev/contributor mode a project's notebooks are
+paired back to those repo templates (the pairing is recorded in each
+notebook's `jupytext` metadata, e.g.
+`ipynb,../../../../nhm-assist/src/workflow_templates/common//py:percent`), so
+the repo `.py` is the source of truth — edit it, not the generated notebook.
+
+The correct workflow is just: edit and save that `.py`, and the paired
+notebook updates on its own when you open/run it in Jupyter. No
+`jupytext --sync` needed.
+
+Avoid running `jupytext --sync` from the command line to force propagation.
+The relative `../` pairing prefix can be mis-resolved by the CLI (relative to
+the current directory rather than the notebook), which silently writes a bogus
+nested `nhm-assist/...` tree under the notebook folder instead of updating the
+repo template.
+
 ## Design docs and plans
 
 Specs and implementation plans for substantial changes live under

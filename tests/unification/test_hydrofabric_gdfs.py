@@ -117,24 +117,45 @@ def _restore_calibration_block(nhf_source: str) -> str:
     """
     replacements = [
         (
+            # fabric_version was added to the signature so the cal-level block
+            # below can be gated on GFv2 vs v1.1 (see the if/else splice further
+            # down). nhf's baseline signature ends after nhru_nmonths_params.
+            "    nhru_params,\n    nhru_nmonths_params,\n):",
+            "    nhru_params,\n    nhru_nmonths_params,\n"
+            '    fabric_version="1.1",\n):',
+        ),
+        (
+            # The restored cal-level merge is now gated: it runs for v1.1 and is
+            # skipped for GFv2 (which has no headwaters), where hru_cal_level_txt
+            # is emptied instead. This splice reconstructs that gated structure;
+            # everything else in the function must still be verbatim nhf.
             '    # hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)\n'
             '    # hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")\n'
             "\n"
             '    # hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")\n'
             '    # hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")\n',
-            '    hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)\n'
-            '    hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")\n'
+            '    if str(fabric_version).startswith("2"):\n'
+            '        hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."\n'
+            '        hru_cal_level_txt = ""\n'
+            "    else:\n"
+            '        hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)\n'
+            '        hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")\n'
             "\n"
-            '    hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")\n'
-            '    hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")\n',
+            '        hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")\n'
+            '        hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")\n',
         ),
         (
+            # Under the gate, both hru_text and hru_cal_level_txt are assigned
+            # inside the else branch, so splice them there (indented) and drop
+            # the now-duplicated top-level hru_text line nhf emitted.
+            '    hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."\n'
             "    # hru_cal_level_txt = f'{hru_gdf[hru_gdf[\"level\"] > 1][\"level\"].count()} "
             'HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are '
             "within HW calibrated with streamflow observations.'\n"
             "\n"
             "    return hru_gdf, hru_text",
-            "    hru_cal_level_txt = f'{hru_gdf[hru_gdf[\"level\"] > 1][\"level\"].count()} "
+            '        hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."\n'
+            "        hru_cal_level_txt = f'{hru_gdf[hru_gdf[\"level\"] > 1][\"level\"].count()} "
             'HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are '
             "within HW calibrated with streamflow observations.'\n"
             "\n"

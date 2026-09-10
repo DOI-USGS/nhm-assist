@@ -65,8 +65,22 @@ def test_map_elements_survived_and_is_verbatim_nhf():
             '"metadata/WaterDataGages.csv"',
         ),
         (
+            # fabric_version added to the signature so the make_HW_cal_level_files
+            # call below can be gated on GFv2 vs v1.1 (see the if/else splice).
+            "    nhru_nmonths_params,\n    waterdata_gage_nobs_min,\n):",
+            "    nhru_nmonths_params,\n    waterdata_gage_nobs_min,\n"
+            '    fabric_version="1.1",\n):',
+        ),
+        (
             "    hru_gdf, hru_txt = create_hru_gdf(",
             "    hru_gdf, hru_txt, hru_cal_level_txt = create_hru_gdf(",
+        ),
+        (
+            # fabric_version is threaded into create_hru_gdf so it can skip the
+            # v1.1-only cal-levels merge for GFv2.
+            "        nhru_nmonths_params=nhru_nmonths_params,\n    )",
+            "        nhru_nmonths_params=nhru_nmonths_params,\n"
+            "        fabric_version=fabric_version,\n    )",
         ),
         (
             "        #hru_cal_level_txt,",
@@ -89,8 +103,14 @@ def test_map_elements_survived_and_is_verbatim_nhf():
             '    """',
         ),
         (
+            # make_HW_cal_level_files reads v1.1-only byHW/hw_id columns, so it
+            # is gated: skipped for GFv2 (HW_basins_gdf/HW_basins = None, which
+            # make_hf_map already treats as "no cal-level layer").
             "#    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)",
-            "    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)",
+            '    if str(fabric_version).startswith("2"):\n'
+            "        HW_basins_gdf, HW_basins = None, None\n"
+            "    else:\n"
+            "        HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)",
         ),
         (
             "#        HW_basins_gdf,\n"

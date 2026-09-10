@@ -21,6 +21,7 @@ def _write(tmp_path: pl.Path, cfg: dict) -> pl.Path:
 def test_a_complete_config_loads():
     assert REQUIRED_CONFIG_KEYS
     assert "resource_gages_file" in OPTIONAL_CONFIG_KEYS
+    assert "fabric_version" in OPTIONAL_CONFIG_KEYS
 
 
 def test_complete_config_round_trips(tmp_path):
@@ -48,6 +49,20 @@ def test_error_names_every_missing_key_at_once(tmp_path):
 def test_optional_key_absent_is_tolerated(tmp_path):
     cfg = load_subdomain_config(_write(tmp_path, COMPLETE_CONFIG))
     assert cfg["resource_gages_file"] is None
+
+
+def test_fabric_version_defaults_to_v1_1_when_absent(tmp_path):
+    # Pre-existing v1.1 configs predate fabric_version; the loader must fill in
+    # "1.1" so the cal-level map layers keep their historical behavior.
+    cfg = load_subdomain_config(_write(tmp_path, COMPLETE_CONFIG))
+    assert cfg["fabric_version"] == "1.1"
+
+
+def test_fabric_version_is_preserved_when_present(tmp_path):
+    cfg = load_subdomain_config(
+        _write(tmp_path, {**COMPLETE_CONFIG, "fabric_version": "2.0"})
+    )
+    assert cfg["fabric_version"] == "2.0"
 
 
 def test_waterdata_only_config_also_loads(tmp_path):

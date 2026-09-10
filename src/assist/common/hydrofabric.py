@@ -136,6 +136,7 @@ def create_hru_gdf(
     param_filename,
     nhru_params,
     nhru_nmonths_params,
+    fabric_version="1.1",
 ):
     """
     Creates hru gdf for selected hru parameters from the parameter file.
@@ -320,15 +321,25 @@ def create_hru_gdf(
     FILES AND TABLES IN THIS SECTION ARE CONUS COVERAGE and will be subsetted later.
     """
 
-    #### READ table (.csv) of HRU calibration level file
-    hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)
-    hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")
+    # Calibration levels are a GFv1.1 construct. The file merged here
+    # (nhm_v1_1_HRU_cal_levels.csv) is keyed on v1.1 nhm_id and carries the
+    # byHW/hw_id/level columns that the cal-level map layers depend on. GFv2
+    # fabrics have no headwaters, and this inner merge on nhm_id would either
+    # drop HRUs or attach meaningless levels, so it is skipped for GFv2 and the
+    # cal-level feedback text is suppressed.
+    if str(fabric_version).startswith("2"):
+        hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."
+        hru_cal_level_txt = ""
+    else:
+        #### READ table (.csv) of HRU calibration level file
+        hru_cal_levels_df = pd.read_csv(f"{root_dir}/data_dependencies/NHM_v1_1/nhm_v1_1_HRU_cal_levels.csv").fillna(0)
+        hru_cal_levels_df["hw_id"] = hru_cal_levels_df.hw_id.astype("int32")
 
-    hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")
-    hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")
+        hru_gdf = hru_gdf.merge(hru_cal_levels_df, on="nhm_id")
+        hru_gdf["hw_id"] = hru_gdf.hw_id.astype("int32")
 
-    hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."
-    hru_cal_level_txt = f'{hru_gdf[hru_gdf["level"] > 1]["level"].count()} HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are within HW calibrated with streamflow observations.'
+        hru_text = f", and {len(hru_gdf.index)} [bold]HRUs[/bold]."
+        hru_cal_level_txt = f'{hru_gdf[hru_gdf["level"] > 1]["level"].count()} HRUs are within HWs, and {hru_gdf[hru_gdf["level"] > 2]["level"].count()} are within HW calibrated with streamflow observations.'
 
     return hru_gdf, hru_text, hru_cal_level_txt
 
@@ -771,6 +782,7 @@ def make_hf_map_elements(
     nhru_params,
     nhru_nmonths_params,
     waterdata_gage_nobs_min,
+    fabric_version="1.1",
 ):
     """
     Packages all elements required for the hydrofabric map.
@@ -835,6 +847,7 @@ def make_hf_map_elements(
         param_filename=param_filename,
         nhru_params=nhru_params,
         nhru_nmonths_params=nhru_nmonths_params,
+        fabric_version=fabric_version,
     )
 
     seg_gdf, seg_txt = create_segment_gdf(
@@ -870,7 +883,14 @@ def make_hf_map_elements(
         gages_file=gages_file,
     )
 
-    HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)
+    # make_HW_cal_level_files reads the byHW/hw_id columns that create_hru_gdf
+    # only merges on for GFv1.1 fabrics. For GFv2 those columns are absent, and
+    # there are no headwater calibration levels to draw, so return None and let
+    # make_hf_map skip the "HRU cal level" layer (it already guards on None).
+    if str(fabric_version).startswith("2"):
+        HW_basins_gdf, HW_basins = None, None
+    else:
+        HW_basins_gdf, HW_basins = make_HW_cal_level_files(hru_gdf)
 
     return (
         hru_gdf,

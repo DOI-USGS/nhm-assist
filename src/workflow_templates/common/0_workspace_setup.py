@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: notebooks///ipynb,src/workflow_templates/common///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import warnings
 import pandas as pd
@@ -133,7 +118,7 @@ print(root_dir)
 # <font size = '3'>The default is set to the example NHM subdomain model name, "willamette_river". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
-subdomain = "Walla_Walla"
+subdomain = "CrookedRiver"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
@@ -336,6 +321,17 @@ NHM_dir = root_dir / "data_dependencies/NHM_v1_1"
 prms_meta = MetaData().metadata
 pdb = ParameterFile(param_filename, metadata=prms_meta, verbose=False)
 
+# Fabric version is recorded once here so downstream notebooks don't each
+# re-parse the parameter file. GFv2 parameter files carry a "GFv2" marker in
+# their free-text header (e.g. "GFv2 derived"); GFv1.1 files (written by Bandit)
+# do not. Only GFv2 can be positively identified from the header, so anything
+# without that marker defaults to "1.1" -- which is also the correct default for
+# the v1.1-only calibration-level map layers that consume this value.
+fabric_version = "2.0" if any(
+    "gfv2" in str(line).lower() for line in pdb.headers
+) else "1.1"
+print(f"Detected fabric_version: {fabric_version}")
+
 # Create/verify Jupyter notebooks output folder and subfolders in the model directory.
 out_dir = model_dir / "output"
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -364,6 +360,7 @@ import yaml
 dict_file = {
     "subdomain": subdomain,
     "model_dir": str(model_dir),
+    "fabric_version": fabric_version,
     "GIS_format": GIS_format,
     "param_file": param_file,
     "param_filename": str(param_filename),
