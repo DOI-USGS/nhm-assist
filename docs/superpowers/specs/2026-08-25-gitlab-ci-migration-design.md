@@ -1,5 +1,10 @@
 # Migrate CI to GitLab, retire GitHub Actions, add AGENTS.md
 
+> **SUPERSEDED (2026-09-14)** by `docs/superpowers/specs/2026-09-14-gitlab-ci-migration-design.md`.
+> Five of this spec's premises went stale as work landed on `develop`, and its
+> open questions are now answered with evidence from sibling WMA pipelines.
+> Kept for the reasoning history; do not implement from this file.
+
 **Date:** 2026-08-25
 **Status:** Draft, pending review — several decisions below are open questions for a
 GitLab-CI-literate co-developer to weigh in on before this becomes a plan.
