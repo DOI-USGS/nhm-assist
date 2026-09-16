@@ -60,7 +60,7 @@ print(root_dir)
 # %% [markdown]
 # ## Introduction
 # The purpose of this notebook is to setup paths and directories for all nhm-assist notebooks using a provided or requested National Hydrologic Model (NHM) subdomain model (`model_dir`) **Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.**
-# A sample NHM subdomain model is provided in nhm-assist `domain_data` folder for the Willamette River subdomain.
+# A sample NHM subdomain model is provided in the nhm-assist `domain_data` folder for the Walla Walla subdomain.
 
 # %% [markdown]
 # ### A National Hydrologic Model (NHM) subdomain model
@@ -92,7 +92,7 @@ print(root_dir)
 #     - **[HUC2](https://www.sciencebase.gov/catalog/item/6407a507d34e76f5f75e39ec)**
 #     - **NHM-V1_1*** not included in the NHM v1.1 data release [(Markstrom and others, 2024).](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)
 #
-# 2. The **data_domain** folder contains the NHM subdomain model folder(s).
+# 2. The **domain_data** folder contains the NHM subdomain model folder(s).
 #     Any **NHM subdomain model folder** should contain:
 #     - **control.default.bandit** (a control file)
 #     - **myparam.param** (a parameter file)
@@ -130,7 +130,7 @@ print(root_dir)
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **selected NHM domain folder name**.</font><br>
-# <font size = '3'>The default is set to the example NHM subdomain model name, "willamette_river". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
+# <font size = '3'>The default is set to the example NHM subdomain model name, "Walla_Walla". **When these notebooks run from a workspace project this value is ignored:** `subdomain` is overwritten with the project's active model name (set it with `pixi run project-set-active-model`, or option 7 of `pixi run setup`). It takes effect only in the legacy in-repo layout, where it names the model folder under "nhm-assist/domain_data". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
 subdomain = "Walla_Walla"

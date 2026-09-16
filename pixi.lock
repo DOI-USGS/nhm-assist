@@ -8740,7 +8740,7 @@ packages:
   - python_abi 3.11.* *_cp311
   license: BSD-3-Clause AND MIT AND EPL-2.0
   purls:
-  - pkg:pypi/backports-zstd?source=compressed-mapping
+  - pkg:pypi/backports-zstd?source=hash-mapping
   run_exports: {}
   size: 248174
   timestamp: 1786861402951
@@ -8825,7 +8825,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/brotli?source=compressed-mapping
+  - pkg:pypi/brotli?source=hash-mapping
   run_exports: {}
   size: 367362
   timestamp: 1786622943552
@@ -8843,7 +8843,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/brotli?source=compressed-mapping
+  - pkg:pypi/brotli?source=hash-mapping
   run_exports: {}
   size: 367312
   timestamp: 1786622911623
@@ -9065,7 +9065,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/cffi?source=compressed-mapping
+  - pkg:pypi/cffi?source=hash-mapping
   run_exports: {}
   size: 309459
   timestamp: 1786775113989
@@ -9181,7 +9181,7 @@ packages:
   license: Apache-2.0
   license_family: APACHE
   purls:
-  - pkg:pypi/coverage?source=compressed-mapping
+  - pkg:pypi/coverage?source=hash-mapping
   run_exports: {}
   size: 426282
   timestamp: 1786292729866
@@ -13534,7 +13534,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: Apache-2.0
   purls:
-  - pkg:pypi/msgpack?source=compressed-mapping
+  - pkg:pypi/msgpack?source=hash-mapping
   run_exports: {}
   size: 114797
   timestamp: 1788170265724
@@ -15290,7 +15290,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/simplejson?source=compressed-mapping
+  - pkg:pypi/simplejson?source=hash-mapping
   run_exports: {}
   size: 170366
   timestamp: 1787824171432
@@ -18929,8 +18929,7 @@ packages:
   - python >=3.10
   license: BSD-3-Clause
   license_family: BSD
-  purls:
-  - pkg:pypi/panel?source=compressed-mapping
+  purls: []
   run_exports: {}
   size: 7426
   timestamp: 1787040121769
@@ -21647,7 +21646,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/brotli?source=compressed-mapping
+  - pkg:pypi/brotli?source=hash-mapping
   run_exports: {}
   size: 386381
   timestamp: 1786623913309
@@ -22854,7 +22853,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-3-Clause
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   run_exports: {}
   size: 67193
   timestamp: 1787938570899
@@ -27020,7 +27019,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-2-Clause
   purls:
-  - pkg:pypi/wrapt?source=compressed-mapping
+  - pkg:pypi/wrapt?source=hash-mapping
   run_exports: {}
   size: 140546
   timestamp: 1788175038159
@@ -28192,7 +28191,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/cffi?source=compressed-mapping
+  - pkg:pypi/cffi?source=hash-mapping
   run_exports: {}
   size: 296029
   timestamp: 1786775151532
@@ -29191,7 +29190,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-3-Clause
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   run_exports: {}
   size: 66279
   timestamp: 1787938514092
@@ -32368,7 +32367,7 @@ packages:
   - libjpeg-turbo >=3.2.0,<4.0a0
   license: HPND
   purls:
-  - pkg:pypi/pillow?source=compressed-mapping
+  - pkg:pypi/pillow?source=hash-mapping
   run_exports: {}
   size: 996575
   timestamp: 1788263942967
@@ -33244,7 +33243,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/simplejson?source=compressed-mapping
+  - pkg:pypi/simplejson?source=hash-mapping
   run_exports: {}
   size: 166311
   timestamp: 1787824488342
@@ -33402,7 +33401,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-2-Clause
   purls:
-  - pkg:pypi/wrapt?source=compressed-mapping
+  - pkg:pypi/wrapt?source=hash-mapping
   run_exports: {}
   size: 140135
   timestamp: 1788174914289
@@ -34614,7 +34613,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/cffi?source=compressed-mapping
+  - pkg:pypi/cffi?source=hash-mapping
   run_exports: {}
   size: 352291
   timestamp: 1786775178460
@@ -34631,7 +34630,7 @@ packages:
   license: MIT
   license_family: MIT
   purls:
-  - pkg:pypi/cffi?source=compressed-mapping
+  - pkg:pypi/cffi?source=hash-mapping
   run_exports: {}
   size: 345649
   timestamp: 1786775166768
@@ -35519,7 +35518,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-3-Clause
   purls:
-  - pkg:pypi/kiwisolver?source=compressed-mapping
+  - pkg:pypi/kiwisolver?source=hash-mapping
   run_exports: {}
   size: 73323
   timestamp: 1787938450159
@@ -38187,7 +38186,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: Apache-2.0
   purls:
-  - pkg:pypi/msgpack?source=compressed-mapping
+  - pkg:pypi/msgpack?source=hash-mapping
   run_exports: {}
   size: 90073
   timestamp: 1788170255499
@@ -40060,7 +40059,7 @@ packages:
   - python_abi 3.13.* *_cp313
   license: BSD-2-Clause
   purls:
-  - pkg:pypi/wrapt?source=compressed-mapping
+  - pkg:pypi/wrapt?source=hash-mapping
   run_exports: {}
   size: 139404
   timestamp: 1788174908812

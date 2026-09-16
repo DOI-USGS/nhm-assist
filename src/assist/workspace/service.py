@@ -24,7 +24,11 @@ from assist.workspace.examples import resolve_example_source
 
 
 NORMALIZED_SOURCE_DIR = "source_data"
-SKIP_RUNTIME_COPY_NAMES = {"output", "notebook_output_files"}
+# Artifacts the notebooks regenerate (notebook 4 writes `output/`, notebooks
+# 2-6 write `notebook_output_files/`). They are not pristine source, so they
+# are kept out of inputs/source_data on import, and they are not worth
+# seeding into a fresh outputs/runtime either.
+DERIVED_ARTIFACT_NAMES = {"output", "notebook_output_files"}
 
 
 def bootstrap_workspace(workspace_root: str | Path) -> dict[str, Path]:
@@ -276,10 +280,14 @@ def _copy_source_into_model(source: Path, model_paths: dict[str, Path]) -> dict[
         for child in source.iterdir():
             if child.name in {"config", "inputs", "outputs", "notebooks"}:
                 continue
+            if child.name in DERIVED_ARTIFACT_NAMES:
+                continue
             _copy_path(child, normalized_root / child.name)
         return model_paths
 
     for child in source.iterdir():
+        if child.name in DERIVED_ARTIFACT_NAMES:
+            continue
         _copy_path(child, normalized_root / child.name)
     return model_paths
 
@@ -287,7 +295,7 @@ def _copy_source_into_model(source: Path, model_paths: dict[str, Path]) -> dict[
 def _copy_model_source_into_runtime(source_model_dir: Path, runtime_model_dir: Path) -> None:
     runtime_model_dir.mkdir(parents=True, exist_ok=True)
     for child in source_model_dir.iterdir():
-        if child.name in SKIP_RUNTIME_COPY_NAMES:
+        if child.name in DERIVED_ARTIFACT_NAMES:
             continue
         _copy_path(child, runtime_model_dir / child.name)
 
