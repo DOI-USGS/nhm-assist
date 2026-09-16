@@ -1,48 +1,18 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import os
+import sys
 import pathlib as pl
 import warnings
-
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
-import jupyter_black
-
-jupyter_black.load()
-# Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-from assist.common.assist_utilities import load_subdomain_config
-
-
-config = load_subdomain_config(root_dir)
-
-
 import pandas as pd
 import xarray as xr
 import numpy as np
 import shutil
+import datetime
+
+import jupyter_black
+
+jupyter_black.load()
+import io
 
 from contextlib import redirect_stdout
 import io
@@ -51,32 +21,64 @@ f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-from dotenv import load_dotenv
+from rich.console import Console
+from rich import pretty
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
 else:
-    dotenv_path = root_dir / ".env"
+    active_model_root = None
+    config_root = root_dir
 
-load_dotenv(dotenv_path=dotenv_path)
+print(root_dir)
 
-############################################
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-config = load_subdomain_config(root_dir)
-
-from assist.common.assist_utilities import load_subdomain_config
-from assist.common import efc
-
-from assist.pest.pest_utils import (
-    pars_to_tpl_entries,
-    pars_to_tpl_entries_2,
-    write_to_json_tpl,
-    check_par_bounds,
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
 )
 
+from assist.pest.pest_utils import (
+    pars_to_tpl_entries_2,
+    check_par_bounds,
+    write_to_json_tpl,
+)
 
-sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
+from assist.common import efc
+
+config = load_subdomain_config(config_root)
+# con.print(config)
+
+
+# sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 
@@ -94,7 +96,10 @@ else:
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = pl.Path("../").resolve()
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -117,7 +122,7 @@ file_list = [
     "zero_weighting.csv",
 ]
 for file in file_list:
-    source = pestpp_dir / f"data_dependencies/ancillary_template/{file}"
+    source = pestpp_dep_dir / f"ancillary_template/{file}"
     destination = ancillary_dir / f"{file}"
     shutil.copy2(source, destination)
 
@@ -168,8 +173,6 @@ pst = pyemu.Pst.from_io_files(
     ],  # names the model output file in the control file (prior_mc.pst)--Chk with Mike
     pst_path=".",
 )
-
-# %%
 
 # %% [markdown]
 # ## Direct Editing of the PEST++ Control Object
@@ -268,11 +271,15 @@ obs.loc[obs.obsnme.str.startswith("recharge_ann"), "obgnme"] = "recharge_ann"
 
 obs.loc[obs.obsnme.str.startswith("soil_moist_mon"), "obgnme"] = "soil_moist_mon"
 
+obs.loc[obs.obsnme.str.startswith("soil_moist_mean_mon"), "obgnme"] = (
+    "soil_moist_mean_mon"
+)
+
 obs.loc[obs.obsnme.str.startswith("soil_moist_ann"), "obgnme"] = "soil_moist_ann"
 
 obs.loc[obs.obsnme.str.startswith("runoff_mon"), "obgnme"] = "runoff_mon"
 
-obs.loc[obs.obsnme.str.startswith("swe_monthly"), "obgnme"] = "sca_daily"
+obs.loc[obs.obsnme.str.startswith("swe_monthly"), "obgnme"] = "swe_monthly"
 
 # %% [markdown]
 # #### Streamflow observation groups (by EFC classification and hydrograph position)
@@ -281,37 +288,40 @@ obs.loc[obs.obsnme.str.startswith("swe_monthly"), "obgnme"] = "sca_daily"
 
 # %%
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_1_2"), "obgnme"] = (
-    "streamflow_daily_large_ascnd"
+    "streamflow_5day_large_ascnd"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_1_3"), "obgnme"] = (
-    "streamflow_daily_large_dscnd"
+    "streamflow_5day_large_dscnd"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_2_2"), "obgnme"] = (
-    "streamflow_daily_small_ascnd"
+    "streamflow_5day_small_ascnd"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_2_3"), "obgnme"] = (
-    "streamflow_daily_small_dscnd"
+    "streamflow_5day_small_dscnd"
+)
+obs.loc[obs.obsnme.str.startswith("streamflow_5day_3_1"), "obgnme"] = (
+    "streamflow_5day_low"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_3_2"), "obgnme"] = (
-    "streamflow_daily_pulse_ascnd"
+    "streamflow_5day_pulse_ascnd"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_3_3"), "obgnme"] = (
-    "streamflow_daily_pulse_dscnd"
+    "streamflow_5day_pulse_dscnd"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_4_1"), "obgnme"] = (
-    "streamflow_daily_low"
+    "streamflow_5day_low"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_5day_5_1"), "obgnme"] = (
-    "streamflow_daily_ex_low"
+    "streamflow_5day_ex_low"
 )
 obs.loc[obs.obsnme.str.startswith("streamflow_mon"), "obgnme"] = "streamflow_mon"
 
-obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_cal"), "obgnme"] = (
-    "streamflow_mean_mon_cal"
+obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon"), "obgnme"] = (
+    "streamflow_mean_mon"
 )
-obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_val"), "obgnme"] = (
-    "streamflow_mean_mon_val"
-)
+# obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon_val"), "obgnme"] = (
+#     "streamflow_mean_mon_val"
+# )
 
 # %% [markdown]
 # #### Handle no-data streamflow observations
@@ -360,14 +370,14 @@ else:
 # group. Any observation with discharge = 0 should be in `streamflow_daily_ex_low`.
 
 # %%
-obs_group = "streamflow_daily_ex_low"
-mask = (obs.obsnme.str.startswith("streamflow_daily")) & (obs.obsval == 0)
+obs_group = "streamflow_5day_ex_low"
+mask = (obs.obsnme.str.startswith("streamflow_5day")) & (obs.obsval == 0)
 
 obgnme_list = list(set(obs.loc[mask, "obgnme"]))
 
 if len(obgnme_list) == 0:
     print(f"[PASS]: No '0' streamflow observations found — nothing to reassign.")
-elif len(obgnme_list) == 1 and obgnme_list[0] == "streamflow_daily_ex_low":
+elif len(obgnme_list) == 1 and obgnme_list[0] == "streamflow_5day_ex_low":
     print(f"[PASS]: All '0' streamflow observations are in {obs_group}.")
 else:
     change_list = [x for x in obgnme_list if x != obs_group]
@@ -382,7 +392,7 @@ else:
 obgnme_list
 
 # %% [markdown]
-# #### Split streamflow into parameter estimation and validation sets
+# #### Split streamflow into parameter estimation and validation sets (we handle this is the subsetting now)
 # Following Hay and others (2023), odd water years are used for parameter estimation
 # and even water years for validation. Validation observations receive `_val` suffix
 # on their group name and are zero-weighted.
@@ -394,53 +404,54 @@ obgnme_list
 # #### Determine water year for each observation
 
 # %%
-# "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
-# It cannot be changed here. If you want something other than was was set, it must be reset in 0 and rerun all ns.
-if config["water_years"] == True:
-    print("[PASS]: Streamflow annual observations are water years.")
-else:
-    print(
-        "[FAIL]: Streamflow annual observations are calendar years.",
-        "Return to notebook 0_workspace_setup.ipynb, correct the configuration, and rerun notebook 1_create_streamflow_observations.ipynb.",
-    )
+# # "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
+# # It cannot be changed here. If you want something other than was was set, it must be reset in 0 and rerun all ns.
+# if config["water_years"] == True:
+#     print("[PASS]: Streamflow annual observations are water years.")
+# else:
+#     print(
+#         "[FAIL]: Streamflow annual observations are calendar years.",
+#         "Return to notebook 0_workspace_setup.ipynb, correct the configuration, and rerun notebook 1_create_streamflow_observations.ipynb.",
+#     )
 
-# Create water year default value for all groups
-obs["wateryear"] = -9999
+# # Create water year default value for all groups
+# obs["wateryear"] = -9999
 
-# --- Streamflow Monthly ---
-mask_mon = obs.obgnme.str.contains("streamflow_mon") & ~obs.obgnme.str.contains(
-    "streamflow_mean"
-)
+# # --- Streamflow Monthly ---
+# mask_mon = obs.obgnme.str.contains("streamflow_mon") & ~obs.obgnme.str.contains(
+#     "streamflow_mean"
+# )
 
-# Convert index strings to datetime
-dates_mon = pd.to_datetime(
-    obs.loc[mask_mon].index.str.split(":").str[1].str.replace("_", "-", regex=False)
-    + "-01",
-    errors="coerce",
-)
-# Apply Water Year logic: Year + 1 if Month >= 10
-obs.loc[mask_mon, "wateryear"] = dates_mon.year + (dates_mon.month >= 10).astype(int)
+# # Convert index strings to datetime
+# dates_mon = pd.to_datetime(
+#     obs.loc[mask_mon].index.str.split(":").str[1].str.replace("_", "-", regex=False)
+#     + "-01",
+#     errors="coerce",
+# )
+# # Apply Water Year logic: Year + 1 if Month >= 10
+# obs.loc[mask_mon, "wateryear"] = dates_mon.year + (dates_mon.month >= 10).astype(int)
 
-# --- Streamflow Annual ---
-mask_ann = obs.obgnme.str.contains("ann")
-obs_index_series = pd.Series(obs.loc[mask_ann].index)
-obs_index_split = obs_index_series.str.split(":").str[1]
-obs.loc[mask_ann, "wateryear"] = obs_index_split.astype(int).values
+# # --- Streamflow Annual ---
+# mask_ann = obs.obgnme.str.contains("ann")
+# obs_index_series = pd.Series(obs.loc[mask_ann].index)
+# obs_index_split = obs_index_series.str.split(":").str[1]
+# obs.loc[mask_ann, "wateryear"] = obs_index_split.astype(int).values
 
-# --- Streamflow Daily ---
-mask_daily = obs.obgnme.str.contains("streamflow_daily")
+# # --- Streamflow Daily ---
+# mask_daily = obs.obgnme.str.contains("streamflow_daily")
 
-# Convert index strings to datetime
-dates_daily = pd.to_datetime(
-    obs.loc[mask_daily].index.str.split(":").str[1].str.replace("_", "-", regex=False),
-    errors="coerce",
-)
-# Apply Water Year logic: Year + 1 if Month >= 10
-obs.loc[mask_daily, "wateryear"] = dates_daily.year + (dates_daily.month >= 10).astype(
-    int
-)
+# # Convert index strings to datetime
+# dates_daily = pd.to_datetime(
+#     obs.loc[mask_daily].index.str.split(":").str[1].str.replace("_", "-", regex=False),
+#     errors="coerce",
+# )
+# # Apply Water Year logic: Year + 1 if Month >= 10
+# obs.loc[mask_daily, "wateryear"] = dates_daily.year + (dates_daily.month >= 10).astype(
+#     int
+# )
 
 # %%
+# These cells were commented out in the previous notebook version
 # # "Annual" Annual is in WY or calyear already depending on setting in notebook 0_workspace_setup.ipynb.
 # # It cannot be changed here. If you want something other than was was set, it must be reset in 0 and rerun all ns.
 # if config["water_years"] == True:
@@ -497,29 +508,29 @@ obs.loc[mask_daily, "wateryear"] = dates_daily.year + (dates_daily.month >= 10).
 # Edit the start/end dates below to adjust.
 
 # %%
-cal_ts_start = "1999-10-01"  # (Eddie) We should check these dates against the control file dates with at least one year for spin up,
-cal_ts_end = "2010-09-30"
+# cal_ts_start = "1999-10-01"  # (Eddie) We should check these dates against the control file dates with at least one year for spin up,
+# cal_ts_end = "2010-09-30"
 
 # %%
-start_water_year = (
-    pd.to_datetime(cal_ts_start).year + 1
-)  # These are really messy, we need to script this better
-end_water_year = pd.to_datetime(cal_ts_end).year
-streamflow_water_years = np.array(range(start_water_year, end_water_year + 1))
+# start_water_year = (
+#     pd.to_datetime(cal_ts_start).year + 1
+# )  # These are really messy, we need to script this better
+# end_water_year = pd.to_datetime(cal_ts_end).year
+# streamflow_water_years = np.array(range(start_water_year, end_water_year + 1))
 
-## We will choose even years as validation
-val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
-val_water_years
+# ## We will choose even years as validation
+# val_water_years = [i for i in streamflow_water_years if i % 2 == 0]
+# val_water_years
 
 # %% [markdown]
 # #### Assign validation group suffix to even water year observations
 
 # %%
-val_mask = obs.wateryear.isin(val_water_years) & obs.obsnme.str.startswith("streamflow")
-obs.loc[val_mask, "obgnme"] = [f"{i}_val" for i in obs.loc[val_mask].obgnme]
+# val_mask = obs.wateryear.isin(val_water_years) & obs.obsnme.str.startswith("streamflow")
+# obs.loc[val_mask, "obgnme"] = [f"{i}_val" for i in obs.loc[val_mask].obgnme]
 
 # %%
-set(obs.obgnme)
+# set(obs.obgnme)
 
 # %%
 # obs.loc[obs['obgnme'].str.startswith('streamflow_mean_mon')=='streamflow_nodata']
@@ -529,13 +540,13 @@ set(obs.obgnme)
 #       (obs.obsnme.str.endswith(exclude_gages[c_model][0]))]
 
 # %%
-obs.loc[obs["obgnme"] == "obgnme"]
+# obs.loc[obs["obgnme"] == "obgnme"]
 
 # %%
 obs.loc[(obs.obsval <= 1) & (obs.obgnme.str.startswith("stream"))]
 
 # %%
-# obs.loc[obs.obgnme.str.startswith('streamflow')
+obs.loc[obs.obgnme.str.startswith("streamflow")]
 
 # %% [markdown]
 # ## Set Standard Deviations for Observation Noise Ensemble
@@ -556,6 +567,9 @@ obs_sdbnds_path = pestpp_model_dir / "ancillary/Observation_standard_deviation.c
 obs_sdbnds = pd.read_csv(
     obs_sdbnds_path
 )  # Creates a data frame of the bounds for par catagories
+
+# %%
+obs_sdbnds
 
 # %%
 obs_sdbnds.set_index("obsgroup", inplace=True, drop=False)
@@ -592,14 +606,15 @@ obs_sdbnds.columns
 obs.loc[obs.obgnme == "obgnme"]
 
 # %%
-for cn, _ in obs.groupby("obgnme"):
-    if "streamflow" in cn:
-        obs.loc[obs.obgnme == cn, "upper_bound"] = obs_sdbnds.loc[cn, "obsubnd"]
-        obs.loc[obs.obgnme == cn, "lower_bound"] = obs_sdbnds.loc[cn, "obslbnd"]
-    # print(cn)
+# Removed becuase no using bounds to calibrate
+# for cn, _ in obs.groupby("obgnme"):
+#     if "streamflow" in cn:
+#         obs.loc[obs.obgnme == cn, "upper_bound"] = obs_sdbnds.loc[cn, "obsubnd"]
+#         obs.loc[obs.obgnme == cn, "lower_bound"] = obs_sdbnds.loc[cn, "obslbnd"]
+#     # print(cn)
 
 # %%
-obs.loc[obs.obgnme.str.startswith("streamflow_daily_low")]
+obs.loc[obs.obgnme.str.startswith("obgnme")]
 
 # %% [markdown]
 # #### Compute standard deviation per observation
@@ -625,6 +640,9 @@ obs.loc[obs.obsval == -9999, "standard_deviation"] = 9999
 # check for nans: obs.loc[obs.standard_deviation.isnull()]
 obs.loc[obs.standard_deviation == np.nan]
 
+
+# %%
+obs.loc[obs.isnull().any(axis=1)]
 
 # %%
 # obs.loc[(obs.obsval == 0) & (obs.obgnme == "streamflow_daily_low")]
@@ -791,7 +809,7 @@ else:
 obs.weight.sample(50)
 
 # %%
-obs.loc[obs.obgnme.str.endswith("_val"), "weight"] = 0
+# obs.loc[obs.obgnme.str.endswith("_val"), "weight"] = 0
 
 # %%
 for cn, _ in obs.groupby("obgnme"):
@@ -968,8 +986,10 @@ pst.observation_data.loc[
 # pst.observation_data.loc[zpars.index, "less_than"] = np.nan
 
 # %%
-# make sure sca is zero-weighted
-pst.observation_data.loc[pst.observation_data.obgnme == "sca_daily", "weight"] = 0
+# # make sure sca is zero-weighted
+# pst.observation_data.loc[pst.observation_data.obgnme == "sca_daily", "weight"] = 0
+
+# %%
 
 # %%
 pst.write(os.path.join(pestpp_model_dir, "prior_mc.pst"), version=2)
@@ -999,8 +1019,8 @@ if not pl.Path(pestpp_model_dir / exe_name).exists():
     print(".exe missing")
 
     # First, look for a local pestpp distribution in data_dependencies
-    dep_dir = pestpp_dir / "data_dependencies"
-    local_pestpp_dirs = sorted(dep_dir.glob("pestpp-*-win"))
+    #    dep_dir = pestpp_dir / "data_dependencies"
+    local_pestpp_dirs = sorted(pestpp_dep_dir.glob("pestpp-*-win"))
 
     if local_pestpp_dirs:
         # Use the most recent local distribution

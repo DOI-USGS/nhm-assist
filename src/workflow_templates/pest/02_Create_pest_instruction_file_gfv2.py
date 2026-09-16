@@ -1,52 +1,18 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import os
+import sys
 import pathlib as pl
 import warnings
-
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
-import jupyter_black
-
-jupyter_black.load()
-# Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-
-
-from assist.common.assist_utilities import load_subdomain_config
-from assist.common import efc
-
-config = load_subdomain_config(root_dir)
-
-
 import pandas as pd
 import xarray as xr
 import numpy as np
 import shutil
 import datetime
+
+import jupyter_black
+
+jupyter_black.load()
+import io
 
 from contextlib import redirect_stdout
 import io
@@ -55,22 +21,55 @@ f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-from dotenv import load_dotenv
+from rich.console import Console
+from rich import pretty
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
 else:
-    dotenv_path = root_dir / ".env"
+    active_model_root = None
+    config_root = root_dir
 
-load_dotenv(dotenv_path=dotenv_path)
+print(root_dir)
 
-############################################
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-config = load_subdomain_config(root_dir)
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
+)
 
-# %%
-root_dir
+from assist.common import efc
+
+config = load_subdomain_config(config_root)
+# con.print(config)
 
 # %% [markdown]
 # # Create PEST++ Instruction File
@@ -133,7 +132,10 @@ root_dir
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = pl.Path("../").resolve()
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -156,7 +158,7 @@ file_list = [
     "zero_weighting.csv",
 ]
 for file in file_list:
-    source = pestpp_dir / f"data_dependencies/ancillary_template/{file}"
+    source = pestpp_dep_dir / f"ancillary_template/{file}"
     destination = ancillary_dir / f"{file}"
     shutil.copy2(source, destination)
 
@@ -217,9 +219,6 @@ with open(os.path.join(pestpp_model_dir, "modelobs.dat.ins"), "w") as ofp:
 # post-processes output into the `modelobs.dat` format that the instruction file expects.
 
 # %%
-nhm_assist_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
-
-# %%
 # Instead of the code below that is commented out,  we will read in the .py version of
 # both scripts combined from the notebook_scripts folder
 # named "Create_model_run_and_post_processing_script.py"
@@ -227,9 +226,8 @@ nhm_assist_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
 # with open(os.path.join(pestpp_model_dir, "forward_run.py"), "w") as ofp:
 #     [ofp.write(f"{line}\n") for line in imports + runbiz]
 
-nhm_assist_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
-source = nhm_assist_dir / "src/workflow_templates/pest" / "forward_run_gfv2.py"
-destination = pestpp_model_dir / "forward_run_gfv2.py"
+source = root_dir / "src/workflow_templates/pest" / "forward_run_gfv2.py"
+destination = pestpp_model_dir / "forward_run.py"
 shutil.copy2(source, destination)
 
 # convert the
@@ -240,9 +238,6 @@ params = pws.parameters.PrmsParameters.load(param_file)
 params.parameters_to_json(parameters_json_file)
 # params = pws.parameters.PrmsParameters.load_from_json(parameters_json_file)
 
-# %%
-print(config["model_dir"], pestpp_model_dir)
-
 # %% [markdown]
 # ## Run the Forward Model (Optional)
 # Execute `forward_run.py` to produce `modelobs.dat`. This step is optional during
@@ -251,7 +246,7 @@ print(config["model_dir"], pestpp_model_dir)
 # %%
 cwd = os.getcwd()
 # %cd "{pestpp_model_dir}"
-# !python forward_run_gfv2.py
+# !python forward_run.py
 # %cd "{cwd}"
 
 # %% [markdown]

@@ -1,40 +1,57 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import os
+import sys
 import pathlib as pl
 import warnings
+import pandas as pd
+import xarray as xr
+import numpy as np
+import shutil
+import datetime
 
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
 import jupyter_black
 
 jupyter_black.load()
-# Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
+import io
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+from contextlib import redirect_stdout
+import io
 
+f = io.StringIO()
+with redirect_stdout(f):
+    import pywatershed as pws
+
+from rich.console import Console
+from rich import pretty
+
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    active_model_root = None
+    config_root = root_dir
+
+print(root_dir)
 
 from assist.common.hydrofabric import (
     make_hf_map_elements,
@@ -51,141 +68,8 @@ from assist.common.assist_utilities import (
 
 from assist.common import efc
 
-# import topojson
-
-
-config = load_subdomain_config(root_dir)
-
-
-import pandas as pd
-import xarray as xr
-import numpy as np
-import shutil
-
-from contextlib import redirect_stdout
-import io
-
-f = io.StringIO()
-with redirect_stdout(f):
-    import pywatershed as pws
-
-from dotenv import load_dotenv
-
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
-
-load_dotenv(dotenv_path=dotenv_path)
-
-############################################
-
-
-# from assist.common.assist_utilities import load_subdomain_config
-# from assist.common import efc
-
-config = load_subdomain_config(root_dir)
-
-# import sys
-# import os
-# import pathlib as pl
-# import warnings
-
-# import pandas as pd
-# import xarray as xr
-# import numpy as np
-# import datetime
-
-# import shutil
-
-# warnings.filterwarnings("ignore")
-# from rich.console import Console
-
-# con = Console()
-# from rich import pretty
-
-# pretty.install()
-# import jupyter_black
-# from contextlib import redirect_stdout
-# import io
-
-# f = io.StringIO()
-# with redirect_stdout(f):
-#     import pywatershed as pws
-
-# jupyter_black.load()
-# # Find and set the "nhm-assist" root directory
-# # Find the repo root via the editable-installed `assist` package — robust
-# # against sibling clones, cwd quirks, and arbitrary checkout directory names.
-# import assist as _assist_pkg
-
-# root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
-
-
-# from assist.common.hydrofabric import (
-#     make_hf_map_elements,
-#     evaluate_and_fix_nhru_geometry,
-# )
-# from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
-
-# from assist.common.assist_utilities import (
-#     load_subdomain_config,
-#     find_missing_gage_info,
-#     fetch_non_ref_npoigages_info,
-#     fetch_ref_npoigages_info,
-# )
-
-# from assist.common import efc
-
-# # import topojson
-
-
-# config = load_subdomain_config(root_dir)
-# # con.print(config)
-
-# from dotenv import load_dotenv
-
-# # Use home directory for Nebari, otherwise use repo root_dir
-# if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-#     dotenv_path = pl.Path.home() / ".env"
-# else:
-#     dotenv_path = root_dir / ".env"
-
-# load_dotenv(dotenv_path=dotenv_path)
-
-# ############################################
-
-# import assist as _assist_pkg
-
-# root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]
-
-# from assist.workspace.bridge import resolve_project_notebook_context
-# from assist.workspace.service import get_active_model_root
-
-# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
-# if project_context:
-#     active_model_root = get_active_model_root(
-#         project_context["workspace_root"], project_context["project_root"].name
-#     )
-#     config_root = active_model_root / "config"
-# else:
-#     config_root = root_dir
-
-# from dotenv import load_dotenv
-
-# # Use home directory for Nebari, otherwise use repo root_dir
-# if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-#     dotenv_path = pl.Path.home() / ".env"
-# else:
-#     dotenv_path = root_dir / ".env"
-
-# load_dotenv(dotenv_path=dotenv_path)
-
-# ###########################################################################
-
-# %%
-config["model_dir"]
+config = load_subdomain_config(config_root)
+# con.print(config)
 
 # %% [markdown]
 # # Prepare Observations for PEST++ IES Parameter Estimation
@@ -259,7 +143,10 @@ config["model_dir"]
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = pl.Path("../").resolve()
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -314,7 +201,7 @@ file_list = [
     "zero_weighting.csv",
 ]
 for file in file_list:
-    source = pestpp_dir / f"data_dependencies/ancillary_template/{file}"
+    source = pestpp_dep_dir / f"ancillary_template/{file}"
     destination = ancillary_dir / f"{file}"
     shutil.copy2(source, destination)
 
@@ -432,7 +319,7 @@ cdat = xr.open_dataset(obsdir / "AET_mean_monthly.nc")
 inds = [
     f"actet_mean_mon:{i}:{j}"
     for i in cdat.indexes["month"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 
 actet_mean_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
@@ -455,7 +342,7 @@ cdat = xr.open_dataset(obsdir / "RCH_annual.nc")
 inds = [
     f"recharge_ann:{i.year}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 
 recharge_ann = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
@@ -506,7 +393,7 @@ cdat = xr.open_dataset(obsdir / "Soil_Moisture_mean_monthly.nc")
 inds = [
     f"soil_moist_mean_mon:{i}:{j}"
     for i in cdat.indexes["month"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 
 soil_moist_mean_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
@@ -682,7 +569,7 @@ cdat = xr.open_dataset(obsdir / "Soil_Moisture_annual.nc")
 inds = [
     f"soil_moist_ann:{i.year}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 
 soil_moist_ann = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
@@ -699,7 +586,7 @@ cdat = xr.open_dataset(obsdir / "hru_streamflow_monthly.nc")
 inds = [
     f"runoff_mon:{i.year}_{i.month}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 runoff_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
@@ -963,7 +850,7 @@ cdat = cdat.sel(
 inds = [
     f"swe_monthly:{i.year}_{i.month}_{i.day}:{j}"
     for i in cdat.indexes["time"]
-    for j in cdat.indexes["nhm_id"]
+    for j in cdat.indexes["hru_id"]
 ]
 SWE_monthly = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
 varvals = np.ravel(SWE_monthly, order="C")  # flattens the 2D array to a 1D array
@@ -997,6 +884,223 @@ with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
 
 # cdat.close()
 
+cdat = xr.open_dataset(obsdir / "SWE_5day_avg.nc")
+cdat = cdat.fillna(-9999)
+cdat = cdat.sel(
+    time=~cdat["time"].dt.month.isin([7, 8, 9])
+)  # drop months July, August, and September
+
+
+def _reduce_month_series(values, times, rel_tol=0.20):
+    """Reduce one HRU-month's ordered 5-day series to the meaningful highs/lows.
+
+    Steps:
+      1. Reduce the series to its alternating turning points (local extrema):
+         the first point, each point that reverses direction, and the last
+         point. This yields a strictly alternating high/low/high... sequence.
+      2. Collapse adjacent extrema whose values are within `rel_tol` of each
+         other (|a-b| / max(|a|,|b|) <= rel_tol). Because the sequence
+         alternates, a lone high/low pair that is "close" collapses to a single
+         value, while a genuine high-low-high or low-high-low pattern is kept in
+         full (you cannot drop the middle without merging two same-type extrema
+         that are separated in time).
+
+    Returns (kept_values, kept_times) in time order.
+    """
+    n = len(values)
+    if n == 0:
+        return [], []
+    if n == 1:
+        return [values[0]], [times[0]]
+
+    # --- 1. alternating turning points --------------------------------------
+    # Keep the first point, then every point where the slope sign flips, then
+    # the last point. Flat steps (equal neighbors) do not count as a reversal.
+    ext_idx = [0]
+    last_dir = 0  # +1 rising, -1 falling, 0 undetermined (flats)
+    for i in range(1, n):
+        diff = values[i] - values[ext_idx[-1]]
+        cur_dir = 1 if diff > 0 else (-1 if diff < 0 else 0)
+        if cur_dir == 0:
+            continue  # equal to last kept extremum; skip
+        if last_dir == 0:
+            last_dir = cur_dir
+            ext_idx.append(i)
+        elif cur_dir == last_dir:
+            # still going the same direction -> this point supersedes the last
+            ext_idx[-1] = i
+        else:
+            # direction reversed -> the previous point was a true turning point,
+            # start a new leg toward this one
+            last_dir = cur_dir
+            ext_idx.append(i)
+
+    # --- 2. collapse adjacent extrema that are within rel_tol ----------------
+    # Walk the alternating extrema; when a neighboring pair is within tolerance,
+    # keep the more extreme-relevant one (the later of the pair is dropped and
+    # its neighbor absorbs it). This preserves genuine high-low-high triples.
+    keep = [ext_idx[0]]
+    for j in range(1, len(ext_idx)):
+        a = values[keep[-1]]
+        b = values[ext_idx[j]]
+        denom = max(abs(a), abs(b))
+        close = denom == 0 or abs(a - b) / denom <= rel_tol
+        if close:
+            # within 10%: treat as the same feature, don't add a second point
+            continue
+        keep.append(ext_idx[j])
+
+    return [values[k] for k in keep], [times[k] for k in keep]
+
+
+# Build the reduced target, per HRU, per calendar month.
+_rows = []
+_ens = cdat["ensemble_mean"]  # (time, hru_id); matches the other SWE targets
+_time_index = pd.DatetimeIndex(cdat.indexes["time"])
+
+# Integer positions grouped by (year, month). Grouping a Series whose *values*
+# are the positions (not its index) makes .groups return the integer positions
+# for each month.
+_pos_by_month = (
+    pd.Series(np.arange(len(_time_index)))
+    .groupby([_time_index.year, _time_index.month])
+    .groups
+)
+
+zero_tol = 0.1  # inches; a 5-day SWE value <= this is treated as "near zero"
+
+
+def _drop_consecutive_near_zero(vals, times, zero_tol):
+    """Drop a near-zero value when the previous KEPT value is also near-zero.
+
+    Keeps the first value of any near-zero run (so the "snow went to zero"
+    signal is retained once) and removes the redundant near-zero points that
+    follow it. Non-zero values always pass through.
+    """
+    keep_v, keep_t = [], []
+    prev_near_zero = False
+    for v, t in zip(vals, times):
+        near_zero = abs(v) <= zero_tol
+        if near_zero and prev_near_zero:
+            continue  # redundant: preceded by another near-zero value
+        keep_v.append(v)
+        keep_t.append(t)
+        prev_near_zero = near_zero
+    return keep_v, keep_t
+
+
+# Build the reduced target, per HRU, per calendar month.
+_rows = []
+_ens = cdat["ensemble_mean"]  # (time, hru_id); matches the other SWE targets
+_time_index = pd.DatetimeIndex(cdat.indexes["time"])
+
+# Integer positions grouped by (year, month). Grouping a Series whose *values*
+# are the positions (not its index) makes .groups return the integer positions
+# for each month.
+_pos_by_month = (
+    pd.Series(np.arange(len(_time_index)))
+    .groupby([_time_index.year, _time_index.month])
+    .groups
+)
+
+for hru in cdat.indexes["hru_id"]:
+    series = _ens.sel(hru_id=hru).values
+    # Exclude the -9999 no-data sentinel from extrema detection.
+    valid = series != -9999
+    for (yr, mo), grp_pos in _pos_by_month.items():
+        pos = np.asarray(grp_pos, dtype=int)
+        pos = pos[valid[pos]]  # drop sentinel timesteps within this month
+        if pos.size == 0:
+            continue
+        vals = list(series[pos])
+        tvals = list(_time_index[pos])
+
+        kept_vals, kept_times = _reduce_month_series(vals, tvals)
+
+        # Filter the selected extrema: drop a near-zero kept point whose
+        # previously kept point (in time) is also near-zero. Runs after the
+        # extrema/10% reduction so it prunes the final selection.
+        kept_vals, kept_times = _drop_consecutive_near_zero(
+            kept_vals, kept_times, zero_tol
+        )
+
+        for t, v in zip(kept_times, kept_vals):
+            _rows.append({"time": t, "hru_id": int(hru), "swe_5day": float(v)})
+
+swe_5day_selected = (
+    pd.DataFrame(_rows).sort_values(["hru_id", "time"]).reset_index(drop=True)
+)
+swe_5day_selected
+
+# %%
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# Pick a few HRUs to inspect. Defaults to the first four HRUs that actually have
+# some kept points; edit hru_plot_list to choose specific hru_id values.
+_hrus_with_points = swe_5day_selected["hru_id"].unique().tolist()
+hru_plot_list = _hrus_with_points[20:24]  # e.g. [12345, 12346, ...] to pick your own
+
+_time_index = pd.DatetimeIndex(cdat.indexes["time"])
+
+n = len(hru_plot_list)
+fig_swe_sel = make_subplots(
+    rows=n,
+    cols=1,
+    shared_xaxes=False,
+    vertical_spacing=0.08,
+    subplot_titles=[f"hru_id {h}" for h in hru_plot_list],
+)
+
+for row, hru in enumerate(hru_plot_list, start=1):
+    show_legend = row == 1
+
+    # Full 5-day series (sentinels masked to NaN so gaps show as breaks).
+    series = _ens.sel(hru_id=hru).values.astype(float)
+    series_masked = np.where(series == -9999, np.nan, series)
+
+    fig_swe_sel.add_trace(
+        go.Scatter(
+            x=_time_index,
+            y=series_masked,
+            mode="lines",
+            name="5-day series",
+            line=dict(color="steelblue", width=1),
+            legendgroup="series",
+            showlegend=show_legend,
+        ),
+        row=row,
+        col=1,
+    )
+
+    # Kept selection points for this HRU.
+    sel = swe_5day_selected.loc[swe_5day_selected["hru_id"] == hru]
+    fig_swe_sel.add_trace(
+        go.Scatter(
+            x=sel["time"],
+            y=sel["swe_5day"],
+            mode="markers",
+            name="kept high/low",
+            marker=dict(
+                color="crimson", size=8, symbol="circle-open", line=dict(width=2)
+            ),
+            legendgroup="kept",
+            showlegend=show_legend,
+        ),
+        row=row,
+        col=1,
+    )
+
+fig_swe_sel.update_yaxes(title_text="SWE (in)")
+fig_swe_sel.update_xaxes(title_text="Time", row=n, col=1)
+fig_swe_sel.update_layout(
+    height=280 * n,
+    width=1000,
+    title_text="SWE 5-day series with selected highs/lows",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+)
+fig_swe_sel.show()
+
 # %% [markdown]
 # ## Format Streamflow Observations
 # Streamflow observations are handled separately from HRU observations because
@@ -1021,6 +1125,7 @@ _sf_efc_raw
 _sf_efc_raw = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc")
 
 # Load calibration gage info from the metadata spreadsheet
+
 _metadata_dir = config["model_dir"] / "metadata"
 _xls_path = _metadata_dir / f"npoigages_cal_list_{config['subdomain']}.xlsx"
 if not _xls_path.exists():
@@ -1087,8 +1192,8 @@ cal_gages
 
 # %%
 # These can be tailored for any specific model
-seg_outflow_start = "2011-01-01"
-seg_outflow_end = "2021-12-31"
+seg_outflow_start = "2013-01-01"
+seg_outflow_end = "2024-12-31"
 
 # seg_outflow_start = "2011-01-01"  # Note: For ease, the start and end dates must be same as those designated in
 # seg_outflow_end = "2022-12-31"  #    "the Create_pest_model_observation_file."
@@ -1366,24 +1471,24 @@ varvals = np.ravel(
 
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [
-        ofp.write(f"streamflow_mean_mon_cal:{i}          {j}\n")
+        ofp.write(f"streamflow_mean_mon:{i}          {j}\n")
         for i, j in zip(inds, varvals, strict=True)
     ]
 
 # %%
-inds = [
-    f"{i}:{j}"
-    for j in cdat_mean_monthly_val.indexes["poi_gage_id"]
-    for i in cdat_mean_monthly_val.indexes["month"]
-]
-varvals = np.ravel(
-    cdat_mean_monthly_val["discharge"], order="F"
-)  # flattens the 2D array to a 1D array
+# inds = [
+#     f"{i}:{j}"
+#     for j in cdat_mean_monthly_val.indexes["poi_gage_id"]
+#     for i in cdat_mean_monthly_val.indexes["month"]
+# ]
+# varvals = np.ravel(
+#     cdat_mean_monthly_val["discharge"], order="F"
+# )  # flattens the 2D array to a 1D array
 
-with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
-    [
-        ofp.write(f"streamflow_mean_mon_val:{i}          {j}\n")
-        for i, j in zip(inds, varvals, strict=True)
-    ]
+# with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
+#     [
+#         ofp.write(f"streamflow_mean_mon_val:{i}          {j}\n")
+#         for i, j in zip(inds, varvals, strict=True)
+#     ]
 
 # %%

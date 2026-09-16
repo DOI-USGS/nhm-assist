@@ -1,45 +1,19 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
-import sys
 import os
+import sys
 import pathlib as pl
 import warnings
+import pandas as pd
+import xarray as xr
+import numpy as np
+import shutil
+import datetime
 
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+import io
 
-import pandas as pd
-import shutil
-import pywatershed as pws
-import xarray as xr
-import numpy as np
-import datetime
-
-# import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -47,12 +21,22 @@ f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-# Find and set the "nhm-assist" root directory
-# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
-# fallback to the package location — works for editable and non-editable installs.
-from assist.workspace.bridge import resolve_repo_root
+from rich.console import Console
+from rich import pretty
 
-root_dir = resolve_repo_root()
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -64,31 +48,37 @@ if project_context:
     )
     config_root = active_model_root / "config"
 else:
+    active_model_root = None
     config_root = root_dir
 
-from dotenv import load_dotenv
+print(root_dir)
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-load_dotenv(dotenv_path=dotenv_path)
-
-from assist.common.assist_utilities import load_subdomain_config
-from assist.common import efc
-
-from assist.pest.pest_utils import (
-    pars_to_tpl_entries,
-    pars_to_tpl_entries_2,
-    write_to_json_tpl,
-    check_par_bounds,
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
 )
 
-config = load_subdomain_config(root_dir)
+from assist.pest.pest_utils import (
+    pars_to_tpl_entries_2,
+    check_par_bounds,
+    write_to_json_tpl,
+)
 
-sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
+from assist.common import efc
+
+config = load_subdomain_config(config_root)
+# con.print(config)
+
+
+# sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 
@@ -101,7 +91,10 @@ else:
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = root_dir / "pestpp_ies_calibration"
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -124,7 +117,7 @@ file_list = [
     "zero_weighting.csv",
 ]
 for file in file_list:
-    source = pestpp_dir / f"data_dependencies/ancillary_template/{file}"
+    source = pestpp_dep_dir / f"ancillary_template/{file}"
     destination = ancillary_dir / f"{file}"
     shutil.copy2(source, destination)
 

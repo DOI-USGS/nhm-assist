@@ -1,46 +1,58 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import os
+import sys
 import pathlib as pl
 import warnings
 import pandas as pd
 import xarray as xr
 import numpy as np
 import shutil
+import datetime
 
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
 import jupyter_black
 
 jupyter_black.load()
 import io
 
-# Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
+from contextlib import redirect_stdout
+import io
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+f = io.StringIO()
+with redirect_stdout(f):
+    import pywatershed as pws
 
+from rich.console import Console
+from rich import pretty
+
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
+
+from assist.workspace.bridge import resolve_project_notebook_context
+from assist.workspace.service import get_active_model_root
+
+project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
+if project_context:
+    active_model_root = get_active_model_root(
+        project_context["workspace_root"], project_context["project_root"].name
+    )
+    config_root = active_model_root / "config"
+else:
+    active_model_root = None
+    config_root = root_dir
+
+
+print(root_dir)
 
 from assist.common.hydrofabric import (
     make_hf_map_elements,
@@ -57,72 +69,8 @@ from assist.common.assist_utilities import (
 
 from assist.common import efc
 
-# import topojson
-
-
-config = load_subdomain_config(root_dir)
+config = load_subdomain_config(config_root)
 # con.print(config)
-
-
-import pandas as pd
-import xarray as xr
-import numpy as np
-import datetime
-
-from contextlib import redirect_stdout
-
-f = io.StringIO()
-with redirect_stdout(f):
-    import pywatershed as pws
-
-# Find and set the "nhm-assist" root directory
-# Find the repo root via the editable-installed `assist` package — robust
-# against sibling clones, cwd quirks, and arbitrary checkout directory names.
-
-
-# from assist.workspace.bridge import resolve_project_notebook_context
-# from assist.workspace.service import get_active_model_root
-
-# project_context = resolve_project_notebook_context(cwd=os.getcwd(), env=os.environ)
-# if project_context:
-#     active_model_root = get_active_model_root(
-#         project_context["workspace_root"], project_context["project_root"].name
-#     )
-#     config_root = active_model_root / "config"
-# else:
-#     config_root = root_dir
-
-from dotenv import load_dotenv
-
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
-
-load_dotenv(dotenv_path=dotenv_path)
-
-############################################
-
-
-# from assist.common.assist_utilities import load_subdomain_config
-# from assist.common import efc
-
-config = load_subdomain_config(root_dir)
-
-# %%
-from assist.common.hydrofabric import (
-    make_hf_map_elements,
-    evaluate_and_fix_nhru_geometry,
-)
-from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
-
-from assist.common.assist_utilities import (
-    load_subdomain_config,
-    find_missing_gage_info,
-    fetch_non_ref_npoigages_info,
-    fetch_ref_npoigages_info,
-)
 
 # %% [markdown]
 # # Introduction
@@ -194,7 +142,10 @@ from assist.common.assist_utilities import (
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = pl.Path("../").resolve()
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 # %% [markdown]
 # #### Make observation_data folder in the subbasin model directory
@@ -213,7 +164,7 @@ ancillary_dir = pestpp_model_dir / "ancillary"
 # ## Review available HRU calibration targets
 
 # %%
-baselines_dir = pestpp_dir / "data_dependencies/OHM_targets"
+baselines_dir = pestpp_dep_dir / "OHM_targets"
 [i.name for i in baselines_dir.glob("*.nc")]
 
 # %% [markdown]
@@ -222,9 +173,7 @@ baselines_dir = pestpp_dir / "data_dependencies/OHM_targets"
 
 # %%
 # Copy template to subdomain model folder for editing (skip if already present)
-source = (
-    pestpp_dir / "data_dependencies/ancillary_template/target_and_output_vars_table.csv"
-)
+source = pestpp_dep_dir / "ancillary_template/target_and_output_vars_table.csv"
 destination = ancillary_dir / "target_and_output_vars_table.csv"
 
 if destination.exists():
@@ -278,7 +227,7 @@ def _get_period(target_id, time_agg):
     return row["start_date"].strip(), row["end_date"].strip()
 
 
-aet_start, aet_end = _get_period("aet", "monthly")
+aet_start, aet_end = _get_period("aet", "mean_monthly")
 aet_cal_years, aet_val_years = _cal_val_years(aet_start, aet_end)
 
 recharge_start, recharge_end = _get_period("recharge_norm", "annual")
@@ -302,24 +251,24 @@ swe_cal_years
 # ### Subset AET NHM baseline data
 
 # %%
-# Use larger, manual chunks for efficiency
-AET_all = xr.open_dataset(
-    baselines_dir / "aet_targets.nc", chunks={"time": 12, "nhru": 500}
-)
+# # Use larger, manual chunks for efficiency
+# AET_all = xr.open_dataset(
+#     baselines_dir / "aet_targets.nc", chunks={"time": 12, "nhru": 500}
+# )
 
 # %%
-AET_all
+# AET_all
 
 # %% [markdown]
-# #### Quick spatial check of the target data as referrenced by nhm_id to the model HRUs by nhm_id
+# #### Quick spatial check of the target data as referrenced by hru_id to the model HRUs by nhm_id
 
 # %%
-# Step 1: Load parent geopackage and create cross-walk table for nhm_id for the child model.
-import geopandas as gpd
+# # Step 1: Load parent geopackage and create cross-walk table for nhm_id for the child model.
+# import geopandas as gpd
 
-# Load the nhru layer from the parent model geopackage
-parent_gpkg = root_dir / "hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
-parent_hru_gdf = gpd.read_file(parent_gpkg, layer="nhru")
+# # Load the nhru layer from the parent model geopackage
+# parent_gpkg = root_dir / "hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
+# parent_hru_gdf = gpd.read_file(parent_gpkg, layer="nhru")
 
 # %% [markdown]
 # #### Crosswalk: child model `nhm_id` to parent model `nhm_id`
@@ -334,32 +283,32 @@ parent_hru_gdf = gpd.read_file(parent_gpkg, layer="nhru")
 # Add an ! emoji here
 
 # %%
-# Crosswalk: child model nhm_id (= parent hru_id) -> parent nhm_id
-# The child's "nhm_id" param is actually the parent's local hru_id.
-# Look up each child nhm_id in the parent gpkg's hru_id column to get the parent nhm_id.
+# # Crosswalk: child model nhm_id (= parent hru_id) -> parent nhm_id
+# # The child's "nhm_id" param is actually the parent's local hru_id.
+# # Look up each child nhm_id in the parent gpkg's hru_id column to get the parent nhm_id.
 
-crosswalk = parent_hru_gdf[["nhm_id", "hru_id"]].copy()
-crosswalk = crosswalk.rename(
-    columns={"nhm_id": "parent_nhm_id", "hru_id": "parent_hru_id"}
-)
+# crosswalk = parent_hru_gdf[["nhm_id", "hru_id"]].copy()
+# crosswalk = crosswalk.rename(
+#     columns={"nhm_id": "parent_nhm_id", "hru_id": "parent_hru_id"}
+# )
 
-# nhm_ids from child param file = parent's hru_id
-nhm_ids = pws.parameters.PrmsParameters.load(
-    config["model_dir"] / config["param_file"]
-).parameters["nhm_id"]
-child_df = pd.DataFrame({"child_nhm_id": nhm_ids})
-child_df["child_hru_id"] = range(1, len(nhm_ids) + 1)  # child local index (1-based)
+# # nhm_ids from child param file = parent's hru_id
+# nhm_ids = pws.parameters.PrmsParameters.load(
+#     config["model_dir"] / config["param_file"]
+# ).parameters["nhm_id"]
+# child_df = pd.DataFrame({"child_nhm_id": nhm_ids})
+# child_df["child_hru_id"] = range(1, len(nhm_ids) + 1)  # child local index (1-based)
 
-# Join: child_nhm_id == parent_hru_id to get the parent_nhm_id
-xwalk = child_df.merge(
-    crosswalk, left_on="child_nhm_id", right_on="parent_hru_id", how="left"
-)
+# # Join: child_nhm_id == parent_hru_id to get the parent_nhm_id
+# xwalk = child_df.merge(
+#     crosswalk, left_on="child_nhm_id", right_on="parent_hru_id", how="left"
+# )
 
-print(f"Child HRUs: {len(child_df)}")
-print(f"Matched to parent nhm_id: {xwalk['parent_nhm_id'].notna().sum()}")
-print(f"Unmatched: {xwalk['parent_nhm_id'].isna().sum()}")
+# print(f"Child HRUs: {len(child_df)}")
+# print(f"Matched to parent nhm_id: {xwalk['parent_nhm_id'].notna().sum()}")
+# print(f"Unmatched: {xwalk['parent_nhm_id'].isna().sum()}")
 
-nhm_ids = list(xwalk["parent_nhm_id"])
+# nhm_ids = list(xwalk["parent_nhm_id"])
 
 # %% [markdown]
 # #### Ship the HRU crosswalk for the remote forward run
@@ -375,17 +324,17 @@ nhm_ids = list(xwalk["parent_nhm_id"])
 # from the local `hru_id` to the national `nhm_id` before writing observations.
 
 # %%
-# child_nhm_id here is the value stored as "nhm_id" in the pywatershed param
-# file, which is actually the parent's local hru_id. parent_nhm_id is the
-# national id used by the observation targets.
-hru_crosswalk_df = xwalk[["child_nhm_id", "parent_nhm_id"]].rename(
-    columns={"child_nhm_id": "hru_id", "parent_nhm_id": "nhm_id"}
-)
-hru_crosswalk_df.to_csv(pestpp_model_dir / "hru_nhm_id_crosswalk.csv", index=False)
-con.print(
-    f"Wrote HRU crosswalk ({len(hru_crosswalk_df)} rows) to "
-    f"{pestpp_model_dir / 'hru_nhm_id_crosswalk.csv'}"
-)
+# # child_nhm_id here is the value stored as "nhm_id" in the pywatershed param
+# # file, which is actually the parent's local hru_id. parent_nhm_id is the
+# # national id used by the observation targets.
+# hru_crosswalk_df = xwalk[["child_nhm_id", "parent_nhm_id"]].rename(
+#     columns={"child_nhm_id": "hru_id", "parent_nhm_id": "nhm_id"}
+# )
+# hru_crosswalk_df.to_csv(pestpp_model_dir / "hru_nhm_id_crosswalk.csv", index=False)
+# con.print(
+#     f"Wrote HRU crosswalk ({len(hru_crosswalk_df)} rows) to "
+#     f"{pestpp_model_dir / 'hru_nhm_id_crosswalk.csv'}"
+# )
 
 # %% [markdown]
 # #### Subset the target datasets by centroid, not by `nhm_id`
@@ -422,174 +371,178 @@ con.print(
 # than the expected near-coincident grid match.
 
 # %%
-from scipy.spatial import cKDTree
-
-# National nhm_id for each model HRU, in model param-file order (from the
-# geopackage crosswalk above). This is the identifier we relabel targets with.
-national_nhm_ids = np.asarray([int(i) for i in nhm_ids], dtype=int)
-
-# Model HRU centroids from the pywatershed param file (the model's own
-# definition of each HRU location), in param-file order.
-_pardat = pws.parameters.PrmsParameters.load(config["model_dir"] / config["param_file"])
-model_hru_lat = np.asarray(_pardat.parameters["hru_lat"], dtype=float)
-model_hru_lon = np.asarray(_pardat.parameters["hru_lon"], dtype=float)
-
-# Warn (rather than silently mismatch) if any centroid match is implausibly far.
-# ~0.1 deg is roughly 11 km; expected matches are a small fraction of a degree.
-MATCH_TOL_DEG = 0.1
-
-
-def _match_positions_by_centroid(target_ds):
-    """Return target-file row positions (into the nhm_id dim) nearest to each
-    model HRU centroid, matching on (lon, lat)."""
-    t_lon = target_ds["lon"].values
-    t_lat = target_ds["lat"].values
-    tree = cKDTree(np.column_stack([t_lon, t_lat]))
-    dist, pos = tree.query(np.column_stack([model_hru_lon, model_hru_lat]), k=1)
-    n_far = int(np.sum(dist > MATCH_TOL_DEG))
-    if n_far > 0:
-        con.print(
-            f"[bold yellow]Warning:[/bold yellow] {n_far} of {len(dist)} HRU(s) "
-            f"matched a target point farther than {MATCH_TOL_DEG} deg "
-            f"(max {dist.max():.4f} deg). Check the target/domain alignment."
-        )
-    return pos
-
-
-def subset_target_by_centroid(target_ds):
-    """Subset a CONUS target dataset to this model's HRUs by centroid match, and
-    relabel the nhm_id coordinate with the geopackage national nhm_id (in model
-    param-file order). The target file's own (unreliable) nhm_id is discarded."""
-    pos = _match_positions_by_centroid(target_ds)
-    subset = target_ds.isel(nhm_id=pos)
-    subset = subset.assign_coords(nhm_id=("nhm_id", national_nhm_ids))
-    return subset
-
+hru_gdf
 
 # %%
-# Interactive map: compare parent gpkg centroids vs AET_all centroids (plotly)
-import plotly.graph_objects as go
+# from scipy.spatial import cKDTree
 
-# Parent gpkg centroids (reproject to WGS84)
-parent_hru_gdf_wgs = parent_hru_gdf.to_crs(epsg=4326)
-parent_hru_gdf_wgs["centroid_lat"] = parent_hru_gdf_wgs.geometry.centroid.y
-parent_hru_gdf_wgs["centroid_lon"] = parent_hru_gdf_wgs.geometry.centroid.x
+# # National nhm_id for each model HRU, in model param-file order (from the
+# # geopackage crosswalk above). This is the identifier we relabel targets with.
+# # national_nhm_ids = np.asarray([int(i) for i in nhm_ids], dtype=int)
+# nhm_ids = list(set(hru_gdf.nhm_id))
+# national_nhm_ids = np.asarray([int(i) for i in nhm_ids], dtype=int)
 
-# AET point locations (entire AET domain, not clipped)
-aet_all_lats = AET_all["lat"].values
-aet_all_lons = AET_all["lon"].values
-aet_all_ids = AET_all["nhm_id"].values
+# # Model HRU centroids from the pywatershed param file (the model's own
+# # definition of each HRU location), in param-file order.
+# _pardat = pws.parameters.PrmsParameters.load(config["model_dir"] / config["param_file"])
+# model_hru_lat = np.asarray(_pardat.parameters["hru_lat"], dtype=float)
+# model_hru_lon = np.asarray(_pardat.parameters["hru_lon"], dtype=float)
 
-# Interactive Folium map (same style family as the hydrofabric viz notebook):
-# selectable basemaps, toggleable point layers, hover/click popups, and smooth
-# scroll-zoom. Three layers:
-#   - Parent gpkg centroids (blue), labeled by national nhm_id
-#   - AET_all centroids -- ALL points in the AET dataset (red), labeled by
-#     national nhm_id. AET_all is CONUS-scale, so this can be many thousands of
-#     points; they are clustered (FastMarkerCluster) to keep the map responsive.
-#   - Crosswalk links (green) connecting the SAME national nhm_id in both
-#     datasets -- follow a green line to compare a matched pair rather than
-#     eyeballing neighboring markers.
-import folium
-from folium.plugins import FastMarkerCluster
+# # Warn (rather than silently mismatch) if any centroid match is implausibly far.
+# # ~0.1 deg is roughly 11 km; expected matches are a small fraction of a degree.
+# MATCH_TOL_DEG = 0.1
 
-# Build lookups keyed by national nhm_id for the crosswalk links
-xwalk_matched = xwalk[xwalk["parent_nhm_id"].notna()].copy()
-gpkg_lookup = parent_hru_gdf_wgs.set_index("nhm_id")[["centroid_lat", "centroid_lon"]]
-aet_lookup = pd.DataFrame(
-    {
-        "nhm_id": aet_all_ids,
-        "aet_lat": aet_all_lats,
-        "aet_lon": aet_all_lons,
-    }
-).set_index("nhm_id")
 
-_center = [
-    float(parent_hru_gdf_wgs["centroid_lat"].mean()),
-    float(parent_hru_gdf_wgs["centroid_lon"].mean()),
-]
-centroid_map = folium.Map(location=_center, zoom_start=7, tiles=None)
+# def _match_positions_by_centroid(target_ds):
+#     """Return target-file row positions (into the nhm_id dim) nearest to each
+#     model HRU centroid, matching on (lon, lat)."""
+#     t_lon = target_ds["lon"].values
+#     t_lat = target_ds["lat"].values
+#     tree = cKDTree(np.column_stack([t_lon, t_lat]))
+#     dist, pos = tree.query(np.column_stack([model_hru_lon, model_hru_lat]), k=1)
+#     n_far = int(np.sum(dist > MATCH_TOL_DEG))
+#     if n_far > 0:
+#         con.print(
+#             f"[bold yellow]Warning:[/bold yellow] {n_far} of {len(dist)} HRU(s) "
+#             f"matched a target point farther than {MATCH_TOL_DEG} deg "
+#             f"(max {dist.max():.4f} deg). Check the target/domain alignment."
+#         )
+#     return pos
 
-# Selectable basemaps (USGS Hydro shown by default; others available in the
-# layer control).
-folium.TileLayer(
-    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
-    attr="USGSHydroCached",
-    name="USGS Hydro",
-).add_to(centroid_map)
-folium.TileLayer(
-    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
-    attr="USGS_topo",
-    name="USGS Topography",
-    show=False,
-).add_to(centroid_map)
-folium.TileLayer(
-    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    attr="Esri World Imagery",
-    name="Esri Imagery",
-    show=False,
-).add_to(centroid_map)
-folium.TileLayer("OpenStreetMap", name="OpenStreetMap", show=False).add_to(centroid_map)
 
-# Parent gpkg centroids (blue)
-gpkg_layer = folium.FeatureGroup(name="Parent gpkg (nhm_id)", show=True)
-for _, r in parent_hru_gdf_wgs.iterrows():
-    folium.CircleMarker(
-        location=[r["centroid_lat"], r["centroid_lon"]],
-        radius=4,
-        color="blue",
-        fill=True,
-        fill_opacity=0.6,
-        weight=1,
-        popup=folium.Popup(f"gpkg nhm_id: {int(r['nhm_id'])}", max_width=200),
-        tooltip=f"gpkg nhm_id: {int(r['nhm_id'])}",
-    ).add_to(gpkg_layer)
-gpkg_layer.add_to(centroid_map)
+# def subset_target_by_centroid(target_ds):
+#     """Subset a CONUS target dataset to this model's HRUs by centroid match, and
+#     relabel the nhm_id coordinate with the geopackage national nhm_id (in model
+#     param-file order). The target file's own (unreliable) nhm_id is discarded."""
+#     pos = _match_positions_by_centroid(target_ds)
+#     subset = target_ds.isel(nhm_id=pos)
+#     subset = subset.assign_coords(nhm_id=("nhm_id", national_nhm_ids))
+#     return subset
 
-# AET_all centroids -- ALL points in the AET dataset (red). Because AET_all is
-# CONUS-scale (many thousands of points), draw them via FastMarkerCluster so the
-# map stays responsive; markers de-cluster into individual points as you zoom in.
-aet_layer = folium.FeatureGroup(name="AET_all (all points)", show=True)
-# FastMarkerCluster takes [lat, lon, nhm_id] rows; a JS callback renders each as
-# a red circle marker with an nhm_id popup/tooltip.
-_aet_callback = (
-    "function (row) {"
-    "  var marker = L.circleMarker(new L.LatLng(row[0], row[1]),"
-    "    {radius: 3, color: 'red', fillColor: 'red', fillOpacity: 0.7, weight: 1});"
-    "  marker.bindPopup('AET_all nhm_id: ' + row[2]);"
-    "  marker.bindTooltip('AET_all nhm_id: ' + row[2]);"
-    "  return marker;"
-    "}"
-)
-_aet_data = [
-    [float(_lat), float(_lon), int(_id)]
-    for _lat, _lon, _id in zip(aet_all_lats, aet_all_lons, aet_all_ids)
-]
-FastMarkerCluster(data=_aet_data, callback=_aet_callback).add_to(aet_layer)
-aet_layer.add_to(centroid_map)
+# %%
+# # Interactive map: compare parent gpkg centroids vs AET_all centroids (plotly)
+# import plotly.graph_objects as go
 
-# Crosswalk links (green): connect the SAME national nhm_id in both datasets
-link_layer = folium.FeatureGroup(name="Crosswalk links (same nhm_id)", show=True)
-for _, row in xwalk_matched.iterrows():
-    pid = int(row["parent_nhm_id"])
-    if pid in gpkg_lookup.index and pid in aet_lookup.index:
-        g = gpkg_lookup.loc[pid]
-        a = aet_lookup.loc[pid]
-        folium.PolyLine(
-            locations=[
-                [g["centroid_lat"], g["centroid_lon"]],
-                [a["aet_lat"], a["aet_lon"]],
-            ],
-            color="green",
-            weight=1,
-            opacity=0.6,
-            tooltip=f"nhm_id: {pid}",
-        ).add_to(link_layer)
-link_layer.add_to(centroid_map)
+# # Parent gpkg centroids (reproject to WGS84)
+# parent_hru_gdf_wgs = parent_hru_gdf.to_crs(epsg=4326)
+# parent_hru_gdf_wgs["centroid_lat"] = parent_hru_gdf_wgs.geometry.centroid.y
+# parent_hru_gdf_wgs["centroid_lon"] = parent_hru_gdf_wgs.geometry.centroid.x
 
-folium.LayerControl(collapsed=False).add_to(centroid_map)
+# # AET point locations (entire AET domain, not clipped)
+# aet_all_lats = AET_all["lat"].values
+# aet_all_lons = AET_all["lon"].values
+# aet_all_ids = AET_all["nhm_id"].values
 
-centroid_map
+# # Interactive Folium map (same style family as the hydrofabric viz notebook):
+# # selectable basemaps, toggleable point layers, hover/click popups, and smooth
+# # scroll-zoom. Three layers:
+# #   - Parent gpkg centroids (blue), labeled by national nhm_id
+# #   - AET_all centroids -- ALL points in the AET dataset (red), labeled by
+# #     national nhm_id. AET_all is CONUS-scale, so this can be many thousands of
+# #     points; they are clustered (FastMarkerCluster) to keep the map responsive.
+# #   - Crosswalk links (green) connecting the SAME national nhm_id in both
+# #     datasets -- follow a green line to compare a matched pair rather than
+# #     eyeballing neighboring markers.
+# import folium
+# from folium.plugins import FastMarkerCluster
+
+# # Build lookups keyed by national nhm_id for the crosswalk links
+# xwalk_matched = xwalk[xwalk["parent_nhm_id"].notna()].copy()
+# gpkg_lookup = parent_hru_gdf_wgs.set_index("nhm_id")[["centroid_lat", "centroid_lon"]]
+# aet_lookup = pd.DataFrame(
+#     {
+#         "nhm_id": aet_all_ids,
+#         "aet_lat": aet_all_lats,
+#         "aet_lon": aet_all_lons,
+#     }
+# ).set_index("nhm_id")
+
+# _center = [
+#     float(parent_hru_gdf_wgs["centroid_lat"].mean()),
+#     float(parent_hru_gdf_wgs["centroid_lon"].mean()),
+# ]
+# centroid_map = folium.Map(location=_center, zoom_start=7, tiles=None)
+
+# # Selectable basemaps (USGS Hydro shown by default; others available in the
+# # layer control).
+# folium.TileLayer(
+#     tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
+#     attr="USGSHydroCached",
+#     name="USGS Hydro",
+# ).add_to(centroid_map)
+# folium.TileLayer(
+#     tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}",
+#     attr="USGS_topo",
+#     name="USGS Topography",
+#     show=False,
+# ).add_to(centroid_map)
+# folium.TileLayer(
+#     tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+#     attr="Esri World Imagery",
+#     name="Esri Imagery",
+#     show=False,
+# ).add_to(centroid_map)
+# folium.TileLayer("OpenStreetMap", name="OpenStreetMap", show=False).add_to(centroid_map)
+
+# # Parent gpkg centroids (blue)
+# gpkg_layer = folium.FeatureGroup(name="Parent gpkg (nhm_id)", show=True)
+# for _, r in parent_hru_gdf_wgs.iterrows():
+#     folium.CircleMarker(
+#         location=[r["centroid_lat"], r["centroid_lon"]],
+#         radius=4,
+#         color="blue",
+#         fill=True,
+#         fill_opacity=0.6,
+#         weight=1,
+#         popup=folium.Popup(f"gpkg nhm_id: {int(r['nhm_id'])}", max_width=200),
+#         tooltip=f"gpkg nhm_id: {int(r['nhm_id'])}",
+#     ).add_to(gpkg_layer)
+# gpkg_layer.add_to(centroid_map)
+
+# # AET_all centroids -- ALL points in the AET dataset (red). Because AET_all is
+# # CONUS-scale (many thousands of points), draw them via FastMarkerCluster so the
+# # map stays responsive; markers de-cluster into individual points as you zoom in.
+# aet_layer = folium.FeatureGroup(name="AET_all (all points)", show=True)
+# # FastMarkerCluster takes [lat, lon, nhm_id] rows; a JS callback renders each as
+# # a red circle marker with an nhm_id popup/tooltip.
+# _aet_callback = (
+#     "function (row) {"
+#     "  var marker = L.circleMarker(new L.LatLng(row[0], row[1]),"
+#     "    {radius: 3, color: 'red', fillColor: 'red', fillOpacity: 0.7, weight: 1});"
+#     "  marker.bindPopup('AET_all nhm_id: ' + row[2]);"
+#     "  marker.bindTooltip('AET_all nhm_id: ' + row[2]);"
+#     "  return marker;"
+#     "}"
+# )
+# _aet_data = [
+#     [float(_lat), float(_lon), int(_id)]
+#     for _lat, _lon, _id in zip(aet_all_lats, aet_all_lons, aet_all_ids)
+# ]
+# FastMarkerCluster(data=_aet_data, callback=_aet_callback).add_to(aet_layer)
+# aet_layer.add_to(centroid_map)
+
+# # Crosswalk links (green): connect the SAME national nhm_id in both datasets
+# link_layer = folium.FeatureGroup(name="Crosswalk links (same nhm_id)", show=True)
+# for _, row in xwalk_matched.iterrows():
+#     pid = int(row["parent_nhm_id"])
+#     if pid in gpkg_lookup.index and pid in aet_lookup.index:
+#         g = gpkg_lookup.loc[pid]
+#         a = aet_lookup.loc[pid]
+#         folium.PolyLine(
+#             locations=[
+#                 [g["centroid_lat"], g["centroid_lon"]],
+#                 [a["aet_lat"], a["aet_lon"]],
+#             ],
+#             color="green",
+#             weight=1,
+#             opacity=0.6,
+#             tooltip=f"nhm_id: {pid}",
+#         ).add_to(link_layer)
+# link_layer.add_to(centroid_map)
+
+# folium.LayerControl(collapsed=False).add_to(centroid_map)
+
+# centroid_map
 
 # %% [markdown]
 # #### Verify same-`nhm_id` points are co-located (numeric check)
@@ -609,51 +562,67 @@ centroid_map
 # stored in `AET_all`).
 
 # %%
-# gpkg centroids keyed by national nhm_id (computed above in parent_hru_gdf_wgs)
-_gpkg_pts = parent_hru_gdf_wgs.set_index("nhm_id")[["centroid_lat", "centroid_lon"]]
-# AET_all stored locations keyed by national nhm_id
-_aet_pts = pd.DataFrame(
-    {"nhm_id": aet_all_ids, "aet_lat": aet_all_lats, "aet_lon": aet_all_lons}
-).set_index("nhm_id")
+# # gpkg centroids keyed by national nhm_id (computed above in parent_hru_gdf_wgs)
+# _gpkg_pts = parent_hru_gdf_wgs.set_index("nhm_id")[["centroid_lat", "centroid_lon"]]
+# # AET_all stored locations keyed by national nhm_id
+# _aet_pts = pd.DataFrame(
+#     {"nhm_id": aet_all_ids, "aet_lat": aet_all_lats, "aet_lon": aet_all_lons}
+# ).set_index("nhm_id")
 
-# Compare only the national nhm_ids that belong to THIS child model
-_model_nhm_ids = [int(i) for i in nhm_ids if pd.notna(i)]
-_shared = [i for i in _model_nhm_ids if i in _gpkg_pts.index and i in _aet_pts.index]
+# # Compare only the national nhm_ids that belong to THIS child model
+# _model_nhm_ids = [int(i) for i in nhm_ids if pd.notna(i)]
+# _shared = [i for i in _model_nhm_ids if i in _gpkg_pts.index and i in _aet_pts.index]
 
-id_check = pd.DataFrame(index=_shared)
-id_check["gpkg_lat"] = _gpkg_pts.loc[_shared, "centroid_lat"].values
-id_check["aet_lat"] = _aet_pts.loc[_shared, "aet_lat"].values
-id_check["gpkg_lon"] = _gpkg_pts.loc[_shared, "centroid_lon"].values
-id_check["aet_lon"] = _aet_pts.loc[_shared, "aet_lon"].values
-# Approximate separation in km (1 deg lat ~= 111 km; scale lon by cos(lat))
-_dlat = id_check["gpkg_lat"] - id_check["aet_lat"]
-_dlon = (id_check["gpkg_lon"] - id_check["aet_lon"]) * np.cos(
-    np.radians(id_check["gpkg_lat"])
-)
-id_check["dist_km"] = np.hypot(_dlat, _dlon) * 111.0
+# id_check = pd.DataFrame(index=_shared)
+# id_check["gpkg_lat"] = _gpkg_pts.loc[_shared, "centroid_lat"].values
+# id_check["aet_lat"] = _aet_pts.loc[_shared, "aet_lat"].values
+# id_check["gpkg_lon"] = _gpkg_pts.loc[_shared, "centroid_lon"].values
+# id_check["aet_lon"] = _aet_pts.loc[_shared, "aet_lon"].values
+# # Approximate separation in km (1 deg lat ~= 111 km; scale lon by cos(lat))
+# _dlat = id_check["gpkg_lat"] - id_check["aet_lat"]
+# _dlon = (id_check["gpkg_lon"] - id_check["aet_lon"]) * np.cos(
+#     np.radians(id_check["gpkg_lat"])
+# )
+# id_check["dist_km"] = np.hypot(_dlat, _dlon) * 111.0
 
-_n_model = len(_model_nhm_ids)
-_n_shared = len(_shared)
-_n_missing_aet = sum(
-    1 for i in _model_nhm_ids if i in _gpkg_pts.index and i not in _aet_pts.index
-)
-con.print(
-    f"Model HRUs (national nhm_id): {_n_model} | matched in both gpkg & AET_all: "
-    f"{_n_shared} | in gpkg but not AET_all: {_n_missing_aet}"
-)
-con.print(
-    f"Same-id separation (km) -> max: {id_check['dist_km'].max():.3f}, "
-    f"mean: {id_check['dist_km'].mean():.3f}"
-)
+# _n_model = len(_model_nhm_ids)
+# _n_shared = len(_shared)
+# _n_missing_aet = sum(
+#     1 for i in _model_nhm_ids if i in _gpkg_pts.index and i not in _aet_pts.index
+# )
+# con.print(
+#     f"Model HRUs (national nhm_id): {_n_model} | matched in both gpkg & AET_all: "
+#     f"{_n_shared} | in gpkg but not AET_all: {_n_missing_aet}"
+# )
+# con.print(
+#     f"Same-id separation (km) -> max: {id_check['dist_km'].max():.3f}, "
+#     f"mean: {id_check['dist_km'].mean():.3f}"
+# )
 
-# Show the worst offenders, if any (largest same-id separations)
-id_check.sort_values("dist_km", ascending=False).head(10)
+# # Show the worst offenders, if any (largest same-id separations)
+# id_check.sort_values("dist_km", ascending=False).head(10)
 
 # %%
-# Centroid-match to this model's HRUs (relabels nhm_id with the gpkg national
-# id), then restrict to the calibration years.
-c_da = subset_target_by_centroid(AET_all)
-c_da = c_da.sel(time=c_da["time.year"].isin(aet_cal_years))
+AET_all = xr.open_dataset(
+    baselines_dir / "aet_targets.nc", chunks={"time": 12, "nhru": 500}
+)
+AET_all
+
+# %%
+## Centroid-match to this model's HRUs (relabels nhm_id with the gpkg national
+## id), then restrict to the calibration years.
+# c_da = subset_target_by_centroid(AET_all)
+
+nhm_ids = list(set(hru_gdf.nhm_id))
+
+# Option A: pass the actual label values to .sel (positional/label selection)
+# Sort by ascending hru_id before writing (nhm_ids comes from a set, so its
+# order is otherwise arbitrary).
+c_da = (
+    AET_all.sel(time=AET_all["time.year"].isin(aet_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 
 # Always pre-load before writing for speed
 # c_da[["upper_bound", "lower_bound"]].load().to_netcdf(obsdir / f"AET_monthly.nc")
@@ -663,6 +632,12 @@ c_da.load().to_netcdf(obsdir / f"AET_monthly.nc")
 c_da.groupby("time.month").mean().load().to_netcdf(obsdir / f"AET_mean_monthly.nc")
 
 AET_all.close()
+c_da.close()
+
+# %%
+AET_plot = xr.open_dataset(obsdir / "AET_monthly.nc")
+AET_mean_monthly = xr.open_dataset(obsdir / "AET_mean_monthly.nc")
+AET_mean_monthly
 
 # %% [markdown]
 # ### Peek at AET targets
@@ -687,7 +662,7 @@ fig_aet = go.Figure()
 # Plot individual ensemble members
 for member, color in zip(members, member_colors):
     if member in AET_plot:
-        ts = AET_plot[member].sel(nhm_id=aet_hru_sel)
+        ts = AET_plot[member].sel(hru_id=aet_hru_sel)
         fig_aet.add_trace(
             go.Scatter(
                 x=ts.time.values,
@@ -700,8 +675,8 @@ for member, color in zip(members, member_colors):
         )
 
 # Ensemble mean +/- std shading
-ens_mean = AET_plot["ensemble_mean"].sel(nhm_id=aet_hru_sel)
-ens_std = AET_plot["ensemble_std"].sel(nhm_id=aet_hru_sel)
+ens_mean = AET_plot["ensemble_mean"].sel(hru_id=aet_hru_sel)
+ens_std = AET_plot["ensemble_std"].sel(hru_id=aet_hru_sel)
 
 fig_aet.add_trace(
     go.Scatter(
@@ -728,8 +703,8 @@ fig_aet.add_trace(
 )
 
 # Mean monthly climatology (repeated across years for visual reference)
-mean_mon = AET_mean_monthly["ensemble_mean"].sel(nhm_id=aet_hru_sel)
-std_mon = AET_mean_monthly["ensemble_std"].sel(nhm_id=aet_hru_sel)
+mean_mon = AET_mean_monthly["ensemble_mean"].sel(hru_id=aet_hru_sel)
+std_mon = AET_mean_monthly["ensemble_std"].sel(hru_id=aet_hru_sel)
 # Build a synthetic time axis by mapping month number back to the time series
 month_map_mean = pd.Series(mean_mon.values, index=mean_mon.month.values)
 month_map_std = pd.Series(std_mon.values, index=std_mon.month.values)
@@ -764,7 +739,7 @@ fig_aet.add_trace(
 )
 
 fig_aet.update_layout(
-    title=f"AET Ensemble Members & Statistics (nhm_id={aet_hru_sel})",
+    title=f"AET Ensemble Members & Statistics (hru_id={aet_hru_sel})",
     xaxis_title="Time",
     yaxis_title="AET (inches/day)",
     height=500,
@@ -782,8 +757,8 @@ AET_mean_monthly.close()
 # Reload mean monthly for climatology plot
 AET_mean_monthly = xr.open_dataset(obsdir / "AET_mean_monthly.nc")
 
-mean_mon = AET_mean_monthly["ensemble_mean"].sel(nhm_id=aet_hru_sel)
-std_mon = AET_mean_monthly["ensemble_std"].sel(nhm_id=aet_hru_sel)
+mean_mon = AET_mean_monthly["ensemble_mean"].sel(hru_id=aet_hru_sel)
+std_mon = AET_mean_monthly["ensemble_std"].sel(hru_id=aet_hru_sel)
 months = mean_mon.month.values
 
 fig_aet_mm = go.Figure()
@@ -815,7 +790,7 @@ fig_aet_mm.add_trace(
 )
 
 fig_aet_mm.update_layout(
-    title=f"AET Mean Monthly Climatology (nhm_id={aet_hru_sel})",
+    title=f"AET Mean Monthly Climatology (hru_id={aet_hru_sel})",
     xaxis_title="Month",
     yaxis_title="AET (inches/day)",
     xaxis=dict(
@@ -851,10 +826,14 @@ RUN_all = xr.open_dataset(baselines_dir / "runoff_targets.nc", chunks="auto")
 # RUN_all
 
 # %%
-c_da = subset_target_by_centroid(RUN_all)
-c_da = c_da.sel(time=c_da["time.year"].isin(runoff_cal_years))
+c_da = (
+    RUN_all.sel(time=RUN_all["time.year"].isin(runoff_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 c_da.to_netcdf(obsdir / f"hru_streamflow_monthly.nc")
 RUN_all.close()
+c_da.close()
 
 # %% [markdown]
 # ### Subset Annual Recharge
@@ -865,13 +844,14 @@ RCH_all = xr.open_dataset(baselines_dir / "recharge_targets.nc", chunks="auto")
 # RCH_all
 
 # %%
-recharge_cal_years
-
-# %%
-c_da = subset_target_by_centroid(RCH_all)
-c_da = c_da.sel(time=c_da["time.year"].isin(recharge_cal_years))
+c_da = (
+    RCH_all.sel(time=RCH_all["time.year"].isin(recharge_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 c_da.to_netcdf(obsdir / f"RCH_annual.nc")
 RCH_all.close()
+c_da.close()
 
 # %% [markdown]
 # ### Peek at Recharge targets
@@ -889,7 +869,7 @@ fig_rch = go.Figure()
 # Plot individual ensemble members
 for member, color in zip(rch_members, rch_member_colors):
     if member in RCH_plot:
-        ts = RCH_plot[member].sel(nhm_id=rch_hru_sel)
+        ts = RCH_plot[member].sel(hru_id=rch_hru_sel)
         fig_rch.add_trace(
             go.Scatter(
                 x=ts.time.values,
@@ -903,8 +883,8 @@ for member, color in zip(rch_members, rch_member_colors):
         )
 
 # Ensemble mean +/- std shading
-rch_mean = RCH_plot["ensemble_mean"].sel(nhm_id=rch_hru_sel)
-rch_std = RCH_plot["ensemble_std"].sel(nhm_id=rch_hru_sel)
+rch_mean = RCH_plot["ensemble_mean"].sel(hru_id=rch_hru_sel)
+rch_std = RCH_plot["ensemble_std"].sel(hru_id=rch_hru_sel)
 
 fig_rch.add_trace(
     go.Scatter(
@@ -931,7 +911,7 @@ fig_rch.add_trace(
 )
 
 fig_rch.update_layout(
-    title=f"Annual Recharge Ensemble Members & Statistics (nhm_id={rch_hru_sel})",
+    title=f"Annual Recharge Ensemble Members & Statistics (hru_id={rch_hru_sel})",
     xaxis_title="Time",
     yaxis_title="Recharge (normalized 0-1)",
     height=450,
@@ -949,10 +929,14 @@ SOM_ann_all = xr.open_dataset(
 SOM_ann_all
 
 # %%
-c_da = subset_target_by_centroid(SOM_ann_all)
-c_da = c_da.sel(time=c_da["time.year"].isin(soil_rechr_cal_years))
+c_da = (
+    SOM_ann_all.sel(time=SOM_ann_all["time.year"].isin(soil_rechr_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 c_da.to_netcdf(obsdir / f"Soil_Moisture_annual.nc")
 SOM_ann_all.close()
+c_da.close()
 
 # %% [markdown]
 # ### Subset Monthly Soil Moisture
@@ -967,15 +951,20 @@ print(
 print(f"Cal years requested: {soil_rechr_cal_years}")
 
 # %%
-c_da = subset_target_by_centroid(SOM_mon_all)
-c_da = c_da.sel(time=c_da["time.year"].isin(soil_rechr_cal_years))
+c_da = (
+    SOM_mon_all.sel(time=SOM_mon_all["time.year"].isin(soil_rechr_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 c_da.to_netcdf(obsdir / "Soil_Moisture_monthly.nc")
-SOM_mon_all.close()
 
 # Compute mean in memory, then write
 c_da.groupby("time.month").mean().load().to_netcdf(
     obsdir / f"Soil_Moisture_mean_monthly.nc"
 )
+
+SOM_mon_all.close()
+c_da.close()
 
 # %% [markdown]
 # ### Peek at Soil Moisture (monthly) targets
@@ -993,7 +982,7 @@ fig_sm = go.Figure()
 # Ensemble members (thin lines)
 for member, color in zip(sm_members, ["#66c2a5", "#fc8d62", "#8da0cb"]):
     if member in SM_plot:
-        vals = SM_plot[member].sel(nhm_id=_sm_hru, method="nearest").values.ravel()
+        vals = SM_plot[member].sel(hru_id=_sm_hru).values.ravel()
         fig_sm.add_trace(
             go.Scatter(
                 x=time_vals,
@@ -1006,9 +995,9 @@ for member, color in zip(sm_members, ["#66c2a5", "#fc8d62", "#8da0cb"]):
         )
 
 # Ensemble mean +/- std shading
-_ens_da = SM_plot["ensemble_mean"].sel(nhm_id=_sm_hru, method="nearest")
+_ens_da = SM_plot["ensemble_mean"].sel(hru_id=_sm_hru)
 ens_mean = _ens_da.values.ravel()
-ens_std = SM_plot["ensemble_std"].sel(nhm_id=_sm_hru, method="nearest").values.ravel()
+ens_std = SM_plot["ensemble_std"].sel(hru_id=_sm_hru).values.ravel()
 
 fig_sm.add_trace(
     go.Scatter(
@@ -1072,7 +1061,7 @@ fig_sm.add_trace(
 )
 
 fig_sm.update_layout(
-    title=f"Soil Moisture Ensemble Members & Statistics (nhm_id={_sm_hru})",
+    title=f"Soil Moisture Ensemble Members & Statistics (hru_id={_sm_hru})",
     xaxis_title="Time",
     yaxis_title="Soil Moisture (normalized 0-1)",
     height=500,
@@ -1119,9 +1108,15 @@ SM_plot.close()
 # SWE.nc: filter the DAILY series to the calibration years (no binning here, so
 # there are no resample year-boundary effects to worry about).
 SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
-c_da_swe = subset_target_by_centroid(SWE_daily)
-c_da_swe = c_da_swe.sel(time=c_da_swe["time.year"].isin(swe_cal_years))
+c_da_swe = (
+    SWE_daily.sel(time=SWE_daily["time.year"].isin(swe_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
+
 c_da_swe.to_netcdf(obsdir / "SWE.nc")
+
+SWE_daily.close()
 
 # %%
 # SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
@@ -1144,14 +1139,19 @@ SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
 # and last odd years) causes resample to re-introduce every in-between off year
 # as empty (all-NaN) months. Resampling first, then masking to the calibration
 # years, yields only the intended months.
-c_da_mo = subset_target_by_centroid(SWE_daily).resample(time="1ME").mean()
-c_da_mo = c_da_mo.isel(time=c_da_mo["time"].dt.year.isin(swe_cal_years).values)
+
+
+SWE_monthly = SWE_daily.resample(time="1ME").mean()
+c_da_mo = (
+    SWE_monthly.sel(time=SWE_monthly["time.year"].isin(swe_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 
 c_da_mo.to_netcdf(obsdir / "SWE_monthly.nc")
 SWE_daily.close()
-
-# %%
-c_da_mo
+SWE_monthly.close()
+c_da_mo.close()
 
 # %%
 # 5-day averaged SWE dataset
@@ -1165,6 +1165,13 @@ c_da_mo
 # 1979-2025, re-introducing the off years as empty bins. The following
 # `dropna(how="any")` removes bins by data completeness, not by year, so the off
 # years must be masked out explicitly.
+
+SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
+c_da_swe = (
+    SWE_daily.sel(time=SWE_daily["time.year"].isin(swe_cal_years))
+    .sel(hru_id=nhm_ids)
+    .sortby("hru_id")
+)
 c_da_swe_5day = c_da_swe.resample(time="5D").mean()
 c_da_swe_5day = c_da_swe_5day.isel(
     time=c_da_swe_5day["time"].dt.year.isin(swe_cal_years).values
@@ -1176,6 +1183,7 @@ c_da_swe_5day.attrs["averaging_method"] = (
 c_da_swe_5day.to_netcdf(obsdir / "SWE_5day_avg.nc")
 
 SWE_daily.close()
+c_da_swe_5day.close()
 
 # %% [markdown]
 # ### Peek at SWE
@@ -1208,8 +1216,8 @@ SWE_plot = SWE_plot.reindex(time=_full_daily)
 # --- Daily SWE bounds ---
 fig = go.Figure()
 for hru, color in zip(hru_sel, colors):
-    swe_max = SWE_plot["upper_bound"].sel(nhm_id=hru, time=time_slice_swe)
-    swe_min = SWE_plot["lower_bound"].sel(nhm_id=hru, time=time_slice_swe)
+    swe_max = SWE_plot["upper_bound"].sel(hru_id=hru, time=time_slice_swe)
+    swe_min = SWE_plot["lower_bound"].sel(hru_id=hru, time=time_slice_swe)
     fig.add_trace(
         go.Scatter(
             x=swe_max.time.values,
@@ -1266,13 +1274,13 @@ fig_w = go.Figure()
 for hru, color in zip(hru_sel, colors):
     swe_max_w = (
         SWE_plot["upper_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .resample(time="1W")
         .mean()
     )
     swe_min_w = (
         SWE_plot["lower_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .resample(time="1W")
         .mean()
     )
@@ -1332,13 +1340,13 @@ fig_5d = go.Figure()
 for hru, color in zip(hru_sel, colors):
     swe_max_5d = (
         SWE_plot["upper_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .rolling(time=5, center=True)
         .mean()
     )
     swe_min_5d = (
         SWE_plot["lower_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .rolling(time=5, center=True)
         .mean()
     )
@@ -1398,13 +1406,13 @@ fig_m = go.Figure()
 for hru, color in zip(hru_sel, colors):
     swe_max_m = (
         SWE_plot["upper_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .resample(time="1ME")
         .mean()
     )
     swe_min_m = (
         SWE_plot["lower_bound"]
-        .sel(nhm_id=hru, time=time_slice_swe)
+        .sel(hru_id=hru, time=time_slice_swe)
         .resample(time="1ME")
         .mean()
     )

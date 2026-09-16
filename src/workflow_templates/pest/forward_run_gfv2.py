@@ -1,19 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     cell_metadata_filter: -all
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import dask
 import shutil
@@ -144,6 +128,23 @@ if "dprst_frac" in params.parameters and "hru_percent_imperv" in params.paramete
         params_ds = params.to_xr_ds()
         max_dprst = 0.999 - params_ds["hru_percent_imperv"]
         params_ds["dprst_frac"] = params_ds["dprst_frac"].clip(max=max_dprst)
+        params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
+# Check for smidx_coef < 0.0001. smidx_coef is the coefficient in the
+# nonlinear contributing-area (smidx) surface-runoff calculation. Very small
+# values can drive the runoff computation toward degenerate/near-zero behavior,
+# so floor it at 0.0001 for compatibility with pywatershed.
+if "smidx_coef" in params.parameters:
+    smidx = params.parameters["smidx_coef"]
+    n_low = np.sum(smidx < 0.0001)
+    if n_low > 0:
+        con.print(
+            f"[bold yellow]Warning:[/bold yellow] {n_low} of {len(smidx)} HRU(s) have "
+            f"[bold]smidx_coef < 0.0001[/bold].\n"
+            f"Resetting {n_low} value(s) to 0.0001 for compatibility with pywatershed."
+        )
+        params_ds = params.to_xr_ds()
+        params_ds["smidx_coef"] = params_ds["smidx_coef"].clip(min=0.0001)
         params = pws.parameters.PrmsParameters.from_ds(params_ds)
 
 # %%
@@ -456,6 +457,23 @@ modelobsdat  = xr.open_dataset(outvardir / 'model_custom_output.nc')
 # %%
 modelobsdat
 
+
+# %%
+def _snap_tiny_to_zero(da, threshold=1e-12):
+    """Snap denormal / absurdly-tiny magnitudes to exactly 0.0.
+
+    pywatershed's calc can leave floating-point 'dust' at effectively-dry HRUs
+    (e.g. recharge values like 5e-312 or 4e-266). These are numerical noise, not
+    signal, and PEST++'s Fortran reader can fail on such tiny exponents (and they
+    corrupt any log-transform/weighting). Any value with |x| < threshold is set
+    to 0.0. The threshold (1e-12) sits far above the denormal range (~1e-308) and
+    far below any meaningful normalized (0-1) or physical value in these obs, so
+    real data is untouched. NaNs are preserved (handled separately by fillna)."""
+    return da.where((np.abs(da) >= threshold) | da.isnull(), 0.0)
+
+
+# %%
+
 # %% [markdown]
 # ### Relabel the HRU axis from local `hru_id` to national `nhm_id`
 #
@@ -468,21 +486,21 @@ modelobsdat
 # position) so alignment holds regardless of ordering.
 
 # %%
-hru_xwalk = pd.read_csv(rootdir / "hru_nhm_id_crosswalk.csv")
-# Build a local hru_id -> national nhm_id lookup and apply it to the HRU axis.
-_hru_to_nhm = dict(zip(hru_xwalk["hru_id"].astype(int), hru_xwalk["nhm_id"].astype(int)))
-_local_hru_ids = modelobsdat["nhm_id"].values.astype(int)
-_national_nhm_ids = np.array([_hru_to_nhm[h] for h in _local_hru_ids], dtype=int)
-# Overwrite the nhm_id coordinate (which is along the `nhru` dimension) with the
-# national ids, then promote nhm_id to be the HRU *dimension* coordinate. Making
-# nhm_id a real dimension (not just a coordinate along nhru) means it survives
-# resample/groupby reductions below -- matching how the observation targets in
-# 00/01 are keyed by nhm_id, and avoiding the KeyError when writing obs names.
-modelobsdat = modelobsdat.assign_coords(nhm_id=("nhru", _national_nhm_ids))
-modelobsdat = modelobsdat.swap_dims({"nhru": "nhm_id"})
+# hru_xwalk = pd.read_csv(rootdir / "hru_nhm_id_crosswalk.csv")
+# # Build a local hru_id -> national nhm_id lookup and apply it to the HRU axis.
+# _hru_to_nhm = dict(zip(hru_xwalk["hru_id"].astype(int), hru_xwalk["nhm_id"].astype(int)))
+# _local_hru_ids = modelobsdat["nhm_id"].values.astype(int)
+# _national_nhm_ids = np.array([_hru_to_nhm[h] for h in _local_hru_ids], dtype=int)
+# # Overwrite the nhm_id coordinate (which is along the `nhru` dimension) with the
+# # national ids, then promote nhm_id to be the HRU *dimension* coordinate. Making
+# # nhm_id a real dimension (not just a coordinate along nhru) means it survives
+# # resample/groupby reductions below -- matching how the observation targets in
+# # 00/01 are keyed by nhm_id, and avoiding the KeyError when writing obs names.
+# modelobsdat = modelobsdat.assign_coords(nhm_id=("nhru", _national_nhm_ids))
+# modelobsdat = modelobsdat.swap_dims({"nhru": "nhm_id"})
 
 # %%
-modelobsdat
+# modelobsdat
 
 # %% [markdown]
 # ### Slice output to calibration periods for each variable
@@ -497,14 +515,14 @@ recharge_start = '2002-01-01'
 recharge_end = '2013-12-31'
 runoff_start = '2009-01-01'
 runoff_end = '2020-12-31'
-soil_rechr_start = '2014-01-01'
-soil_rechr_end = '2025-12-31'
+soil_rechr_start = '2013-01-01'
+soil_rechr_end = '2024-12-31'
 swe_start = '2010-01-01'
 swe_end = '2021-12-31'
 
 # set in "pestpp_ies_calibration/notebooks/01_Prepare_observations_gfv2.ipynb"
-seg_outflow_start = '2011-01-01' 
-seg_outflow_end = '2021-12-31'
+seg_outflow_start = '2013-01-01' 
+seg_outflow_end = '2024-12-31'
 
 # %% [markdown]
 # ### Actual ET
@@ -544,6 +562,9 @@ actet_monthly = actet_daily_cal.resample(time="m").mean()
 # %%
 # Creates a time series of mean monthly (mean of all jan, feb, mar....)
 actet_mean_monthly = actet_monthly.groupby("time.month").mean()
+# Snap floating-point dust (e.g. 6e-31 at effectively-dry HRUs) to 0 so no
+# denormal-scale values reach modelobs.dat.
+actet_mean_monthly = _snap_tiny_to_zero(actet_mean_monthly)
 
 
 # %%
@@ -587,7 +608,18 @@ recharge_annual = recharge_daily.resample(time = 'Y').mean()
 _rch_min = recharge_annual.min(dim='time')
 _rch_max = recharge_annual.max(dim='time')
 _rch_range = _rch_max - _rch_min
-recharge_annual_norm = (recharge_annual - _rch_min) / _rch_range.where(_rch_range > 0)
+# Zero-range HRUs (constant recharge across all years -- e.g. arid HRUs the
+# model dries to zero every year) make the range 0; .where(range > 0) turns that
+# into NaN, and (x - min)/NaN = NaN. A constant series normalizes to its own
+# minimum, i.e. 0, so fill the resulting NaNs with 0.0. Without this, those HRUs
+# emit NaN into modelobs.dat while allobs.dat carries real target values there,
+# which breaks the PEST++ residual comparison.
+recharge_annual_norm = _snap_tiny_to_zero(
+    (
+        (recharge_annual - _rch_min) / _rch_range.where(_rch_range > 0)
+    ).fillna(0.0)
+)
+
 
 # Restrict to calibration (odd) years AFTER normalizing over the full period,
 # matching notebook 00's _cal_val_years rule (odd years within the recharge
@@ -649,7 +681,15 @@ _sm_month_range = _sm_month_range.where(_sm_month_range > 0)
 _sm_months = soil_rechr_monthly['time'].dt.month
 _sm_min_on_time = _sm_month_min.sel(month=_sm_months).drop_vars('month')
 _sm_range_on_time = _sm_month_range.sel(month=_sm_months).drop_vars('month')
-soil_rechr_monthly_norm = (soil_rechr_monthly - _sm_min_on_time) / _sm_range_on_time
+# Zero-range (constant) HRU/month series normalize to 0; fill the NaN the
+# zero-range guard leaves behind so no NaN reaches modelobs.dat (same rationale
+# as the recharge block above).
+soil_rechr_monthly_norm = _snap_tiny_to_zero(
+    (
+        (soil_rechr_monthly - _sm_min_on_time) / _sm_range_on_time
+    ).fillna(0.0)
+)
+
 
 # mean monthly climatology (mean of all Jan, Feb, ... across cal years)
 soil_rechr_mean_monthly = soil_rechr_monthly_norm.groupby('time.month').mean()
@@ -664,7 +704,14 @@ soil_rechr_annual = soil_rechr_daily.resample(time = 'Y').mean()
 _sma_min = soil_rechr_annual.min(dim='time')
 _sma_max = soil_rechr_annual.max(dim='time')
 _sma_range = (_sma_max - _sma_min)
-soil_rechr_annual_norm = (soil_rechr_annual - _sma_min) / _sma_range.where(_sma_range > 0)
+# Zero-range (constant) HRU series normalize to 0; fill the NaN the zero-range
+# guard leaves behind so no NaN reaches modelobs.dat (same rationale as the
+# recharge block above).
+soil_rechr_annual_norm = _snap_tiny_to_zero(
+    (
+        (soil_rechr_annual - _sma_min) / _sma_range.where(_sma_range > 0)
+    ).fillna(0.0)
+)
 soil_rechr_annual_norm = soil_rechr_annual_norm.sel(
     time=soil_rechr_annual_norm['time'].dt.year.isin(soil_rechr_cal_years).values
 )
@@ -779,7 +826,7 @@ varvals = np.ravel(swe_monthly_restr, order = 'C')# flattens the 2D array to a 1
 
 # %%
 with open(rootdir   / of_name, encoding="utf-8", mode='a') as ofp:
-    [ofp.write(f'SWE_monthly:{i}          {j}\n') for i,j in zip(inds,varvals, strict=True)]
+    [ofp.write(f'swe_monthly:{i}          {j}\n') for i,j in zip(inds,varvals, strict=True)]
 
 # %%
 # with open(rootdir   / of_name, encoding="utf-8", mode='a') as ofp:
@@ -904,15 +951,15 @@ varvals =  np.ravel(seg_outflow_mean_monthly_cal, order = 'F')# flattens the 2D 
 
 # %%
 with open(rootdir  / of_name, encoding="utf-8", mode='a') as ofp:
-    [ofp.write(f'streamflow_mean_mon_cal:{i}          {j}\n') for i,j in zip(inds,varvals,strict=True)]
+    [ofp.write(f'streamflow_mean_mon:{i}          {j}\n') for i,j in zip(inds,varvals,strict=True)]
 
 # %%
-inds = [f'{i}:{j}' for j in seg_outflow_mean_monthly_val['poi_gages'].values for i in seg_outflow_mean_monthly_val.indexes['month'] ]
-varvals =  np.ravel(seg_outflow_mean_monthly_val, order = 'F')# flattens the 2D array to a 1D array
+# inds = [f'{i}:{j}' for j in seg_outflow_mean_monthly_val['poi_gages'].values for i in seg_outflow_mean_monthly_val.indexes['month'] ]
+# varvals =  np.ravel(seg_outflow_mean_monthly_val, order = 'F')# flattens the 2D array to a 1D array
 
 # %%
-with open(rootdir  / of_name, encoding="utf-8", mode='a') as ofp:
-    [ofp.write(f'streamflow_mean_mon_val:{i}          {j}\n') for i,j in zip(inds,varvals,strict=True)]
+# with open(rootdir  / of_name, encoding="utf-8", mode='a') as ofp:
+#     [ofp.write(f'streamflow_mean_mon_val:{i}          {j}\n') for i,j in zip(inds,varvals,strict=True)]
 
 
 # %% [markdown]
