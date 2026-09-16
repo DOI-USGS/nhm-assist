@@ -5,7 +5,7 @@
 # (github.com/DOI-USGS/nhm-assist), not on GitLab merge requests.
 #
 # A GitLab CI migration is designed but not yet implemented; see
-# docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md for the
+# docs/design/specs/2026-08-25-gitlab-ci-migration-design.md for the
 # design and its open questions. Until that lands, this workflow is kept
 # as the real, working CI (pixi + pytest) rather than deleted, so its
 # schedule/matrix/logic aren't lost as reference.

@@ -3,7 +3,7 @@
 **Date:** 2026-09-14
 **Status:** Draft, pending review
 **Work item:** [#47 — Migrate CI from GitHub Actions to GitLab CI](https://code.usgs.gov/wma/hytest/nhm-assist/-/work_items/47)
-**Supersedes:** `docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md`
+**Supersedes:** `docs/design/specs/2026-08-25-gitlab-ci-migration-design.md`
 **Branch:** off `develop`
 
 ## Why this supersedes the 2026-08-25 spec

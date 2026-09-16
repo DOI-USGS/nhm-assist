@@ -2,7 +2,7 @@
 
 Unified from src/assist/nhm/nhm_hydrofabric.py and
 src/assist/nhf/nhm_hydrofabric_v2.py. See
-docs/superpowers/specs/2026-08-30-helper-unification-design.md.
+docs/design/specs/2026-08-30-helper-unification-design.md.
 
 Implementations come from the nhf side, which already tolerates both the GFv1.1
 and GFv2 geopackage column layouts; the nhm versions assume GFv1.1 columns and

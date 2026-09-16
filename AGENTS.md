@@ -43,7 +43,7 @@ repo template.
 ## Design docs and plans
 
 Specs and implementation plans for substantial changes live under
-`docs/superpowers/specs/` and `docs/superpowers/plans/`. Check there for
+`docs/design/specs/` and `docs/design/plans/`. Check there for
 existing context — rationale, decisions, open questions — before starting
 significant work in an area that might already have one.
 
@@ -68,7 +68,7 @@ inline code are all fine, and quick actions only trigger on a line that
 
 Write commands as prose instead — "the `test` task run in the `ci`
 environment" rather than the literal flags — and keep exact invocations in
-the spec under `docs/superpowers/specs/`, which arrives by git push and
+the spec under `docs/design/specs/`, which arrives by git push and
 isn't subject to the WAF. If a save fails, paste the description one
 section at a time to find the offending paragraph. Don't try to isolate it
 by probing the API with substrings: a burst of requests trips a separate
@@ -84,7 +84,7 @@ actually happens, does not read `.github/workflows/*` at all, so merge
 requests on `code.usgs.gov` currently get no CI signal.
 
 A GitLab CI migration is designed but not yet implemented — see
-`docs/superpowers/specs/2026-09-14-gitlab-ci-migration-design.md` for the
+`docs/design/specs/2026-09-14-gitlab-ci-migration-design.md` for the
 current design (it supersedes the 2026-08-25 spec). Note that it also
 scopes in repairing the test suite first: `pixi run test` can't collect
 today, and 5 of 446 tests fail underneath that. Don't delete or "fix"

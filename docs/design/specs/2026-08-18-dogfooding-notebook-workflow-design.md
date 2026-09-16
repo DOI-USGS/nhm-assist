@@ -54,9 +54,9 @@ conda-sourced compiled packages; `jupytext`, `jupyterlab`, `jupyter-server`,
 is still pulled in transitively via `jupyterlab` in both environments, so
 Design section 4's "no new dependency required" still holds. Separately, CI
 was migrated off `environment.yaml` onto pixi (`c9d6620`, 2026-08-27; see
-`docs/superpowers/specs/2026-08-21-ci-pixi-migration-design.md`), and a
+`docs/design/specs/2026-08-21-ci-pixi-migration-design.md`), and a
 GitLab CI migration is in flight
-(`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md`). Neither
+(`docs/design/specs/2026-08-25-gitlab-ci-migration-design.md`). Neither
 touches the notebook/jupytext workflow this design covers. The `[tool.pixi.tasks.*]`
 table format this design's `dev-mode` snippet relies on is unchanged.
 

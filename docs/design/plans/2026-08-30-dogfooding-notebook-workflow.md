@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11+, [jupytext](https://jupytext.org) 1.19.3, `ipykernel` (transitive via `jupyterlab`), pixi tasks in `pyproject.toml`, `unittest` + pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-18-dogfooding-notebook-workflow-design.md` (including its **Update (2026-08-28)** block)
+**Spec:** `docs/design/specs/2026-08-18-dogfooding-notebook-workflow-design.md` (including its **Update (2026-08-28)** block)
 
 ## Global Constraints
 

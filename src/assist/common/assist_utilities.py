@@ -2,7 +2,7 @@
 
 Unified from src/assist/nhm/nhm_assist_utilities.py and
 src/assist/nhf/nhm_assist_utilities_v2.py. See
-docs/superpowers/specs/2026-08-30-helper-unification-design.md.
+docs/design/specs/2026-08-30-helper-unification-design.md.
 """
 
 import glob

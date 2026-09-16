@@ -40,7 +40,7 @@ Separately, this repo's real CI (the GitHub Actions mirror workflow) still
 needs migrating to GitLab CI to give merge requests actual signal — tracked
 in #47, which is deliberately on the back burner pending GitLab-CI-specific
 review of the open questions in
-`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md`. This spec
+`docs/design/specs/2026-08-25-gitlab-ci-migration-design.md`. This spec
 does not do that work; see Non-goals.
 
 We do not plan to publish to PyPI/conda-forge for at least a few months,

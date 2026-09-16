@@ -8,7 +8,7 @@
 
 **Tech Stack:** pixi (`pyproject.toml` `[tool.pixi.*]` tables), PEP 735 `[dependency-groups]`, Python's `tomllib` for parse validation, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-28-packaging-dependency-groups-design.md`
+**Spec:** `docs/design/specs/2026-08-28-packaging-dependency-groups-design.md`
 
 ## Global Constraints
 

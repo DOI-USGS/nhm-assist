@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, pytest, pandas / geopandas / xarray, dataretrieval, pixi (`pixi run --frozen`).
 
-**Spec:** `docs/superpowers/specs/2026-08-30-helper-unification-design.md`
+**Spec:** `docs/design/specs/2026-08-30-helper-unification-design.md`
 
 ## Global Constraints
 

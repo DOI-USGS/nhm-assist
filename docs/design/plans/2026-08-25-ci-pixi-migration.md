@@ -8,7 +8,7 @@
 
 **Tech Stack:** GitHub Actions YAML, `prefix-dev/setup-pixi@v0`, pixi tasks defined in `pyproject.toml` (`[tool.pixi.tasks.test]`), pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-21-ci-pixi-migration-design.md`
+**Spec:** `docs/design/specs/2026-08-21-ci-pixi-migration-design.md`
 
 ## Global Constraints
 
