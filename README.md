@@ -80,7 +80,7 @@ notebook directory inside the repository.
 | Generate one workflow's notebooks | `pixi run notebooks-create-project <workspace-root> <project-name> nhm` |
 | Generate every workflow's notebooks | `pixi run notebooks-create-project <workspace-root> <project-name> all` |
 | Open them in JupyterLab | `jupyter lab <workspace-root>/<project-name>/notebooks/nhm` |
-| Open them in VS Code | `code <workspace-root>/<project-name>/notebooks/nhm` |
+| Open them in VS Code | `code <workspace-root>/<project-name>` (the project folder — see the note below) |
 
 Each generation command prints the
 folder it wrote to, so you can open it with any of the above or with Kiro, so just launch the IDE, add the project folder to your workspace, and browse to the notebook.
@@ -101,7 +101,7 @@ The Pixi workspace flow lets you keep your projects, models, generated notebooks
 - each project contains one or more models
 - generated NHM notebooks live once per project
 - each project gets a `jupytext.toml` pairing every notebook to a same-directory `.py`, so your work is reviewable in git
-- each project also gets a `.vscode/` folder recommending the [Jupytext Sync](https://open-vsx.org/extension/caenrigen/jupytext-sync) extension and preconfiguring it to sync on save — works in both VS Code and Kiro, since Kiro is Code OSS-based and installs Open VSX extensions
+- each project also gets a `.vscode/` folder recommending the [Jupytext Sync](https://open-vsx.org/extension/caenrigen/jupytext-sync) extension and preconfiguring it to sync on save — works in both VS Code and Kiro, since Kiro is Code OSS-based and installs Open VSX extensions (but see ["Where the Jupytext Sync settings have to live"](#where-the-jupytext-sync-settings-have-to-live) — that file only takes effect when you open the project folder itself)
 - each project records one active model for the shared notebook session
 - notebook and model outputs are written to model-local runtime folders instead of back into the repository
 - the commands are designed to work on macOS, Windows, and Linux
@@ -128,6 +128,37 @@ folder however you like, and select the **Python (nhm-assist)** kernel.
 > `python3`/environment-folder-name pair instead of the registered kernel,
 > silently losing the `nhm-assist` identity. JupyterLab doesn't have this
 > second picker, so this only bites in VS Code/Kiro.
+
+### Where the Jupytext Sync settings have to live
+
+The `.vscode/settings.json` written into each project points Jupytext Sync at
+the pixi interpreter that actually has `jupytext` installed. Two things about
+how VS Code and Kiro resolve that file are worth knowing, because when it is
+not read the extension fails **silently** — no error, no popup, saves simply
+stop syncing:
+
+- **They read `.vscode/settings.json` only from a root folder you opened, and
+  never walk up from a subfolder.** Open `<project>/notebooks/nhm` directly and
+  the project's settings are ignored. Open `<project>` instead and browse down
+  to the notebooks.
+- **Every `jupytextSync.*` setting is window-scoped, so in a multi-root
+  workspace a folder's `.vscode/settings.json` is skipped entirely.** If you
+  work in a `.code-workspace` that lists more than one folder, copy the setting
+  into that file's own `"settings"` block:
+
+  ```jsonc
+  "settings": {
+    "jupytextSync.pythonExecutable": "<repo>/.pixi/envs/default/python.exe"
+  }
+  ```
+
+  Use `python` instead of `python.exe` on macOS and Linux. Forward slashes work
+  on every platform and avoid JSON escaping.
+
+A stale user-level `jupytextSync.pythonExecutable` will also override the
+project's. If it points somewhere without `jupytext` the extension gives up
+without falling back to auto-discovery, so clear it or fix it. To see what it
+actually chose, run **Jupytext Sync: Show Logs** from the command palette.
 
 Run `0_workspace_setup.ipynb` first from the project notebook directory.
 

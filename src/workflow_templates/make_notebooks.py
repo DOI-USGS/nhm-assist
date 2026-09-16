@@ -8,7 +8,10 @@ from typing import Literal
 import jupytext
 from jupytext.paired_paths import InconsistentPath, paired_paths
 
-from assist.workspace.bridge import get_project_workflow_notebooks_dir
+from assist.workspace.bridge import (
+    get_project_dir,
+    get_project_workflow_notebooks_dir,
+)
 from assist.workspace.kernels import PAIRING_MODE_KERNELS, ensure_kernel_registered
 
 
@@ -324,8 +327,16 @@ def main(
         print_func("")
         print_func(f"[{workflow}] {len(created)} notebook(s) in {notebook_dir}")
         print_func(f"[{workflow}] Open them with: jupyter lab {notebook_dir}")
+        # In VS Code / Kiro, open the *project* directory rather than this
+        # notebook subfolder. Those editors read .vscode/settings.json only from
+        # the root folder they were opened on -- they do not walk up -- and that
+        # file is what points the Jupytext Sync extension at a Python that has
+        # jupytext. Open notebooks/<workflow> directly and the extension finds no
+        # interpreter and silently stops syncing on save.
+        project_dir = get_project_dir(args.workspace_root, args.project_name)
         print_func(
-            f"[{workflow}] Or open that folder in VS Code / Kiro and select the "
+            f"[{workflow}] Or open {project_dir} in VS Code / Kiro (the project "
+            f"folder, so its .vscode/settings.json applies) and select the "
             f"'{kernel_display}' kernel."
         )
 
