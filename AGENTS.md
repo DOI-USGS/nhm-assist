@@ -53,6 +53,28 @@ Agents stage changes (`git add` / `git rm`) but do not `git commit`, merge,
 push, or open a merge request. Committing and opening the MR is the
 maintainer's action.
 
+## Writing GitLab issue and MR descriptions
+
+`code.usgs.gov` sits behind a Cloudflare WAF that inspects request bodies.
+A description containing command-line-shaped strings — `python -m pytest`,
+a `run -e <env>` invocation, `VAR=VALUE` assignments, registry image
+references like `ghcr.io/org/image:tag` — is rejected with a Cloudflare 403
+before it ever reaches GitLab. The web UI surfaces no error: the save
+silently does nothing, so a long description simply appears not to stick.
+
+This is not a Markdown problem. Headings, task lists, em dashes, and
+inline code are all fine, and quick actions only trigger on a line that
+*starts* with `/`.
+
+Write commands as prose instead — "the `test` task run in the `ci`
+environment" rather than the literal flags — and keep exact invocations in
+the spec under `docs/superpowers/specs/`, which arrives by git push and
+isn't subject to the WAF. If a save fails, paste the description one
+section at a time to find the offending paragraph. Don't try to isolate it
+by probing the API with substrings: a burst of requests trips a separate
+rate-limit rule that returns the same 403, which makes innocuous text look
+guilty.
+
 ## CI
 
 CI currently runs on GitHub Actions (`.github/workflows/ci.yaml`): pixi +
@@ -62,8 +84,10 @@ actually happens, does not read `.github/workflows/*` at all, so merge
 requests on `code.usgs.gov` currently get no CI signal.
 
 A GitLab CI migration is designed but not yet implemented — see
-`docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md` for the
-design and its open questions. Don't delete or "fix" the GitHub Actions
-workflow to work around this gap; the plan is to replace it with
-`.gitlab-ci.yml` once that design is implemented, not to patch around GitLab
-not reading it.
+`docs/superpowers/specs/2026-09-14-gitlab-ci-migration-design.md` for the
+current design (it supersedes the 2026-08-25 spec). Note that it also
+scopes in repairing the test suite first: `pixi run test` can't collect
+today, and 5 of 446 tests fail underneath that. Don't delete or "fix"
+the GitHub Actions workflow to work around this gap; the plan is to
+replace it with `.gitlab-ci.yml` once that design is implemented, not to
+patch around GitLab not reading it.
