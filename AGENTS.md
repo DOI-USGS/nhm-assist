@@ -18,8 +18,14 @@ specific to working here as an agent.
   a clean gate: it fails today against pre-existing code with no
   `[tool.ruff]` config yet in place. Don't treat a lint failure as caused by
   your change unless you've confirmed it's new.
-- `pixi run dev` / `pixi run setup` — contributor vs. end-user notebook
+- `pixi run dev-mode` / `pixi run setup` — contributor vs. end-user notebook
   workflows; see README's "Developing nhm-assist notebooks" section.
+
+There are two environments for this repo: `default` (analysis stack, tests,
+lint tooling, and `proj-data`) and `ci` (identical but without `proj-data`),
+plus `dev-future` on a separate solve group for the next-major dependency
+track. There is no `dev` environment — `pixi run test` and `pixi run lint`
+both run in `default`.
 
 ## Editing workflow notebooks
 

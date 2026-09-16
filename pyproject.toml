@@ -106,9 +106,12 @@ channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
 [tool.pixi.environments]
-default = { features = ["prod"], solve-group = "default" }
+# `default` is the only environment contributors and end users need: it
+# carries the dev feature (proj-data, PROJ_NETWORK=OFF) and the test
+# feature. `ci` stays a lean subset so CI skips the proj-data download.
+# The dev *feature* is retained below -- dev-future still composes it.
+default = { features = ["prod", "test", "dev"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
-dev = { features = ["prod", "test", "dev"], solve-group = "default" }
 dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
 
 # Only what is worth getting from conda-forge: compiled packages and ones that
@@ -180,7 +183,7 @@ description = "End-user entry point: interactive menu to pick a workspace, creat
 [tool.pixi.tasks.dev-mode]
 cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }} --pairing-mode dev"
 args = ["workspace_root", "project_name", { arg = "workflow", default = "nhm" }]
-default-environment = "dev"
+default-environment = "default"
 description = "Contributor mode: generate a project's notebooks paired back to src/workflow_templates/<workflow>/*.py, so editing them in Jupyter edits the templates. Does not launch Jupyter."
 
 [tool.pixi.tasks.notebooks-create-project]
@@ -239,10 +242,10 @@ description = "Import an existing PRMS model folder from <source_dir> into a pro
 
 [tool.pixi.tasks.lint]
 cmd = "ruff check . && ruff format --check ."
-default-environment = "dev"
+default-environment = "default"
 description = "Lint and check formatting with ruff."
 
 [tool.pixi.tasks.test]
 cmd = "pytest tests/"
-default-environment = "dev"
+default-environment = "default"
 description = "Run the test suite."

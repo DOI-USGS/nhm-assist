@@ -1,2 +1,6 @@
 # SCM syntax highlighting & preventing 3-way merges
-pixi.lock merge=binary linguist-language=YAML linguist-generated=true -diff
+# linguist-* collapses the diff on GitHub; GitLab uses its own
+# gitlab-generated attribute. Diffs are left enabled (no -diff) so the
+# lock stays reviewable -- merge=binary is what prevents a 3-way merge
+# producing a parseable but inconsistent lock.
+pixi.lock merge=binary linguist-language=YAML linguist-generated=true gitlab-generated

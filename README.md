@@ -39,6 +39,12 @@ pixi install
 
 This reads `pyproject.toml` + `pixi.lock` and installs a reproducible Python environment under `.pixi/envs/default/`. All subsequent `pixi run …` commands use this env automatically.
 
+`default` is the only environment you need, whether you are running the
+notebooks or developing them — it carries the analysis stack, the test and lint
+tooling, and conda-forge's `proj-data` grids. The only other environment, `ci`,
+exists for continuous integration and differs solely by omitting `proj-data`
+(see the firewall note under "Developing nhm-assist notebooks").
+
 ## Retrieve a provided NHM subdomain model
 
 If you have been provided an NHM subdomain model, it can be downloaded from the USGS [HyTEST](https://hytest-org.github.io/hytest/doc/About.html) OSN storage pod:
@@ -154,15 +160,15 @@ separate in-repo notebook directory and no contributor-only Jupyter launcher —
 you work against your own project, exactly like a user would, so the path you
 exercise is the path they get.
 
-> **Corporate firewall/VPN and `pyproj`.** The `dev` (and `dev-future`) pixi
+> **Corporate firewall/VPN and `pyproj`.** The `default` (and `dev-future`) pixi
 > environment bundles conda-forge's `proj-data` grid package and sets
 > `PROJ_NETWORK=OFF` automatically on activation. If you're behind a
 > firewall that does SSL inspection, the usual symptom is `pyproj`'s first
 > reprojection hanging or failing (`CERTIFICATE_VERIFY_FAILED`) while it
 > tries to fetch datum-shift grids from `cdn.proj.org` — with the grids
 > already on disk and network fetches disabled, that never happens. No
-> per-machine setup needed; it's scoped to `dev`/`dev-future` only, so
-> `default`/`ci` don't pay the extra ~500MB.
+> per-machine setup needed. Only `ci` omits the grids, so continuous
+> integration doesn't pay the extra ~500MB.
 
 Set up a project once:
 
@@ -186,7 +192,7 @@ That command:
    `src/workflow_templates/common/*.py` via jupytext metadata, so **saving the
    notebook writes your edit straight into the repo**, where git can see it.
 3. Registers and stamps the `Python (nhm-assist dev)` kernel, so the notebook
-   opens against the `dev` pixi environment without you picking it each time.
+   opens without you picking an interpreter each time.
 4. Prints the folder and the command to open it. It does **not** start Jupyter.
 
 Re-running `dev-mode` is safe: it never rewrites the content of a notebook that
@@ -256,7 +262,7 @@ paired `.py` file lives:
 | | `notebooks-create-project` (and `setup`) | `dev-mode` |
 | --- | --- | --- |
 | Paired `.py` | Same folder as the notebook, via the project's `jupytext.toml` | The real template in `src/workflow_templates/` |
-| Kernel | `Python (nhm-assist)` (default env) | `Python (nhm-assist dev)` (dev env) |
+| Kernel | `Python (nhm-assist)` | `Python (nhm-assist dev)` |
 | Edits land in | Your project | The nhm-assist repo |
 
 Everything else — how the notebook finds the active model, where outputs go —
