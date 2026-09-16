@@ -120,6 +120,14 @@ dask = "*"
 distributed = "*"
 fiona = "*"
 geopandas = "*"
+# Temporary hold, added 2026-09-16. conda-forge's HDF5 2.x migration produced
+# win-64 builds of libnetcdf/netcdf4 linked against hdf5 2.1.0 that fail to
+# import ("DLL load failed while importing _netCDF4: The specified procedure
+# could not be found"); upstream has since withdrawn hdf5 2.x for win-64.
+# Without this pin linux-64 solves to hdf5 2.x while win-64 and osx sit on
+# 1.14, splitting the stack across platforms for no benefit. Drop it once
+# conda-forge ships working win-64 hdf5 2.x builds.
+hdf5 = ">=1.14,<2"
 herbie-data = "*"
 matplotlib = "*"
 netcdf4 = "*"
