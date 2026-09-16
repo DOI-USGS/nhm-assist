@@ -155,7 +155,18 @@ class PairingModeTests(unittest.TestCase):
             notebook_builder.dev_pairing_formats(template_dir, self.notebook_dir),
         )
         self.assertEqual(
-            notebook.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
+            notebook.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
+        )
+
+    def test_both_pairing_modes_use_the_same_kernel(self):
+        # Dev mode is a jupytext pairing concept and nothing else. It
+        # deliberately does not switch kernels: two near-identical kernels to
+        # choose between confused users while the notebook workflows were
+        # being updated, and with a single pixi environment both names would
+        # resolve to the same interpreter anyway.
+        self.assertEqual(
+            kernels.PAIRING_MODE_KERNELS["dev"],
+            kernels.PAIRING_MODE_KERNELS["local"],
         )
 
     def test_dev_mode_writes_a_header_free_template(self):
@@ -224,7 +235,7 @@ class PairingModeTests(unittest.TestCase):
         self.assertEqual(reread.cells[0].source, "# EDITED BY THE USER")
         self.assertIn("jupytext", reread.metadata)
         self.assertEqual(
-            reread.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
+            reread.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
         )
 
     def test_switching_to_local_mode_preserves_cell_content(self):

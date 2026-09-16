@@ -1,4 +1,4 @@
-"""Registration of per-environment Jupyter kernels for nhm-assist.
+"""Registration of the nhm-assist Jupyter kernel.
 
 A notebook's ``metadata.kernelspec`` only preselects a kernel in JupyterLab or
 VS Code if a kernelspec with that exact name is actually registered on the
@@ -15,12 +15,18 @@ import sys
 
 DEFAULT_KERNEL_NAME = "nhm-assist"
 DEFAULT_KERNEL_DISPLAY_NAME = "Python (nhm-assist)"
-DEV_KERNEL_NAME = "nhm-assist-dev"
-DEV_KERNEL_DISPLAY_NAME = "Python (nhm-assist dev)"
 
+# Both pairing modes map to the same kernel on purpose. Dev mode changes where
+# a notebook's paired .py file lives and nothing else. It used to stamp a
+# separate "nhm-assist-dev" kernel as well, which left users choosing between
+# two near-identical entries in Jupyter's kernel list -- confusing enough that
+# it came up while the notebook workflows were being updated. Both names would
+# resolve to the same interpreter now in any case, since there is a single
+# pixi environment. The "dev" key is kept so callers can keep validating a
+# pairing mode against this mapping.
 PAIRING_MODE_KERNELS: dict[str, tuple[str, str]] = {
     "local": (DEFAULT_KERNEL_NAME, DEFAULT_KERNEL_DISPLAY_NAME),
-    "dev": (DEV_KERNEL_NAME, DEV_KERNEL_DISPLAY_NAME),
+    "dev": (DEFAULT_KERNEL_NAME, DEFAULT_KERNEL_DISPLAY_NAME),
 }
 
 

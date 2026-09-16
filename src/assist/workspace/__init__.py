@@ -23,8 +23,6 @@ from assist.workspace.examples import resolve_example_source
 from assist.workspace.kernels import (
     DEFAULT_KERNEL_DISPLAY_NAME,
     DEFAULT_KERNEL_NAME,
-    DEV_KERNEL_DISPLAY_NAME,
-    DEV_KERNEL_NAME,
     PAIRING_MODE_KERNELS,
     ensure_kernel_registered,
     list_kernel_names,
@@ -47,8 +45,6 @@ from assist.workspace.setup import run_setup
 __all__ = [
     "DEFAULT_KERNEL_DISPLAY_NAME",
     "DEFAULT_KERNEL_NAME",
-    "DEV_KERNEL_DISPLAY_NAME",
-    "DEV_KERNEL_NAME",
     "MODEL_SUBDIRS",
     "PAIRING_MODE_KERNELS",
     "WORKFLOW_NAMES",
