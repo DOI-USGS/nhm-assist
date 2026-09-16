@@ -27,6 +27,15 @@ plus `dev-future` on a separate solve group for the next-major dependency
 track. There is no `dev` environment — `pixi run test` and `pixi run lint`
 both run in `default`.
 
+## Known benign warnings
+
+- Solving the `dev-future` environment warns that `dask` has no extra named
+  `dataframe`. `gdptools` and `tobler` pull `dask-geopandas`, which asks for
+  dask's `dataframe` extra; dask is satisfied from conda-forge, which carries
+  no PyPI extra metadata for the resolver to check against. The extra resolves
+  to `dask[array]`, `pandas` and `pyarrow`, all of which conda-forge's `dask`
+  already depends on — nothing is missing. Don't pin dask to silence it.
+
 ## Editing workflow notebooks
 
 Workflow notebooks are jupytext-paired to `.py` templates under
