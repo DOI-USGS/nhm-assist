@@ -60,10 +60,17 @@ VSCODE_EXTENSIONS_FILENAME = ".vscode/extensions.json"
 JUPYTEXT_SYNC_EXTENSION_ID = "caenrigen.jupytext-sync"
 
 def _vscode_settings_content() -> str:
-    # Pinned to the extension's own current defaults, rather than just the
-    # two event flags we care about: VS Code replaces object-typed settings
-    # wholesale per scope instead of merging keys, so a partial override here
-    # could silently blank out other keys a user set globally.
+    # Every key below carries the Jupytext Sync extension's own default value
+    # except onNotebookDocumentOpen. The whole object is written because VS Code
+    # (and Kiro) replace object-typed settings wholesale per scope rather than
+    # merging keys, so a partial override here would silently drop the rest.
+    #
+    # onNotebookDocumentOpen deliberately departs from the extension's default
+    # of False. With it off, a git pull followed by opening the notebook and
+    # saving pushes the stale notebook over the freshly pulled template --
+    # silently, exit 0. Syncing on open pulls the template forward first, and
+    # saved outputs survive it. See
+    # docs/design/specs/2026-09-16-dev-mode-sync-divergence-design.md.
     #
     # pythonExecutable is stamped to the interpreter running this call rather
     # than left for the extension's own auto-discovery: jupytext lives only
@@ -73,7 +80,7 @@ def _vscode_settings_content() -> str:
     payload = {
         "jupytextSync.pythonExecutable": sys.executable,
         "jupytextSync.syncDocuments": {
-            "onNotebookDocumentOpen": False,
+            "onNotebookDocumentOpen": True,
             "onNotebookDocumentSave": True,
             "onNotebookDocumentClose": False,
             "onTextDocumentOpen": False,

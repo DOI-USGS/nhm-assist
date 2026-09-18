@@ -166,7 +166,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertEqual(
                 settings["jupytextSync.syncDocuments"],
                 {
-                    "onNotebookDocumentOpen": False,
+                    "onNotebookDocumentOpen": True,
                     "onNotebookDocumentSave": True,
                     "onNotebookDocumentClose": False,
                     "onTextDocumentOpen": False,
