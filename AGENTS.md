@@ -89,7 +89,7 @@ What follows from that:
 - **In VS Code and Kiro, opening the notebook syncs it only when the Jupytext
   Sync extension has `onNotebookDocumentOpen` set true.** Generated projects
   carry that setting; projects created before 2026-09-18 need the setup menu's
-  "Repair editor settings" action.
+  "Repair editor settings for this project" action.
 - **Never edit both sides between syncs.** The next sync silently keeps
   whichever file is newer and discards the other, with exit code 0 and no
   warning.

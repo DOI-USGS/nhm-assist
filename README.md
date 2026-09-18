@@ -243,7 +243,7 @@ applied to each file.
 > newer and discards the other without warning.
 >
 > If you created your project before 2026-09-18, run `pixi run setup` and choose
-> **Repair editor settings** once. Older projects were generated without
+> **Repair editor settings for this project** once. Older projects were generated without
 > sync-on-open, and without it a pull followed by a save silently reverts the
 > template.
 
