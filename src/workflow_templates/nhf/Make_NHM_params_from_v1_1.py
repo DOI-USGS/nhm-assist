@@ -1,14 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks//ipynb,src/workflow_templates/nhf//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-# ---
-
 # %% [markdown]
 # # Transfer NHM v1.1 HRU Parameters to v2
 # This notebook reads any HRU-dimensioned parameter from the NHM v1.1 CONUS
