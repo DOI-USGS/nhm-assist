@@ -4,7 +4,7 @@
 
 **Goal:** Stop a contributor's workspace notebook and its repo template from silently diverging in dev mode, and stop a `git pull` from being clobbered by the next notebook save.
 
-**Architecture:** Three independent defects, three independent fixes. Generated project settings gain one deliberate deviation from the Jupytext Sync extension's defaults (`onNotebookDocumentOpen`), so opening a notebook pulls the template forward before any save can push backward. A new setup-menu action re-stamps that file for projects created before the change, since `create_project` never overwrites. Forty-eight stale template YAML headers are deleted so no jupytext invocation inside the repo resolves a bogus pairing. Documentation is corrected to say that the notebook drives the sync and the template is passive.
+**Architecture:** Three independent defects, three independent fixes. Generated project settings gain one deliberate deviation from the Jupytext Sync extension's defaults (`onNotebookDocumentOpen`), so opening a notebook pulls the template forward before any save can push backward. A new setup-menu action re-stamps that file for projects created before the change, since `create_project` never overwrites. Fifty stale template YAML headers are deleted so no jupytext invocation inside the repo resolves a bogus pairing. Documentation is corrected to say that the notebook drives the sync and the template is passive.
 
 **Tech Stack:** Python 3.11, pixi, jupytext 1.19.5, `caenrigen.jupytext-sync` 1.5.0, pytest.
 

@@ -88,11 +88,17 @@ What follows from that:
   manager does this.
 - **In VS Code and Kiro, opening the notebook syncs it only when the Jupytext
   Sync extension has `onNotebookDocumentOpen` set true.** Generated projects
-  carry that setting; projects created before 2026-09-18 need the setup menu's
-  "Repair editor settings for this project" action.
+  carry that setting; a project whose `.vscode/settings.json` is missing, or
+  has `onNotebookDocumentOpen` set to false, needs the setup menu's "Repair
+  editor settings for this project" action.
 - **Never edit both sides between syncs.** The next sync silently keeps
   whichever file is newer and discards the other, with exit code 0 and no
   warning.
+- **An agent editing a template and a human with that notebook open are two
+  editors of the same content.** The human's next save silently wins and
+  discards the agent's edit, exactly like the "never edit both sides" case
+  above, with the agent as one of the two sides. Close the notebook before an
+  agent edits its template, and reopen it afterward to pull the change in.
 
 Avoid running `jupytext --sync` from the command line to force propagation.
 The relative `../` pairing prefix can be mis-resolved by the CLI (relative to
