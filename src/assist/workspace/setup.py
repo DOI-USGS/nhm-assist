@@ -8,11 +8,6 @@ from dotenv import dotenv_values, set_key, unset_key
 
 from assist.workspace import bridge, service
 from assist.workspace.examples import list_available_example_names
-from assist.workspace.kernels import (
-    DEFAULT_KERNEL_DISPLAY_NAME,
-    DEFAULT_KERNEL_NAME,
-    ensure_kernel_registered,
-)
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -413,7 +408,6 @@ def generate_nhm_notebooks(
     print_func=print,
 ) -> list[Path]:
     workspace_root = require_workspace_root(state)
-    ensure_kernel_registered(DEFAULT_KERNEL_NAME, DEFAULT_KERNEL_DISPLAY_NAME)
     created = notebook_builder.convert_workflow(
         "nhm",
         workspace_root=workspace_root,
@@ -490,7 +484,7 @@ def action_show_notebook_location(
     print_func("Open them yourself with whichever tool you use:")
     print_func(f"  jupyter lab {quoted}")
     print_func(f"  code {quoted}")
-    print_func(f"Then select the '{DEFAULT_KERNEL_DISPLAY_NAME}' kernel.")
+    print_func("Then pick a kernel from this project's pixi environment.")
     print_func("Run 0_workspace_setup.ipynb first.")
     return notebook_dir
 

@@ -1,4 +1,64 @@
 # %%
+# Environment sanity check -- run first, and read it if it prints anything.
+#
+# Python adds a per-user package directory (~/.local/lib/pythonX.Y/site-packages
+# on macOS and Linux, %APPDATA%\Python\PythonXY\site-packages on Windows) to
+# sys.path AHEAD of this environment's own packages. It is keyed by Python
+# version, not by project, so a `pip install --user` run from any other project
+# silently overrides the versions this project locked -- with no signal from
+# pixi, from pixi.lock, or from `pixi list`.
+#
+# nhm-assist does not register a Jupyter kernel or pin one in notebook metadata:
+# choosing an environment is yours to do in your IDE. This check is what tells
+# you when that choice has been quietly undermined.
+try:
+    import site
+    import sys
+    import sysconfig
+    from pathlib import Path
+
+    def _top_level_names(directory):
+        skip_suffixes = (".dist-info", ".egg-info", ".pth")
+        return {
+            entry.name.split(".")[0] if entry.is_file() else entry.name
+            for entry in directory.iterdir()
+            if not entry.name.startswith("_")
+            and not entry.name.endswith(skip_suffixes)
+        }
+
+    _user_site = Path(site.getusersitepackages()) if site.ENABLE_USER_SITE else None
+    _env_site = Path(sysconfig.get_paths()["purelib"])
+    _paths = [str(Path(p)) for p in sys.path]
+
+    if (
+        _user_site is not None
+        and _user_site.is_dir()
+        and str(_user_site) in _paths
+        and _paths.index(str(_user_site)) < _paths.index(str(_env_site))
+    ):
+        _shadowed = sorted(_top_level_names(_user_site) & _top_level_names(_env_site))
+        if _shadowed:
+            print("=" * 72)
+            print("WARNING: packages outside this environment are overriding it.")
+            print("")
+            print(f"  shadowing:  {_user_site}")
+            print(f"  shadowed:   {_env_site}")
+            print(f"  {len(_shadowed)} package(s): {', '.join(_shadowed)}")
+            print("")
+            print("Versions you see may not be the versions pixi.lock specifies,")
+            print("and `pixi list` will not show this because it reads the lock")
+            print("file rather than sys.path.")
+            print("")
+            print("To fix, either launch Jupyter through pixi, or set")
+            print("PYTHONNOUSERSITE to 1 in your IDE's kernel environment.")
+            print("Check any one package with:")
+            print("    import pandas; print(pandas.__version__, pandas.__file__)")
+            print("=" * 72)
+except Exception as _exc:  # never let a sanity check break the notebook
+    print(f"(environment sanity check skipped: {_exc})")
+
+
+# %%
 import warnings
 import pandas as pd
 from pyPRMS.metadata.metadata import MetaData

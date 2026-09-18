@@ -27,6 +27,35 @@ plus `dev-future` on a separate solve group for the next-major dependency
 track. There is no `dev` environment — `pixi run test` and `pixi run lint`
 both run in `default`.
 
+## User site-packages
+
+A pixi environment is a real prefix, not a virtualenv, so its interpreter still
+adds `~/.local/lib/pythonX.Y/site-packages` to `sys.path` — and puts it *ahead*
+of the environment's own packages. That directory is keyed by Python minor
+version, not by project, so a `pip install --user` run from any other project on
+the same machine silently overrides the versions locked here. Neither `pixi
+install` nor `pixi list` can see it: both read the lock file, not `sys.path`.
+
+`PYTHONNOUSERSITE` is set in `[tool.pixi.activation.env]` to shut this off for
+anything run through pixi. Notebooks are not covered by that, because Jupyter
+launches a kernel straight from its `kernel.json` without pixi activation, and
+this package deliberately registers no kernel — choosing one is the user's job
+in their IDE. The first cell of `0_workspace_setup` checks for the shadowing
+instead and names the affected packages.
+
+When a version looks wrong, `python -c "import X; print(X.__file__)"` settles in
+one line what `pixi list` structurally cannot answer.
+
+## Temporary dependency pins
+
+- `hdf5` is held below 2 in `[tool.pixi.dependencies]`. conda-forge's HDF5 2.x
+  migration produced win-64 builds of `libnetcdf`/`netcdf4` that fail to import
+  with "DLL load failed while importing _netCDF4: The specified procedure could
+  not be found", and upstream then withdrew HDF5 2.x for win-64. Without the pin
+  linux-64 solves to 2.x while win-64 and osx sit on 1.14, splitting the stack
+  across platforms. Drop it once conda-forge ships working win-64 HDF5 2.x
+  builds.
+
 ## Known benign warnings
 
 - Solving the `dev-future` environment warns that `dask` has no extra named

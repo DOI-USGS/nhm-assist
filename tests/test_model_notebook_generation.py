@@ -13,7 +13,7 @@ import jupytext
 from jupytext.paired_paths import paired_paths
 from nbformat.v4 import new_code_cell
 
-from assist.workspace import bridge, kernels, service
+from assist.workspace import bridge, service
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -134,15 +134,13 @@ class PairingModeTests(unittest.TestCase):
         ]
         self.assertEqual([Path(p) for p in paired], [template_dir / "probe.py"])
 
-    def test_local_mode_embeds_no_formats_but_stamps_the_default_kernel(self):
+    def test_local_mode_embeds_no_formats(self):
         created = self._generate("local")
 
         self.assertTrue(created)
         notebook = jupytext.read(created[0])
         self.assertIsNone(notebook.metadata.get("jupytext", {}).get("formats"))
-        self.assertEqual(
-            notebook.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(notebook.metadata.get("kernelspec"))
 
     def test_dev_mode_embeds_formats_pointing_at_the_repo_template(self):
         created = self._generate("dev")
@@ -154,20 +152,18 @@ class PairingModeTests(unittest.TestCase):
             formats,
             notebook_builder.dev_pairing_formats(template_dir, self.notebook_dir),
         )
-        self.assertEqual(
-            notebook.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(notebook.metadata.get("kernelspec"))
 
-    def test_both_pairing_modes_use_the_same_kernel(self):
-        # Dev mode is a jupytext pairing concept and nothing else. It
-        # deliberately does not switch kernels: two near-identical kernels to
-        # choose between confused users while the notebook workflows were
-        # being updated, and with a single pixi environment both names would
-        # resolve to the same interpreter anyway.
-        self.assertEqual(
-            kernels.PAIRING_MODE_KERNELS["dev"],
-            kernels.PAIRING_MODE_KERNELS["local"],
-        )
+    def test_neither_mode_stamps_a_kernelspec(self):
+        # Kernel and environment selection belong to the user's IDE. Writing a
+        # kernelspec here only ever guessed, and VS Code names kernels
+        # differently depending on whether you pick an environment or an
+        # existing Jupyter kernel, so the guess was often wrong.
+        for mode in ("local", "dev"):
+            with self.subTest(mode=mode):
+                created = self._generate(mode)
+                notebook = jupytext.read(created[0])
+                self.assertIsNone(notebook.metadata.get("kernelspec"))
 
     def test_dev_mode_writes_a_header_free_template(self):
         # Regression: without notebook_metadata_filter, syncing a dev-mode
@@ -234,9 +230,7 @@ class PairingModeTests(unittest.TestCase):
         reread = jupytext.read(target)
         self.assertEqual(reread.cells[0].source, "# EDITED BY THE USER")
         self.assertIn("jupytext", reread.metadata)
-        self.assertEqual(
-            reread.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(reread.metadata.get("kernelspec"))
 
     def test_switching_to_local_mode_preserves_cell_content(self):
         # Regression: regenerating in local mode over an existing notebook
@@ -268,9 +262,7 @@ class PairingModeTests(unittest.TestCase):
         self.assertIsNone(
             reread.metadata.get("jupytext", {}).get("notebook_metadata_filter")
         )
-        self.assertEqual(
-            reread.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(reread.metadata.get("kernelspec"))
 
     def test_local_mode_regeneration_preserves_existing_cell_edits(self):
         created = self._generate("local")

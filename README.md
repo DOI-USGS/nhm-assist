@@ -118,16 +118,20 @@ pixi run notebooks-create-project <workspace-root> <project-name> nhm
 ```
 
 The last command prints the notebook folder and the command to open it. Open that
-folder however you like, and select the **Python (nhm-assist)** kernel.
+folder however you like, then point it at this project's pixi environment:
+`.pixi/envs/default`.
 
-> **Picking the kernel in VS Code or Kiro.** Use "Select Another Kernel..." →
-> **"Jupyter Kernel..."** and choose it by name (**Python (nhm-assist)**) —
-> not "Python Environments...". The
-> latter lists raw interpreters (including this project's pixi envs) and, if
-> you pick one, VS Code rewrites the notebook's kernel metadata to a generic
-> `python3`/environment-folder-name pair instead of the registered kernel,
-> silently losing the `nhm-assist` identity. JupyterLab doesn't have this
-> second picker, so this only bites in VS Code/Kiro.
+> **Choosing the kernel is yours to do.** nhm-assist registers no Jupyter
+> kernel and writes no kernel into notebook metadata, so your IDE will ask the
+> first time and remember your answer per notebook. In VS Code or Kiro either
+> route works — "Python Environments..." pointed at `.pixi/envs/default`, or
+> "Jupyter Kernel..." if you have already created one — and the two label the
+> same interpreter differently, which is exactly why the choice is left to you.
+>
+> **If you launch Jupyter yourself rather than through pixi**, be aware that a
+> per-user package directory can override this environment's packages. The
+> first cell of `0_workspace_setup.ipynb` checks for this and tells you if it
+> is happening. Launching through pixi avoids it entirely.
 
 ### Where the Jupytext Sync settings have to live
 
@@ -222,13 +226,10 @@ That command:
 2. Pairs each notebook back to its real source template in
    `src/workflow_templates/common/*.py` via jupytext metadata, so **saving the
    notebook writes your edit straight into the repo**, where git can see it.
-3. Registers and stamps the `Python (nhm-assist)` kernel, so the notebook opens
-   without you picking an interpreter each time. This is the same kernel local
-   mode uses: **dev mode does not change your kernel.**
-4. Prints the folder and the command to open it. It does **not** start Jupyter.
+3. Prints the folder and the command to open it. It does **not** start Jupyter.
 
 Re-running `dev-mode` is safe: it never rewrites the content of a notebook that
-already exists. It only repairs pairing or kernel metadata that has drifted, and
+already exists. It only repairs pairing metadata that has drifted, and
 tells you which of "created", "already configured", or "metadata updated"
 applied to each file.
 
@@ -254,8 +255,8 @@ pixi run notebooks-create-project <workspace-root> my-test-project nhm
 ```
 
 This is cell-safe too — it never rewrites notebook content, only pairing
-metadata, switching it back to the project's own `jupytext.toml`. The kernel is
-the same in both modes, so nothing about it changes. It does drop the
+metadata, switching it back to the project's own `jupytext.toml`. Your kernel
+choice is untouched, in this direction and the other. It does drop the
 notebook's pairing to `src/workflow_templates/`, though, so make sure any
 dev-mode edits are synced (saved) and committed/pushed to `nhm-assist` **before**
 you switch back — otherwise those edits stay stuck in your own workspace
@@ -294,20 +295,22 @@ paired `.py` file lives:
 | | `notebooks-create-project` (and `setup`) | `dev-mode` |
 | --- | --- | --- |
 | Paired `.py` | Same folder as the notebook, via the project's `jupytext.toml` | The real template in `src/workflow_templates/` |
-| Kernel | `Python (nhm-assist)` | `Python (nhm-assist)` — identical |
 | Edits land in | Your project | The nhm-assist repo |
 
 Everything else — how the notebook finds the active model, where outputs go —
 is identical, which is the point.
 
-> **Upgrading from an older checkout?** Dev mode used to register and stamp a
-> second kernel, `Python (nhm-assist dev)`. It no longer does — having two
-> near-identical kernels to choose between caused more confusion than the
-> distinction was worth. Existing notebooks are repaired automatically the next
-> time you run either generation command, but the stale kernelspec stays in your
-> Jupyter configuration until you remove it:
+> **Upgrading from an older checkout?** nhm-assist used to register two Jupyter
+> kernels, `Python (nhm-assist)` and `Python (nhm-assist dev)`, and stamp one of
+> them into every notebook it generated. It no longer registers or stamps
+> anything: which environment a notebook runs against is your IDE's business,
+> not this package's. Existing notebooks have their stale kernel metadata
+> removed the next time you run either generation command, but the two
+> registered kernelspecs stay in your Jupyter configuration until you remove
+> them:
 >
 > ```bash
+> jupyter kernelspec remove nhm-assist
 > jupyter kernelspec remove nhm-assist-dev
 > ```
 
