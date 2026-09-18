@@ -136,9 +136,9 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             config = workspace_root / "Project_A" / "jupytext.toml"
             self.assertEqual(paths["jupytext_config"], config)
             self.assertTrue(config.is_file())
-            self.assertIn('formats = "ipynb,py:percent"', config.read_text())
+            self.assertIn('formats = "ipynb,py:percent"', config.read_text(encoding="utf-8"))
             self.assertIn(
-                'notebook_metadata_filter = "-all"', config.read_text()
+                'notebook_metadata_filter = "-all"', config.read_text(encoding="utf-8")
             )
 
     def test_create_project_never_overwrites_an_existing_jupytext_config(self):
@@ -152,7 +152,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(config.read_text(), custom)
+            self.assertEqual(config.read_text(encoding="utf-8"), custom)
 
     def test_create_project_writes_vscode_jupytext_sync_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,7 +162,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
             self.assertEqual(paths["vscode_settings"], settings_path)
-            settings = json.loads(settings_path.read_text())
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 settings["jupytextSync.syncDocuments"],
                 {
@@ -189,7 +189,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(settings_path.read_text(), custom)
+            self.assertEqual(settings_path.read_text(encoding="utf-8"), custom)
 
     def test_create_project_writes_vscode_extension_recommendation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -199,7 +199,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             extensions_path = workspace_root / "Project_A" / ".vscode" / "extensions.json"
             self.assertEqual(paths["vscode_extensions"], extensions_path)
-            extensions = json.loads(extensions_path.read_text())
+            extensions = json.loads(extensions_path.read_text(encoding="utf-8"))
             self.assertIn("caenrigen.jupytext-sync", extensions["recommendations"])
 
     def test_create_project_never_overwrites_existing_vscode_extensions(self):
@@ -213,7 +213,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(extensions_path.read_text(), custom)
+            self.assertEqual(extensions_path.read_text(encoding="utf-8"), custom)
 
     def test_create_model_does_not_require_model_local_notebooks_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:

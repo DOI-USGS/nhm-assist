@@ -198,7 +198,7 @@ class PairingModeTests(unittest.TestCase):
         template_path = scratch_template_dir / target.relative_to(
             self.notebook_dir
         ).with_suffix(".py")
-        template_text = template_path.read_text()
+        template_text = template_path.read_text(encoding="utf-8")
         self.assertFalse(template_text.startswith("# ---"))
         self.assertIn("synced from the workspace", template_text)
 
