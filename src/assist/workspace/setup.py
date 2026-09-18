@@ -520,6 +520,27 @@ def action_show_current_setup(
     print_func(f"NHM notebooks: {notebook_dir}")
 
 
+def action_repair_editor_settings(
+    state: SetupState,
+    *,
+    print_func=print,
+) -> Path | None:
+    if not require_current_project(state, print_func=print_func):
+        return None
+    workspace_root = require_workspace_root(state)
+    settings_path = service.repair_vscode_settings(
+        workspace_root, state.current_project
+    )
+    print_func("")
+    print_func(f"Rewrote editor settings: {settings_path}")
+    print_func(
+        "Notebooks now sync from their paired template when you open them, "
+        "so a pull cannot be overwritten by the next save."
+    )
+    print_func("Close and reopen the project folder for it to take effect.")
+    return settings_path
+
+
 def action_set_api_key(
     state: SetupState,
     *,
@@ -580,6 +601,7 @@ def print_main_menu(state: SetupState, *, print_func=print) -> None:
     print_func("  8. Generate NHM notebooks")
     print_func("  9. Show current setup")
     print_func(" 10. Set USGS WaterData API key")
+    print_func(" 11. Repair editor settings for this project")
     print_func("  0. Exit")
 
 
@@ -612,7 +634,7 @@ def run_setup(
 
         while True:
             print_main_menu(state, print_func=print_func)
-            choice = prompt_menu_choice(10, input_func=input_func, print_func=print_func)
+            choice = prompt_menu_choice(11, input_func=input_func, print_func=print_func)
 
             if choice == 0:
                 print_func("Exiting setup.")
@@ -669,6 +691,8 @@ def run_setup(
                         print_func=print_func,
                         input_func=input_func,
                     )
+                elif choice == 11:
+                    action_repair_editor_settings(state, print_func=print_func)
             except (FileNotFoundError, NotADirectoryError, ValueError, OSError) as exc:
                 print_func(f"Error: {exc}")
     except KeyboardInterrupt:

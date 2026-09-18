@@ -134,6 +134,29 @@ def create_project(workspace_root: str | Path, project_name: str) -> dict[str, P
     return paths
 
 
+def repair_vscode_settings(
+    workspace_root: str | Path,
+    project_name: str,
+) -> Path:
+    """Rewrite one project's editor settings with the current generated content.
+
+    create_project deliberately never overwrites an existing settings file, so
+    projects created before a change to _vscode_settings_content keep the old
+    values indefinitely. This is the explicit opt-in that updates them.
+    """
+    project_dir = Path(workspace_root).expanduser().resolve() / project_name
+    if not project_dir.is_dir():
+        raise FileNotFoundError(f"No such project: {project_dir}")
+
+    # VSCODE_SETTINGS_FILENAME is the whole relative path, ".vscode/settings.json",
+    # so the parent directory comes from the joined path rather than a separate
+    # constant. This mirrors how create_project builds vscode_settings_path.
+    settings_path = project_dir / VSCODE_SETTINGS_FILENAME
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(_vscode_settings_content(), encoding="utf-8")
+    return settings_path
+
+
 def get_projects(workspace_root: str | Path) -> list[Path]:
     return list_projects(workspace_root)
 

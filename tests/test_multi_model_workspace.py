@@ -191,6 +191,34 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             self.assertEqual(settings_path.read_text(encoding="utf-8"), custom)
 
+    def test_repair_vscode_settings_overwrites_stale_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            service.create_project(workspace_root, "Project_A")
+            settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
+            settings_path.write_text(
+                '{"jupytextSync.syncDocuments": {"onNotebookDocumentOpen": false}}',
+                encoding="utf-8",
+            )
+
+            returned = service.repair_vscode_settings(workspace_root, "Project_A")
+
+            self.assertEqual(returned, settings_path)
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertTrue(
+                settings["jupytextSync.syncDocuments"]["onNotebookDocumentOpen"]
+            )
+            self.assertEqual(
+                settings["jupytextSync.pythonExecutable"], sys.executable
+            )
+
+    def test_repair_vscode_settings_rejects_a_missing_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            with self.assertRaises(FileNotFoundError):
+                service.repair_vscode_settings(workspace_root, "Nope")
+
     def test_create_project_writes_vscode_extension_recommendation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             workspace_root = Path(tmpdir).resolve()

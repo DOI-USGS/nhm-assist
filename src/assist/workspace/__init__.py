@@ -31,6 +31,7 @@ from assist.workspace.service import (
     get_projects,
     import_model,
     prepare_model_runtime,
+    repair_vscode_settings,
     set_active_model,
 )
 from assist.workspace.setup import run_setup
@@ -60,6 +61,7 @@ __all__ = [
     "list_models",
     "list_projects",
     "prepare_model_runtime",
+    "repair_vscode_settings",
     "resolve_example_source",
     "resolve_project_notebook_context",
     "resolve_repo_root",

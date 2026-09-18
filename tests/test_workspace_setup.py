@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -584,6 +585,21 @@ class NotebookLocationActionTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_repair_editor_settings_rewrites_the_file_and_reports_the_path(self):
+        lines = []
+
+        result = setup.action_repair_editor_settings(
+            self.state, print_func=lines.append
+        )
+
+        output = "\n".join(lines)
+        self.assertTrue(result.exists())
+        self.assertIn(str(result), output)
+        settings = json.loads(result.read_text(encoding="utf-8"))
+        self.assertTrue(
+            settings["jupytextSync.syncDocuments"]["onNotebookDocumentOpen"]
+        )
 
 
 class LauncherRemovalTests(unittest.TestCase):
