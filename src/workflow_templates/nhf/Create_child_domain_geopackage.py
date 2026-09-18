@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks//ipynb,src/workflow_templates/nhf//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import glob
@@ -42,9 +27,14 @@ import jupyter_black
 
 jupyter_black.load()
 
-# Find and set the "nhm-assist" root directory
-root_dir = pl.Path(os.getcwd().rsplit("nhm-assist", 1)[0] + "nhm-assist")
-sys.path.append(str(root_dir))
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 # %%
 # Functions
@@ -75,13 +65,27 @@ def remove_holes(geom):
 # Path to a shape file that is a copy of the parent domain hrus with an added subdomain attribute, in this example, "basin_id". 
 
 # %%
-child_model_nhrus_path = (
-    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_models.shp"
-)
-gdf_child_models = gpd.read_file(child_model_nhrus_path)
+# Anchor on the "nhm-workspace" workspace dir, then <project>/fabrics.
+# Derived from the notebook's cwd — no drive letter, no dependence on root_dir.
+cwd = pl.Path(os.getcwd())
+workspace_dir = next(p for p in [cwd, *cwd.parents] if p.name == "nhm-workspace")
+
+# project dir is the path element directly under nhm-workspace
+project_dir = next(p for p in [cwd, *cwd.parents] if p.parent == workspace_dir)
+
+fabrics_dir = project_dir / "fabrics"
+fabrics_dir.mkdir(parents=True, exist_ok=True)
+print("fabrics_dir:", fabrics_dir)
+
+# List only subdirectories
+subdirs = [p for p in fabrics_dir.iterdir() if p.is_dir()]
+for d in subdirs:
+    print(d.name)
 
 # %%
-gdf_child_models
+parent_model = "OHM_2026_02_21"
+child_model_nhrus_path = fabrics_dir / f"{parent_model}/GIS/child_models.shp"
+gdf_child_models = gpd.read_file(child_model_nhrus_path)
 
 # %% [markdown]
 # Make domain polygon for each basin_id
@@ -114,9 +118,7 @@ basin_polygons_4326 = basin_polygons.to_crs(epsg=4326)
 centroid = basin_polygons_4326.geometry.union_all().centroid
 
 # Count HRUs, segments, and POIs per basin from the parent data
-source_gpkg = (
-    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
-)
+source_gpkg = fabrics_dir / f"{parent_model}/GIS/model_layers.gpkg"
 parent_segs = gpd.read_file(source_gpkg, layer="nsegment")
 parent_pois = gpd.read_file(source_gpkg, layer="npoi")
 
@@ -178,17 +180,25 @@ folium.TileLayer(
 ).add_to(m)
 
 # Assign a unique color to each basin for the map
-import matplotlib.cm as cm
+import matplotlib as mpl
 import matplotlib.colors as mcolors
 
 n_basins = len(basin_polygons_4326)
-cmap = cm.get_cmap("tab20", n_basins)
+cmap = mpl.colormaps["tab20"].resampled(n_basins)
 basin_ids = basin_polygons_4326["basin_id"].tolist()
 basin_color_map = {bid: mcolors.to_hex(cmap(i)) for i, bid in enumerate(basin_ids)}
 
-# Add basin polygons — unique color per basin, black outline
+# Add basin polygons — unique color per basin, black outline.
+# Simplify geometry for the *inline* map only: the full-resolution polygons
+# make a ~5 MB map the sandboxed notebook renderer refuses to show. The
+# per-child HTML files saved below still use the unsimplified geometry.
+# tolerance is in the layer's CRS units (degrees here, ~0.001  deg ~ 100 m).
+basin_polygons_display = basin_polygons_4326.copy()
+basin_polygons_display["geometry"] = basin_polygons_display.geometry.simplify(
+    0.001, preserve_topology=True
+)
 folium.GeoJson(
-    basin_polygons_4326.to_json(),
+    basin_polygons_display.to_json(),
     name="Child Domains",
     style_function=lambda x: {
         "fillColor": basin_color_map[x["properties"]["basin_id"]],
@@ -229,7 +239,24 @@ from folium.plugins import MeasureControl
 
 m.add_child(MeasureControl(position="bottomright"))
 folium.LayerControl().add_to(m)
-plugins.MiniMap(tile_layer="OpenStreetMap", position="topleft").add_to(m)
+# Give the minimap its own basemap. OpenStreetMap's volunteer tiles block
+# automated clients (osm.wiki/Blocked), so use Esri NatGeo World Map — a clean
+# locator with state/country boundaries baked into the tiles, which gives a
+# reference frame without needing a vector overlay (MiniMap can't render one).
+#
+# Pass MiniMap a standalone TileLayer *with* an attribution and do NOT add it to
+# the main map. MiniMap syncs to the parent view only when it owns its own tile
+# layer (this is how the original OpenStreetMap one-liner worked). Sharing a
+# TileLayer that was also .add_to(m) is what broke the pan/zoom sync; a bare URL
+# string instead raises "Custom tiles must have an attribution".
+plugins.MiniMap(
+    tile_layer=folium.TileLayer(
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri, National Geographic",
+    ),
+    position="topleft",
+    zoom_animation=True,
+).add_to(m)
 
 # Add collapsible legend
 from branca.element import MacroElement, Template
@@ -266,12 +293,18 @@ m.get_root().add_child(legend)
 # Save a copy of the map to each child domain's hydrofabric folder
 for _, row in basin_polygons_4326.iterrows():
     basin_id = row["basin_id"]
-    child_dir = root_dir / f"nhf_assist/hydrofabric_domain_data/{basin_id}"
+    child_dir = fabrics_dir / f"{basin_id}"
     child_dir.mkdir(parents=True, exist_ok=True)
     map_path = child_dir / "child_domains_map.html"
     m.save(str(map_path))
 
 print(f"Saved child domains map to {len(basin_polygons_4326)} child model folders.")
+
+# Display the map inline. Returning the folium object (as the single-child
+# inspection map further down does) renders in the sandboxed notebook webview,
+# but only because the geometry was simplified above — the full-resolution
+# polygons produced a ~5 MB map the renderer silently dropped. The unsimplified
+# copies are still saved to each child folder as child_domains_map.html.
 m
 
 # %% [markdown]
@@ -282,10 +315,7 @@ m
 
 # %%
 # path to your GeoPackage
-basin_gpkg = (
-    root_dir
-    / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
-)
+basin_gpkg = fabrics_dir / f"{parent_model}/GIS/child_domains.gpkg"
 
 # make sure basin_id is a column
 if basin_polygons.index.name == "basin_id" and "basin_id" not in basin_polygons.columns:
@@ -312,7 +342,7 @@ for _, row in basin_polygons.iterrows():
     gdf_one = gpd.GeoDataFrame([row], crs=basin_polygons.crs)
 
     # Make a new domain directory for each child
-    child_dir = root_dir / f"nhf_assist/hydrofabric_domain_data/{layer_name}"
+    child_dir = fabrics_dir / f"{layer_name}"
     child_dir.mkdir(parents=True, exist_ok=True)
     child_gis_dir = child_dir / "GIS"
     child_gis_dir.mkdir(parents=True, exist_ok=True)
@@ -325,15 +355,10 @@ for _, row in basin_polygons.iterrows():
 
 # %%
 # 1) GeoPackage with one layer per basin
-basin_gpkg = (
-    root_dir
-    / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/child_domains.gpkg"
-)
+basin_gpkg = fabrics_dir / f"{parent_model}/GIS/child_domains.gpkg"
 
 # 2) GeoPackage whose layers you want to subset
-source_gpkg = (
-    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
-)
+source_gpkg = fabrics_dir / f"{parent_model}/GIS/model_layers.gpkg"
 
 # %%
 source_layers = fiona.listlayers(source_gpkg)
@@ -360,10 +385,7 @@ for basin_layer in basin_layers:
     basin_id = basin_layer
 
     # output GeoPackage for this basin
-    out_gpkg = (
-        root_dir
-        / f"nhf_assist/hydrofabric_domain_data/{basin_id}/GIS/child_nhf_domain.gpkg"
-    )
+    out_gpkg = fabrics_dir / f"{basin_id}/GIS/child_nhf_domain.gpkg"
     basin_gdf.to_file(
         out_gpkg, layer=f"domain", driver="GPKG"
     )  # save the domain outline as a layer
@@ -451,7 +473,7 @@ for basin_layer in basin_layers:
 
 # %%
 # List of model names
-domains_dir = Path(root_dir / f"nhf_assist/hydrofabric_domain_data")
+domains_dir = Path(fabrics_dir)
 
 folders = [p for p in domains_dir.iterdir() if p.is_dir()]
 
@@ -490,7 +512,13 @@ layer_styles = {
 style = layer_styles.get(layer_name, dict(color="gray", fill=False))
 
 m = child_model_gdf.explore(
-    name=layer_name, style_kwds=style, tooltip=["hru_id", "hru_segment"]
+    name=layer_name,
+    style_kwds=style,
+    tooltip=["hru_id", "hru_segment"],
+    # OpenStreetMap's volunteer tiles block automated clients (osm.wiki/Blocked);
+    # use the USGS national basemap instead.
+    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
+    attr="USGSHydroCached",
 )
 
 
@@ -509,9 +537,7 @@ for layer_name in layers:
 
 # --- Add segment comparison layers ---
 # Read the full parent segment layer and the child basin polygon
-source_gpkg_map = (
-    root_dir / "nhf_assist/hydrofabric_domain_data/OHM_2026_02_21/GIS/model_layers.gpkg"
-)
+source_gpkg_map = fabrics_dir / f"{parent_model}/GIS/model_layers.gpkg"
 all_segs = gpd.read_file(source_gpkg_map, layer="nsegment")
 
 # Get child HRU segments (attribute-based method)
@@ -574,13 +600,129 @@ folium.LayerControl().add_to(m)
 m  # display in Jupyter
 
 # %% [markdown]
+# ### Save an inspection map for every child fabric
+#
+# The map above renders one child domain inline. This cell builds the same
+# layered map (HRUs, segments, POIs, domain outline, and the segment-selection
+# comparison layers) for *every* child fabric and writes it to
+# ``<child>/child_fabric_map.html``. Open any of those files in a browser — the
+# same pattern as the ``child_domains_map.html`` written earlier — which avoids
+# the sandboxed-notebook renderer's trouble displaying large folium maps inline.
+
+# %%
+import folium
+from folium import plugins
+
+# Read the parent segment layer once; every child map reuses it.
+source_gpkg_map = fabrics_dir / f"{parent_model}/GIS/model_layers.gpkg"
+all_segs_parent = gpd.read_file(source_gpkg_map, layer="nsegment")
+
+layer_styles = {
+    "nhru": dict(color="gray", fill=True, fillOpacity=0.3),
+    "nsegment": dict(color="blue", weight=1),
+    "domain": dict(color="black", fill=False, weight=2),
+    "npoi": dict(color="yellow", fill=True, fillOpacity=1),
+}
+
+# Every child fabric that has a built geopackage.
+child_map_folders = [
+    p for p in folders if (p / "GIS" / "child_nhf_domain.gpkg").exists()
+]
+
+for folder in child_map_folders:
+    child_gpkg = folder / "GIS" / "child_nhf_domain.gpkg"
+    child_name = folder.name
+    print(f"Building map for {child_name} ...")
+
+    # nhru first, so it becomes the base layer of the map.
+    nhru_gdf = gpd.read_file(child_gpkg, layer="nhru")
+    child_map = nhru_gdf.explore(
+        name="nhru",
+        style_kwds=layer_styles["nhru"],
+        tooltip=["hru_id", "hru_segment"],
+        # USGS basemap; OSM volunteer tiles block automated clients.
+        tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
+        attr="USGSHydroCached",
+    )
+
+    for extra_layer in ["nsegment", "domain", "npoi"]:
+        try:
+            layer_gdf = gpd.read_file(child_gpkg, layer=extra_layer)
+        except Exception:
+            continue
+        child_map = layer_gdf.explore(
+            m=child_map,
+            name=extra_layer,
+            style_kwds=layer_styles.get(extra_layer, dict(color="gray", fill=False)),
+        )
+
+    # --- Segment comparison layers (same logic as the single-domain map) ---
+    child_hru_seg_ids = set(nhru_gdf["hru_segment"].unique())
+
+    domain_gdf = gpd.read_file(child_gpkg, layer="domain")
+    domain_geom = domain_gdf.geometry.unary_union
+    segs = all_segs_parent
+    if segs.crs != domain_gdf.crs:
+        segs = segs.to_crs(domain_gdf.crs)
+
+    within_ids = set(segs[segs.geometry.within(domain_geom)]["model_seg_idx"])
+    child_to_segments = set(
+        segs[segs["model_seg_idx"].isin(child_hru_seg_ids)]["to_segment"]
+    ) - {0}
+    keepers = within_ids & child_to_segments
+    final_ids = child_hru_seg_ids | keepers
+    excluded = within_ids - final_ids
+    extra = final_ids - within_ids
+
+    if excluded:
+        child_map = segs[segs["model_seg_idx"].isin(excluded)].explore(
+            m=child_map,
+            name="Excluded segments (within domain, no HRU or to_segment link)",
+            style_kwds=dict(color="red", weight=4),
+        )
+    if keepers:
+        child_map = segs[segs["model_seg_idx"].isin(keepers)].explore(
+            m=child_map,
+            name="Downstream keepers (no HRU, but is a to_segment of child)",
+            style_kwds=dict(color="orange", weight=4),
+        )
+    if extra:
+        child_map = segs[segs["model_seg_idx"].isin(extra)].explore(
+            m=child_map,
+            name="Segments in final but not within domain",
+            style_kwds=dict(color="green", weight=4),
+        )
+
+    # Locator minimap, same Esri NatGeo World Map basemap as the overview map —
+    # state/country boundaries baked into the tiles for a reference frame. Pass
+    # a standalone TileLayer (with attribution) that is NOT added to child_map,
+    # so the minimap owns its own tiles and syncs to the parent view. A fresh
+    # TileLayer per child, since a TileLayer belongs to one map.
+    plugins.MiniMap(
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri, National Geographic",
+        ),
+        position="topleft",
+        zoom_animation=True,
+    ).add_to(child_map)
+
+    folium.LayerControl().add_to(child_map)
+
+    out_html = folder / "child_fabric_map.html"
+    child_map.save(str(out_html))
+    print(f"  saved {out_html}")
+
+print(f"\nSaved inspection maps for {len(child_map_folders)} child fabrics.")
+
+# %% [markdown]
 # ### Test: Check for HRU and segment overlap between child domains
 
 # %%
 # Read all child domain GeoPackages and check for shared HRUs or segments
 from collections import defaultdict
 
-domains_dir_test = Path(root_dir / "nhf_assist/hydrofabric_domain_data")
+domains_dir_test = Path(fabrics_dir)
 child_folders = [
     p
     for p in domains_dir_test.iterdir()

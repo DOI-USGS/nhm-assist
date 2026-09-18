@@ -266,6 +266,9 @@ ofp = open(
 # # in the pest observation file (notebook 3)
 # ofp = open(pestpp_model_dir / "allobs_bounds.dat", "w")
 
+# Make a file to hold the std values for each observation
+ofstd = open(pestpp_model_dir / "allobs_std.dat", "w")  # the
+
 # %%
 
 # %% [markdown]
@@ -323,11 +326,18 @@ inds = [
 ]
 
 actet_mean_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+actet_mean_mon_std = cdat.ensemble_std
+
 varvals = np.ravel(actet_mean_mon, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(actet_mean_mon_std, order="C")
 
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     ofp.write("obsname    obsval\n")  # writing a header for the file
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    ofstd.write("obsname    obsstd\n")  # writing a header for the file
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 
 # %%
@@ -346,9 +356,16 @@ inds = [
 ]
 
 recharge_ann = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+recharge_ann_std = cdat.ensemble_std
+
 varvals = np.ravel(recharge_ann, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(recharge_ann_std, order="C")
+
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 # obsvals_max = np.ravel(
 #     cdat.upper_bound, order="C"
@@ -397,11 +414,18 @@ inds = [
 ]
 
 soil_moist_mean_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+soil_moist_mean_mon_std = cdat.ensemble_std
+
 varvals = np.ravel(
     soil_moist_mean_mon, order="C"
 )  # flattens the 2D array to a 1D array
+stdvals = np.ravel(soil_moist_mean_mon_std, order="C")
+
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 # %% [markdown]
 # #### Plot Soil Moisture — Monthly ensemble members and statistics by HRU
@@ -573,9 +597,16 @@ inds = [
 ]
 
 soil_moist_ann = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+soil_moist_ann_std = cdat.ensemble_std
+
 varvals = np.ravel(soil_moist_ann, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(soil_moist_ann_std, order="C")
+
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 # %% [markdown]
 # ### HRU Runoff — Monthly (average daily rate in cfs for each month)
@@ -589,9 +620,16 @@ inds = [
     for j in cdat.indexes["hru_id"]
 ]
 runoff_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+runoff_mon_std = cdat.ensemble_std
+
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(runoff_mon_std, order="C")
+
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 # %% [markdown]
 # ### Snow Water Equivalent (SWE) — Monthly
@@ -853,9 +891,17 @@ inds = [
     for j in cdat.indexes["hru_id"]
 ]
 SWE_monthly = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+SWE_monthly_std = cdat.ensemble_std
+
 varvals = np.ravel(SWE_monthly, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(SWE_monthly_std, order="C")
+
 with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
+
 
 # cdat.close()
 

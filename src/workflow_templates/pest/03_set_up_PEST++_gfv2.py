@@ -563,33 +563,31 @@ obs.loc[obs.obgnme.str.startswith("streamflow")]
 # `Observation_standard_deviation.csv`. Edit that file to change noise/weight behavior.
 
 # %%
+# We now ae only using the STD values from this table for the flow targets
 obs_sdbnds_path = pestpp_model_dir / "ancillary/Observation_standard_deviation.csv"
 obs_sdbnds = pd.read_csv(
     obs_sdbnds_path
 )  # Creates a data frame of the bounds for par catagories
+#obs_sdbnds
 
-# %%
-obs_sdbnds
-
-# %%
 obs_sdbnds.set_index("obsgroup", inplace=True, drop=False)
 obs_sdbnds.rename(columns={"obsgroup": "obgnme"}, inplace=True)
 obs_sdbnds
 
-# %%
 # cleaning up: strip removes the extra spaces and /n etc
 obs_sdbnds.index = [i.strip() for i in obs_sdbnds.index]
 
-# %%
-obs_sdbnds
-
-# %%
 print(obs_sdbnds.index.unique())
 print(len(obs_sdbnds.index.unique()))
 
 # %%
 obgnme_list = obs_sdbnds["obgnme"]
 obgnme_list
+
+# %%
+# read in the STD vals for the obs ensemble
+obsvals_std = pd.read_csv(pestpp_model_dir / "allobs_std.dat", delim_whitespace=True)
+obsvals.set_index("obsname", inplace=True, drop=False)
 
 # %%
 # obs['lower_bound'] = 0
