@@ -34,7 +34,7 @@ completed_months_file = output_cache.parent / "hrrr_completed_months.txt"
 completed_months = set()
 
 if completed_months_file.exists():
-    completed_months = set(completed_months_file.read_text().strip().split("\n"))
+    completed_months = set(completed_months_file.read_text(encoding="utf-8").strip().split("\n"))
     print(f"Previously completed months: {len(completed_months)}")
 
 if output_cache.exists():

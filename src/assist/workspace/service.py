@@ -60,10 +60,17 @@ VSCODE_EXTENSIONS_FILENAME = ".vscode/extensions.json"
 JUPYTEXT_SYNC_EXTENSION_ID = "caenrigen.jupytext-sync"
 
 def _vscode_settings_content() -> str:
-    # Pinned to the extension's own current defaults, rather than just the
-    # two event flags we care about: VS Code replaces object-typed settings
-    # wholesale per scope instead of merging keys, so a partial override here
-    # could silently blank out other keys a user set globally.
+    # Every key below carries the Jupytext Sync extension's own default value
+    # except onNotebookDocumentOpen. The whole object is written because VS Code
+    # (and Kiro) replace object-typed settings wholesale per scope rather than
+    # merging keys, so a partial override here would silently drop the rest.
+    #
+    # onNotebookDocumentOpen deliberately departs from the extension's default
+    # of False. With it off, a git pull followed by opening the notebook and
+    # saving pushes the stale notebook over the freshly pulled template --
+    # silently, exit 0. Syncing on open pulls the template forward first, and
+    # saved outputs survive it. See
+    # docs/design/specs/2026-09-16-dev-mode-sync-divergence-design.md.
     #
     # pythonExecutable is stamped to the interpreter running this call rather
     # than left for the extension's own auto-discovery: jupytext lives only
@@ -73,7 +80,7 @@ def _vscode_settings_content() -> str:
     payload = {
         "jupytextSync.pythonExecutable": sys.executable,
         "jupytextSync.syncDocuments": {
-            "onNotebookDocumentOpen": False,
+            "onNotebookDocumentOpen": True,
             "onNotebookDocumentSave": True,
             "onNotebookDocumentClose": False,
             "onTextDocumentOpen": False,
@@ -125,6 +132,29 @@ def create_project(workspace_root: str | Path, project_name: str) -> dict[str, P
     paths["vscode_extensions"] = vscode_extensions_path
 
     return paths
+
+
+def repair_vscode_settings(
+    workspace_root: str | Path,
+    project_name: str,
+) -> Path:
+    """Rewrite one project's editor settings with the current generated content.
+
+    create_project deliberately never overwrites an existing settings file, so
+    projects created before a change to _vscode_settings_content keep the old
+    values indefinitely. This is the explicit opt-in that updates them.
+    """
+    project_dir = Path(workspace_root).expanduser().resolve() / project_name
+    if not project_dir.is_dir():
+        raise FileNotFoundError(f"No such project: {project_dir}")
+
+    # VSCODE_SETTINGS_FILENAME is the whole relative path, ".vscode/settings.json",
+    # so the parent directory comes from the joined path rather than a separate
+    # constant. This mirrors how create_project builds vscode_settings_path.
+    settings_path = project_dir / VSCODE_SETTINGS_FILENAME
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(_vscode_settings_content(), encoding="utf-8")
+    return settings_path
 
 
 def get_projects(workspace_root: str | Path) -> list[Path]:

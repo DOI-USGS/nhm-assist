@@ -13,7 +13,7 @@ import jupytext
 from jupytext.paired_paths import paired_paths
 from nbformat.v4 import new_code_cell
 
-from assist.workspace import bridge, kernels, service
+from assist.workspace import bridge, service
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -134,15 +134,13 @@ class PairingModeTests(unittest.TestCase):
         ]
         self.assertEqual([Path(p) for p in paired], [template_dir / "probe.py"])
 
-    def test_local_mode_embeds_no_formats_but_stamps_the_default_kernel(self):
+    def test_local_mode_embeds_no_formats(self):
         created = self._generate("local")
 
         self.assertTrue(created)
         notebook = jupytext.read(created[0])
         self.assertIsNone(notebook.metadata.get("jupytext", {}).get("formats"))
-        self.assertEqual(
-            notebook.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(notebook.metadata.get("kernelspec"))
 
     def test_dev_mode_embeds_formats_pointing_at_the_repo_template(self):
         created = self._generate("dev")
@@ -154,9 +152,18 @@ class PairingModeTests(unittest.TestCase):
             formats,
             notebook_builder.dev_pairing_formats(template_dir, self.notebook_dir),
         )
-        self.assertEqual(
-            notebook.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
-        )
+        self.assertIsNone(notebook.metadata.get("kernelspec"))
+
+    def test_neither_mode_stamps_a_kernelspec(self):
+        # Kernel and environment selection belong to the user's IDE. Writing a
+        # kernelspec here only ever guessed, and VS Code names kernels
+        # differently depending on whether you pick an environment or an
+        # existing Jupyter kernel, so the guess was often wrong.
+        for mode in ("local", "dev"):
+            with self.subTest(mode=mode):
+                created = self._generate(mode)
+                notebook = jupytext.read(created[0])
+                self.assertIsNone(notebook.metadata.get("kernelspec"))
 
     def test_dev_mode_writes_a_header_free_template(self):
         # Regression: without notebook_metadata_filter, syncing a dev-mode
@@ -191,9 +198,31 @@ class PairingModeTests(unittest.TestCase):
         template_path = scratch_template_dir / target.relative_to(
             self.notebook_dir
         ).with_suffix(".py")
-        template_text = template_path.read_text()
+        template_text = template_path.read_text(encoding="utf-8")
         self.assertFalse(template_text.startswith("# ---"))
         self.assertIn("synced from the workspace", template_text)
+
+    def test_committed_templates_carry_no_jupytext_header(self):
+        # Recurrence guard, not speculation: commit 093fb37 ("Strip jupytext
+        # headers from committed/paired .py templates") removed these
+        # headers, and commit 864a75b ("Move notebooks into common area")
+        # reintroduced them. The test above only inspects a scratch copy of
+        # one template, so it would not have caught that regression. Walk
+        # every shipped template under src/workflow_templates/ instead,
+        # excluding make_notebooks.py, which is code, not a template.
+        offenders = []
+        for template_path in sorted(notebook_builder.TEMPLATES_ROOT.rglob("*.py")):
+            if template_path.name == "make_notebooks.py":
+                continue
+            template_text = template_path.read_text(encoding="utf-8")
+            if template_text.startswith("# ---"):
+                offenders.append(str(template_path))
+
+        self.assertEqual(
+            offenders,
+            [],
+            f"Committed templates carry a stale jupytext header: {offenders}",
+        )
 
     def test_dev_mode_repairs_notebooks_missing_the_metadata_filter(self):
         created = self._generate("dev")
@@ -223,9 +252,7 @@ class PairingModeTests(unittest.TestCase):
         reread = jupytext.read(target)
         self.assertEqual(reread.cells[0].source, "# EDITED BY THE USER")
         self.assertIn("jupytext", reread.metadata)
-        self.assertEqual(
-            reread.metadata["kernelspec"]["name"], kernels.DEV_KERNEL_NAME
-        )
+        self.assertIsNone(reread.metadata.get("kernelspec"))
 
     def test_switching_to_local_mode_preserves_cell_content(self):
         # Regression: regenerating in local mode over an existing notebook
@@ -257,9 +284,7 @@ class PairingModeTests(unittest.TestCase):
         self.assertIsNone(
             reread.metadata.get("jupytext", {}).get("notebook_metadata_filter")
         )
-        self.assertEqual(
-            reread.metadata["kernelspec"]["name"], kernels.DEFAULT_KERNEL_NAME
-        )
+        self.assertIsNone(reread.metadata.get("kernelspec"))
 
     def test_local_mode_regeneration_preserves_existing_cell_edits(self):
         created = self._generate("local")

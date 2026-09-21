@@ -1,6 +1,6 @@
 # Migrate CI to GitLab, retire GitHub Actions, add AGENTS.md
 
-> **SUPERSEDED (2026-09-14)** by `docs/superpowers/specs/2026-09-14-gitlab-ci-migration-design.md`.
+> **SUPERSEDED (2026-09-14)** by `docs/design/specs/2026-09-14-gitlab-ci-migration-design.md`.
 > Five of this spec's premises went stale as work landed on `develop`, and its
 > open questions are now answered with evidence from sibling WMA pipelines.
 > Kept for the reasoning history; do not implement from this file.
@@ -20,13 +20,13 @@ CI definition is still `.github/workflows/ci.yaml`, a GitHub Actions workflow. G
 read `.github/workflows/*` at all — it only ever executes `.gitlab-ci.yml` — so **every merge
 request opened on GitLab today gets zero CI signal**, including the draft MR that landed the
 prior round's pixi migration. That workflow file (recently fixed to build via pixi and run the
-real 70-test suite; see `docs/superpowers/specs/2026-08-21-ci-pixi-migration-design.md`) can
+real 70-test suite; see `docs/design/specs/2026-08-21-ci-pixi-migration-design.md`) can
 only ever fire from a push to the GitHub mirror, and only on `push` events — GitLab merge
 requests don't create GitHub pull requests, so `on: pull_request` is dead code from GitLab's
 perspective regardless.
 
 Separately, there is no `AGENTS.md` at the repo root. The most recent two rounds of AI-agent
-work on this repo (`docs/superpowers/specs/2026-08-21-ci-pixi-migration-design.md` and its
+work on this repo (`docs/design/specs/2026-08-21-ci-pixi-migration-design.md` and its
 plan) established real, non-obvious operating norms for coding agents working here — the
 stage-but-never-commit contribution norm chief among them — that currently live only in a
 spec file an agent has to be told to go read.
@@ -100,7 +100,7 @@ Not a full architecture document. Two parts:
    that an agent stages changes (`git add`/`git rm`) but never commits, merges, pushes, or opens
    a merge request — that's the maintainer's action.
 2. **Light repo orientation** — a short map of `src/assist/`, `src/workflow_templates/`,
-   `notebooks/`, `tests/`, `docs/superpowers/` (this repo's spec/plan/agent-process working
+   `notebooks/`, `tests/`, `docs/design/` (this repo's spec/plan/agent-process working
    area), so an agent starts oriented instead of exploring cold.
 
 Written and committed as the **last** step of the implementation plan, once the new CI is

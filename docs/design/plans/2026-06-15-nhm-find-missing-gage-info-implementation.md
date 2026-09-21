@@ -26,7 +26,7 @@
 ### Reference (read but do not edit)
 
 - `src/assist/nhf/nhm_assist_utilities_v2.py::find_missing_gage_info` — the NHF reference; uses `poi_gage_id`, you must translate to `poi_id` for NHM.
-- `docs/superpowers/specs/2026-06-15-nhm-find-missing-gage-info-design.md` — design rationale and acceptance criteria.
+- `docs/design/specs/2026-06-15-nhm-find-missing-gage-info-design.md` — design rationale and acceptance criteria.
 
 ---
 

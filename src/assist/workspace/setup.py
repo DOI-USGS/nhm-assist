@@ -8,11 +8,6 @@ from dotenv import dotenv_values, set_key, unset_key
 
 from assist.workspace import bridge, service
 from assist.workspace.examples import list_available_example_names
-from assist.workspace.kernels import (
-    DEFAULT_KERNEL_DISPLAY_NAME,
-    DEFAULT_KERNEL_NAME,
-    ensure_kernel_registered,
-)
 from workflow_templates import make_notebooks as notebook_builder
 
 
@@ -413,7 +408,6 @@ def generate_nhm_notebooks(
     print_func=print,
 ) -> list[Path]:
     workspace_root = require_workspace_root(state)
-    ensure_kernel_registered(DEFAULT_KERNEL_NAME, DEFAULT_KERNEL_DISPLAY_NAME)
     created = notebook_builder.convert_workflow(
         "nhm",
         workspace_root=workspace_root,
@@ -490,7 +484,7 @@ def action_show_notebook_location(
     print_func("Open them yourself with whichever tool you use:")
     print_func(f"  jupyter lab {quoted}")
     print_func(f"  code {quoted}")
-    print_func(f"Then select the '{DEFAULT_KERNEL_DISPLAY_NAME}' kernel.")
+    print_func("Then pick a kernel from this project's pixi environment.")
     print_func("Run 0_workspace_setup.ipynb first.")
     return notebook_dir
 
@@ -524,6 +518,27 @@ def action_show_current_setup(
     )
     print_func(f"Active model: {active_model}")
     print_func(f"NHM notebooks: {notebook_dir}")
+
+
+def action_repair_editor_settings(
+    state: SetupState,
+    *,
+    print_func=print,
+) -> Path | None:
+    if not require_current_project(state, print_func=print_func):
+        return None
+    workspace_root = require_workspace_root(state)
+    settings_path = service.repair_vscode_settings(
+        workspace_root, state.current_project
+    )
+    print_func("")
+    print_func(f"Rewrote editor settings: {settings_path}")
+    print_func(
+        "Notebooks now sync from their paired template when you open them, "
+        "so a pull cannot be overwritten by the next save."
+    )
+    print_func("Close and reopen the project folder for it to take effect.")
+    return settings_path
 
 
 def action_set_api_key(
@@ -586,6 +601,7 @@ def print_main_menu(state: SetupState, *, print_func=print) -> None:
     print_func("  8. Generate NHM notebooks")
     print_func("  9. Show current setup")
     print_func(" 10. Set USGS WaterData API key")
+    print_func(" 11. Repair editor settings for this project")
     print_func("  0. Exit")
 
 
@@ -618,7 +634,7 @@ def run_setup(
 
         while True:
             print_main_menu(state, print_func=print_func)
-            choice = prompt_menu_choice(10, input_func=input_func, print_func=print_func)
+            choice = prompt_menu_choice(11, input_func=input_func, print_func=print_func)
 
             if choice == 0:
                 print_func("Exiting setup.")
@@ -675,6 +691,8 @@ def run_setup(
                         print_func=print_func,
                         input_func=input_func,
                     )
+                elif choice == 11:
+                    action_repair_editor_settings(state, print_func=print_func)
             except (FileNotFoundError, NotADirectoryError, ValueError, OSError) as exc:
                 print_func(f"Error: {exc}")
     except KeyboardInterrupt:
