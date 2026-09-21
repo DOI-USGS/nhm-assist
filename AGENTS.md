@@ -74,9 +74,31 @@ notebook's `jupytext` metadata, e.g.
 `ipynb,../../../../nhm-assist/src/workflow_templates/common//py:percent`), so
 the repo `.py` is the source of truth — edit it, not the generated notebook.
 
-The correct workflow is just: edit and save that `.py`, and the paired
-notebook updates on its own when you open/run it in Jupyter. No
-`jupytext --sync` needed.
+The notebook drives the sync; the template is passive. Dev-mode pairing is
+recorded only in the notebook's own `jupytext` metadata, because writing it into
+the shared template would stamp one contributor's workspace path into a file
+everyone else pulls.
+
+What follows from that:
+
+- **Saving the template pushes nothing.** Editing `src/workflow_templates/...`
+  and saving does not update anyone's notebook. jupytext reports
+  `is not a paired notebook`. Reopen the notebook to pull the change.
+- **In JupyterLab, opening the notebook syncs it.** The jupytext contents
+  manager does this.
+- **In VS Code and Kiro, opening the notebook syncs it only when the Jupytext
+  Sync extension has `onNotebookDocumentOpen` set true.** Generated projects
+  carry that setting; a project whose `.vscode/settings.json` is missing, or
+  has `onNotebookDocumentOpen` set to false, needs the setup menu's "Repair
+  editor settings for this project" action.
+- **Never edit both sides between syncs.** The next sync silently keeps
+  whichever file is newer and discards the other, with exit code 0 and no
+  warning.
+- **An agent editing a template and a human with that notebook open are two
+  editors of the same content.** The human's next save silently wins and
+  discards the agent's edit, exactly like the "never edit both sides" case
+  above, with the agent as one of the two sides. Close the notebook before an
+  agent edits its template, and reopen it afterward to pull the change in.
 
 Avoid running `jupytext --sync` from the command line to force propagation.
 The relative `../` pairing prefix can be mis-resolved by the CLI (relative to

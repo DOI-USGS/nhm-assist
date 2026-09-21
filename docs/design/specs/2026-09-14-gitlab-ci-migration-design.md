@@ -241,8 +241,25 @@ Plus `DOIRootCA2.crt` committed at the repository root, copied from the gdptools
 
 ## Recorded constraints on the pixi environment restructuring
 
-The lead developers intend to merge the `dev` environment into `default`, on the grounds
-that most end users need `proj-data` too. This spec does not perform that change, but CI
+> **Update (2026-09-18): the merge has happened, and half this constraint was missed.**
+>
+> `default` now composes `prod` + `test` + `dev`; the `dev` *environment* is gone while the
+> `dev` *feature* remains, since `dev-future` composes it. `ci` is unchanged at `prod` +
+> `test`.
+>
+> - **"`ci` must not inherit `proj-data`" — satisfied.** `proj-data` sits in the `dev`
+>   feature, which `ci` does not compose.
+> - **"`ci` must set `PROJ_NETWORK=OFF`" — NOT satisfied.** That activation entry also
+>   lives on the `dev` feature, so `ci` does not get it. Measured 2026-09-18: `ci` reports
+>   `PROJ_NETWORK` as `ON`, `default` as `OFF`. CI will therefore reach `cdn.proj.org` for
+>   datum-shift grids — the non-hermetic behaviour this constraint existed to prevent. The
+>   fix is the dedicated `ci` activation block sketched below, which was not applied.
+>
+> The `README.md` quotation below is also superseded: that file no longer describes
+> `proj-data` as scoped to `dev`/`dev-future`, because `default` now carries it.
+
+The lead developers intended to merge the `dev` environment into `default`, on the grounds
+that most end users need `proj-data` too. This spec did not perform that change, but CI
 depends on a property it could silently break, so the constraint is recorded here:
 
 **`ci` must not inherit `proj-data`, and must set `PROJ_NETWORK=OFF`.**

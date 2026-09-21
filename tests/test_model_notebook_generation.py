@@ -198,9 +198,31 @@ class PairingModeTests(unittest.TestCase):
         template_path = scratch_template_dir / target.relative_to(
             self.notebook_dir
         ).with_suffix(".py")
-        template_text = template_path.read_text()
+        template_text = template_path.read_text(encoding="utf-8")
         self.assertFalse(template_text.startswith("# ---"))
         self.assertIn("synced from the workspace", template_text)
+
+    def test_committed_templates_carry_no_jupytext_header(self):
+        # Recurrence guard, not speculation: commit 093fb37 ("Strip jupytext
+        # headers from committed/paired .py templates") removed these
+        # headers, and commit 864a75b ("Move notebooks into common area")
+        # reintroduced them. The test above only inspects a scratch copy of
+        # one template, so it would not have caught that regression. Walk
+        # every shipped template under src/workflow_templates/ instead,
+        # excluding make_notebooks.py, which is code, not a template.
+        offenders = []
+        for template_path in sorted(notebook_builder.TEMPLATES_ROOT.rglob("*.py")):
+            if template_path.name == "make_notebooks.py":
+                continue
+            template_text = template_path.read_text(encoding="utf-8")
+            if template_text.startswith("# ---"):
+                offenders.append(str(template_path))
+
+        self.assertEqual(
+            offenders,
+            [],
+            f"Committed templates carry a stale jupytext header: {offenders}",
+        )
 
     def test_dev_mode_repairs_notebooks_missing_the_metadata_filter(self):
         created = self._generate("dev")

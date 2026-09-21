@@ -37,7 +37,7 @@ PARAM_FILES = {
 
 def _declared_dimensions(param_file: pl.Path) -> dict[str, int]:
     """Global dimension name -> size, read out of a PRMS parameter file."""
-    lines = param_file.read_text().splitlines()
+    lines = param_file.read_text(encoding="utf-8").splitlines()
     start = lines.index("** Dimensions **") + 1
     try:
         end = lines.index("** Parameters **")
