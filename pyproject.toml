@@ -106,10 +106,11 @@ channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
 [tool.pixi.environments]
-# `default` is the only environment contributors and end users need: it
-# carries the dev feature (proj-data, PROJ_NETWORK=OFF) and the test
-# feature. `ci` stays a lean subset so CI skips the proj-data download.
-# The dev *feature* is retained below -- dev-future still composes it.
+# `default` is the only environment contributors and end users need. `ci`
+# differs from it by proj-data alone -- not by lint or test tooling; see
+# "Environment" and "pywatershed 2.x ..." in AGENTS.md for why, and for what
+# solve groups do and don't do. The dev *feature* is retained below --
+# dev-future still composes it.
 default = { features = ["prod", "test", "dev"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
 dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
@@ -148,6 +149,10 @@ shapely = "*"
 xarray = "*"
 
 [tool.pixi.pypi-dependencies]
+# The editable self-install, which pulls [project.dependencies]. Declared on
+# the default feature so every environment composes it, rather than repeated
+# per feature.
+nhm-assist = { path = ".", editable = true }
 # Not on conda-forge.
 hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
@@ -157,17 +162,13 @@ python = ">=3.11.9,<3.14"
 pywatershed = ">=2.0.1,<3"
 dataretrieval = "<1.2"
 
-[tool.pixi.feature.prod.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
-
 [tool.pixi.feature.dev.dependencies]
 proj-data = "*"
 
+# Scoped to dev on purpose: `ci` gets neither this nor proj-data. Work item
+# #33, and "Environment" in AGENTS.md. Don't "fix" this.
 [tool.pixi.feature.dev.activation.env]
 PROJ_NETWORK = "OFF"
-
-[tool.pixi.feature.dev.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
 
 [tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"

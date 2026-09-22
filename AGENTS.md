@@ -27,6 +27,48 @@ plus `dev-future` on a separate solve group for the next-major dependency
 track. There is no `dev` environment — `pixi run test` and `pixi run lint`
 both run in `default`.
 
+"Identical but without `proj-data`" is literal: one package, ~817 MB on disk.
+Read the next section before concluding that `ci` is otherwise leaner, or that
+the feature split in `pyproject.toml` is broken.
+
+`ci` also deliberately lacks `PROJ_NETWORK=OFF`, which sits on the `dev`
+feature. That variable and `proj-data` together work around USGS VPN SSL
+inspection breaking PROJ's datum-grid fetch from `cdn.proj.org` on developer
+machines (work item #33). CI runners are not behind that, and the CI job
+installs the DOI root CA anyway, so a CI job is expected to fetch grids over
+the network if it ever needs them. Don't "fix" this.
+
+## pywatershed 2.x drags in its own dev toolchain
+
+conda-forge's `pywatershed 2.0.4` declares its lint, test, doc and optional
+extras as *hard run dependencies* — `ruff`, `pre-commit`, `pytest`,
+`pytest-{cov,env,order,xdist}`, `sphinx` and its themes, `git`, `pip`,
+`jupyter`, `cartopy`, `geoviews`, `holoviews`, `hvplot`. `pywatershed` is in
+the `prod` feature, so every environment composing `prod` inherits all of it.
+
+Consequences worth knowing before you draw conclusions from the manifest:
+
+- **`ruff` and `pre-commit` are in `ci`** even though `ci` does not compose the
+  `dev` feature. This is not a pixi defect. `pixi list -e ci --explicit` shows
+  `pytest` (from the `test` group, which `ci` does compose) and does *not* show
+  `ruff` or `pre-commit` — pixi applied the declarations correctly; the
+  packages are transitive.
+- **Solve groups are not the cause.** `default` and `ci` share
+  `solve-group = "default"` yet `proj-data` is in `default` only. Solve groups
+  constrain versions, not membership.
+- **89 of `ci`'s 475 packages (0.18 GB of 0.48 GB download) are reachable only
+  through `pywatershed`.** Trimming direct dependencies to slim CI therefore
+  does much less than it looks like it should.
+- **The stack is pinned to Python 3.11**, because that recipe requires
+  `python >=3.10,<3.12` — despite `requires-python = ">=3.11, <3.14"`.
+
+Both upstream sources are already clean: `pywatershed` on PyPI keeps these as
+real extras, and conda-forge's `pywatershed 3.0.0` recipe drops them. So this
+resolves when the repo moves to `pywatershed` 3 — the track `dev-future`
+exists to test, and where `ruff`/`pre-commit`/`pytest` correctly arrive as
+PyPI wheels from the dependency groups. Until then, treat it as upstream
+packaging, not something to work around here.
+
 ## User site-packages
 
 A pixi environment is a real prefix, not a virtualenv, so its interpreter still
