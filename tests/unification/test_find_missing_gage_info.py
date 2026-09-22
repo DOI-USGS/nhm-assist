@@ -90,6 +90,17 @@ INTENDED_EDITS = [
         )
 ''',
     ),
+    (
+        # poi_agency and poi_name are string columns, but nhf's baseline builds
+        # every column from [np.nan]*n, which pandas types as float64. The first
+        # name written into one forces an upcast that pandas 3 refuses outright.
+        # See test_string_metadata_columns_do_not_need_a_dtype_upcast below.
+        '''    )  # Initialize empty datafame
+''',
+        '''    )  # Initialize empty datafame
+    gages_df = gages_df.astype({"poi_agency": "object", "poi_name": "object"})
+''',
+    ),
 ]
 
 
@@ -132,3 +143,67 @@ def test_nhm_private_helpers_came_along():
 
     assert callable(common._load_nldi_cached)
     assert callable(common._translate_waterdata_columns)
+
+
+def test_string_metadata_columns_do_not_need_a_dtype_upcast(tmp_path):
+    """poi_name and poi_agency must not start life as float64.
+
+    gages_df initialises every metadata column from ``[np.nan] * n``, which
+    pandas types as float64. The first real gage name written into poi_name
+    therefore forces a dtype upcast -- which pandas 2.x performs while emitting
+    a FutureWarning, and pandas 3.x refuses outright:
+
+        TypeError: Invalid value 'WALLA WALLA RIVER NEAR TOUCHET, WA'
+                   for dtype 'float64'
+
+    Reported from a collaborator running notebook 1 against pandas 3; the
+    ``pandas<3`` pin in pyproject.toml is the only reason it does not happen
+    here. All three fill branches write through the same columns, so pinning
+    the dtypes at construction covers every one of them.
+    """
+    import warnings
+
+    import pandas as pd
+
+    import assist.common.assist_utilities as common
+
+    root = tmp_path / "root"
+    (root / "data_dependencies").mkdir(parents=True)
+
+    # Metadata for every required column, so the frame is complete after the
+    # resource-file branch and neither the NLDI nor the WaterData lookup runs.
+    resource_file = tmp_path / "metadata" / "resource_gages.csv"
+    resource_file.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "poi_gage_id": ["14018500"],
+            "poi_agency": ["USGS"],
+            "poi_name": ["WALLA WALLA RIVER NEAR TOUCHET, WA"],
+            "latitude": [46.0508],
+            "longitude": [-118.6753],
+            "drainage_area": [1655.0],
+            "drainage_area_contrib": [1655.0],
+        }
+    ).to_csv(resource_file, index=False)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        gages_df = common.find_missing_gage_info(
+            root_dir=root,
+            dest_dir=tmp_path / "dest",
+            gages_list=["14018500"],
+            resource_file_path=resource_file,
+        )
+
+    upcasts = [w for w in caught if "incompatible dtype" in str(w.message)]
+    assert not upcasts, "metadata fill forced a dtype upcast: " + "; ".join(
+        str(w.message) for w in upcasts
+    )
+
+    assert gages_df.loc[0, "poi_name"] == "WALLA WALLA RIVER NEAR TOUCHET, WA"
+    assert gages_df["poi_name"].dtype == object
+    assert gages_df["poi_agency"].dtype == object
+    # The numeric columns must stay numeric; a blanket object cast would break
+    # the arithmetic and plotting these feed downstream.
+    assert gages_df["latitude"].dtype == float
+    assert gages_df["longitude"].dtype == float

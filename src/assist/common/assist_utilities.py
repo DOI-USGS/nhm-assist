@@ -825,6 +825,12 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, resource_file_path):
             "drainage_area_contrib": nan_list,
         }
     )  # Initialize empty datafame
+    # poi_agency and poi_name hold strings, but a column built from [np.nan]*n
+    # is float64, so the first name written into one below forces a dtype
+    # upcast: a FutureWarning on pandas 2.x, a TypeError on pandas 3.x. The
+    # numeric columns stay float64 on purpose -- the arithmetic and plotting
+    # downstream need them that way.
+    gages_df = gages_df.astype({"poi_agency": "object", "poi_name": "object"})
 
     # Check for resource (supplemental) file, if present, append information to gages_df
     if resource_file_path.exists():
