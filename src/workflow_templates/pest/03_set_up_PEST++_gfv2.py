@@ -323,6 +323,9 @@ obs.loc[obs.obsnme.str.startswith("streamflow_mean_mon"), "obgnme"] = (
 #     "streamflow_mean_mon_val"
 # )
 
+# %%
+obs.loc[obs.obsnme.str.startswith("streamflow_")]
+
 # %% [markdown]
 # #### Handle no-data streamflow observations
 # Observations with -9999 (no data) are moved to the `streamflow_nodata` group
@@ -348,7 +351,7 @@ print(
 # %%
 obs_group = "streamflow_nodata"
 mask_efc_error = (
-    (obs.obsnme.str.startswith("streamflow_daily"))
+    (obs.obsnme.str.startswith("streamflow_5day"))
     & (obs.obsnme.str.contains("-1"))
     & (obs["obsval"] != -9999)
 )
@@ -568,7 +571,7 @@ obs_sdbnds_path = pestpp_model_dir / "ancillary/Observation_standard_deviation.c
 obs_sdbnds = pd.read_csv(
     obs_sdbnds_path
 )  # Creates a data frame of the bounds for par catagories
-#obs_sdbnds
+# obs_sdbnds
 
 obs_sdbnds.set_index("obsgroup", inplace=True, drop=False)
 obs_sdbnds.rename(columns={"obsgroup": "obgnme"}, inplace=True)
@@ -587,6 +590,7 @@ obgnme_list
 # %%
 # read in the STD vals for the obs ensemble
 obsvals_std = pd.read_csv(pestpp_model_dir / "allobs_std.dat", delim_whitespace=True)
+
 obsvals.set_index("obsname", inplace=True, drop=False)
 
 # %%
@@ -866,11 +870,33 @@ par_starting_vals
 pars = pst.parameter_data
 
 # %%
-# Alternative to below: Test; both pars and par_starting_vals must have the same index "parnme".
+# Align by parameter NAME, not row position. `pst.parameter_data` is indexed by
+# parnme and `par_starting_vals` is indexed by parname; these two files are built
+# in different orders (the .tpl/.pst is HRU-major, month-minor while
+# starting_par_vals.dat is month-major, HRU-minor), so a positional copy
+# (`.values`) silently gives every parameter another parameter's value/bounds.
+# That is what caused snow_cbh_adj to inherit snowinfil_max's [0, 20] bounds and
+# calibrate outside its intended [0.5, 1.75] range.
 
-pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals[
-    ["parval1", "parubnd", "parlbnd"]
-].values
+# Fail loudly if the two parameter sets ever diverge rather than misaligning.
+_pst_names = set(pars.index)
+_start_names = set(par_starting_vals.index)
+_missing_from_start = _pst_names - _start_names
+_missing_from_pst = _start_names - _pst_names
+assert not _missing_from_start, (
+    "Parameters in the PST are missing from starting_par_vals: "
+    f"{sorted(_missing_from_start)[:5]}"
+)
+assert not _missing_from_pst, (
+    "Parameters in starting_par_vals are missing from the PST: "
+    f"{sorted(_missing_from_pst)[:5]}"
+)
+
+# Reindex starting values to the PST's parameter order (match by name) before
+# assigning, guaranteeing each parameter gets its own value and bounds.
+pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals.loc[
+    pars.index, ["parval1", "parubnd", "parlbnd"]
+]
 
 # # The old way
 # for idx, row in pars.iterrows():
@@ -965,7 +991,7 @@ pst.observation_data.loc[
 
 # %%
 pst.observation_data.loc[
-    (pst.observation_data.obgnme == "streamflow_daily_ex_low")
+    (pst.observation_data.obgnme == "streamflow_5day_ex_low")
     & (pst.observation_data.obsval == 0)
 ]
 

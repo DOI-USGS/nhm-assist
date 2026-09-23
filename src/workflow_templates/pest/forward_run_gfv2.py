@@ -521,8 +521,8 @@ swe_start = '2010-01-01'
 swe_end = '2021-12-31'
 
 # set in "pestpp_ies_calibration/notebooks/01_Prepare_observations_gfv2.ipynb"
-seg_outflow_start = '2013-01-01' 
-seg_outflow_end = '2024-12-31'
+seg_outflow_start = '1980-01-01' 
+seg_outflow_end = '2025-12-31'
 
 # %% [markdown]
 # ### Actual ET

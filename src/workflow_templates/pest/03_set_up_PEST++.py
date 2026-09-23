@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.19.3
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -865,11 +865,33 @@ par_starting_vals
 pars = pst.parameter_data
 
 # %%
-# Alternative to below: Test; both pars and par_starting_vals must have the same index "parnme".
+# Align by parameter NAME, not row position. `pst.parameter_data` is indexed by
+# parnme and `par_starting_vals` is indexed by parname; these two files are built
+# in different orders (the .tpl/.pst is HRU-major, month-minor while
+# starting_par_vals.dat is month-major, HRU-minor), so a positional copy
+# (`.values`) silently gives every parameter another parameter's value/bounds.
+# That is what caused snow_cbh_adj to inherit snowinfil_max's [0, 20] bounds and
+# calibrate outside its intended [0.5, 1.75] range.
 
-pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals[
-    ["parval1", "parubnd", "parlbnd"]
-].values
+# Fail loudly if the two parameter sets ever diverge rather than misaligning.
+_pst_names = set(pars.index)
+_start_names = set(par_starting_vals.index)
+_missing_from_start = _pst_names - _start_names
+_missing_from_pst = _start_names - _pst_names
+assert not _missing_from_start, (
+    "Parameters in the PST are missing from starting_par_vals: "
+    f"{sorted(_missing_from_start)[:5]}"
+)
+assert not _missing_from_pst, (
+    "Parameters in starting_par_vals are missing from the PST: "
+    f"{sorted(_missing_from_pst)[:5]}"
+)
+
+# Reindex starting values to the PST's parameter order (match by name) before
+# assigning, guaranteeing each parameter gets its own value and bounds.
+pars[["parval1", "parubnd", "parlbnd"]] = par_starting_vals.loc[
+    pars.index, ["parval1", "parubnd", "parlbnd"]
+]
 
 # # The old way
 # for idx, row in pars.iterrows():

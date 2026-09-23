@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -500,8 +485,8 @@ obs_bounds_df.to_csv(pestpp_model_dir / "allobs_bounds.dat", index=False)
 # to create the `sf_efc.nc` file with EFC codes.
 
 # %%
-seg_outflow_start = "1999-10-01"
-seg_outflow_end = "2010-09-30"
+seg_outflow_start = "2013-01-01"
+seg_outflow_end = "2024-12-31"
 
 # seg_outflow_start = "2011-01-01"  # Note: For ease, the start and end dates must be same as those designated in
 # seg_outflow_end = "2022-12-31"  #    "the Create_pest_model_observation_file."

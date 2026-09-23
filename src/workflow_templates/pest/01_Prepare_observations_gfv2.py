@@ -1238,8 +1238,8 @@ cal_gages
 
 # %%
 # These can be tailored for any specific model
-seg_outflow_start = "2013-01-01"
-seg_outflow_end = "2024-12-31"
+seg_outflow_start = "1980-01-01"
+seg_outflow_end = "2025-12-31"
 
 # seg_outflow_start = "2011-01-01"  # Note: For ease, the start and end dates must be same as those designated in
 # seg_outflow_end = "2022-12-31"  #    "the Create_pest_model_observation_file."
@@ -1363,8 +1363,14 @@ cdat_5day = xr.Dataset(
 cdat_5day["efc"] = cdat_5day["efc"].where(_valid_mask)
 cdat_5day["high_low"] = cdat_5day["high_low"].where(_valid_mask)
 
-# Drop time steps where any gage has NaN (incomplete 5-day bins)
-cdat_5day = cdat_5day.dropna(dim="time", how="any")
+# Drop only the 5-day bins where NO gage has data (how="all"), not those where
+# ANY gage has a gap (how="any"). The calibration gages have staggered periods
+# of record and never all report on the same day, so how="any" would intersect
+# them to zero surviving bins and emit no streamflow_5day observations at all.
+# With how="all" a bin survives if at least one gage reports; the per-gage gaps
+# left behind are filled with the -9999 no-data sentinel below (matching the
+# monthly path), so PEST++ treats those gage/bin cells as no-data.
+cdat_5day = cdat_5day.dropna(dim="time", how="all")
 
 # %%
 moo = cdat_5day.discharge.to_dataframe()

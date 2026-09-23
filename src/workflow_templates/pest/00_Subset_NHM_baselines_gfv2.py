@@ -1192,7 +1192,7 @@ c_da_swe_5day.close()
 import plotly.graph_objects as go
 import plotly.colors as pc
 
-hru_sel = [nhm_ids[10], nhm_ids[100], nhm_ids[500]]
+hru_sel = [nhm_ids[10], nhm_ids[100], nhm_ids[110]]
 colors = pc.qualitative.Set1[: len(hru_sel)]  # distinct colors per HRU
 time_slice = slice("2002-11-01", "2008-01-30")
 
