@@ -1,0 +1,28 @@
+
+BASINS = ['01473000', '05431486','09112500']
+# BASINS = ['05431486']
+
+
+rule all:
+    input:
+        expand("../postprocessing/figures/{b}/ies_hot.{b}/alldone.dat", b=BASINS),
+        # expand("../postprocessing/figures/{b}/prior_mc_reweight_gsa.{b}/Morris_total_summary.pdf", b=BASINS)
+
+rule plot_results:
+    params:
+        basin = "{b}"
+    output:
+        outfile = "../postprocessing/figures/{b}/ies_hot.{b}/alldone.dat"
+
+    script:
+        "general_postproc_2plot.py"
+
+rule plot_gsa:
+    params:
+        basin = '{b}'
+    output:
+        outfile = "../postprocessing/figures/{b}/prior_mc_reweight_gsa.{b}/Morris_total_summary.pdf"
+    notebook:
+        "../notebooks/postproc_GSA.ipynb"
+
+
