@@ -347,12 +347,25 @@ The hazard that motivated the rejection is unchanged and still decisive: if CI's
 environment omits a package some template imports, CI goes red for a problem no user has.
 The tests import most of the stack precisely because they exercise what users run.
 
-The real lever is sourcing `pywatershed` from PyPI (where those are genuine extras) or
-moving to `pywatershed` 3, whose conda recipe is already clean — the track `dev-future`
-exists to test. Both are out of scope here: the PyPI route also unpins `python <3.12`,
-which conda `pywatershed` 2.0.4 imposes, and re-solves the whole stack. Neither belongs in
-the change that turns on this repository's first pipeline. See "pywatershed 2.x drags in
-its own dev toolchain" in `AGENTS.md`.
+**Update (2026-09-22): the real lever was pulled.** `pywatershed` now comes from PyPI,
+where those are genuine extras, with `numba` held on conda-forge for its numpy ABI coupling
+and `python = ">=3.11.9,<3.12"` stating the 3.11 policy the conda recipe used to impose
+implicitly. Measured: `ci` 475 → 412 packages and 2.4 GB → 1.9 GB on disk; `default`
+3.2 GB → 2.7 GB. `ruff` and `pre-commit` left `ci` entirely.
+
+Two consequences for this spec:
+
+- **`ci` is now meaningfully distinct from `default`**, not one package wide — the split is
+  `proj-data` plus the `dev` feature's lint tooling. The "Run the `ci` environment" decision
+  above is stronger than when it was written.
+- **A 0.5 GB smaller install changes the caching arithmetic.** The "No `cache:` block"
+  decision was taken against a 2.4 GB environment; it is now 1.9 GB. Still ship without
+  caching and read the real install time from the first job log, but the follow-up
+  measurement is the one that settles it.
+
+See "Why `pywatershed` comes from PyPI, not conda-forge" in `AGENTS.md`. The residual
+`sphinx` stack in `ci` comes from `pyprms`, which makes the same packaging mistake in its
+own PyPI metadata and needs an upstream fix.
 
 ## Risks and open questions
 

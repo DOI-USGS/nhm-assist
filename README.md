@@ -253,7 +253,7 @@ A stale user-level `jupytextSync.pythonExecutable` also overrides the project's.
 
 Two others exist and are rarely needed directly:
 
-- **`ci`** — identical to `default` minus `proj-data`, so continuous integration skips that download.
+- **`ci`** — `default` minus `proj-data` and the lint tooling (`ruff`, `pre-commit`), so continuous integration skips that download. 1.9 GB against `default`'s 2.7 GB.
 - **`dev-future`** — a separate solve group tracking the next major versions of `pywatershed` and `dataretrieval`. Expect real test failures there; it exists to see what is coming.
 
 ### Troubleshooting
