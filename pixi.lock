@@ -34915,7 +34915,7 @@ packages:
   - topojson
   - tqdm
   - xarray
-  requires_python: '>=3.11,<3.14'
+  requires_python: '>=3.11'
 - pypi: https://files.pythonhosted.org/packages/00/5e/6c41ee74f0a4caef53f224c3e6c3869b577dade1a283767bdc874f11e51c/sphinx_book_theme-1.4.0-py3-none-any.whl
   name: sphinx-book-theme
   version: 1.4.0
