@@ -1,4 +1,64 @@
 # %%
+# Environment sanity check -- run first, and read it if it prints anything.
+#
+# Python adds a per-user package directory (~/.local/lib/pythonX.Y/site-packages
+# on macOS and Linux, %APPDATA%\Python\PythonXY\site-packages on Windows) to
+# sys.path AHEAD of this environment's own packages. It is keyed by Python
+# version, not by project, so a `pip install --user` run from any other project
+# silently overrides the versions this project locked -- with no signal from
+# pixi, from pixi.lock, or from `pixi list`.
+#
+# nhm-assist does not register a Jupyter kernel or pin one in notebook metadata:
+# choosing an environment is yours to do in your IDE. This check is what tells
+# you when that choice has been quietly undermined.
+try:
+    import site
+    import sys
+    import sysconfig
+    from pathlib import Path
+
+    def _top_level_names(directory):
+        skip_suffixes = (".dist-info", ".egg-info", ".pth")
+        return {
+            entry.name.split(".")[0] if entry.is_file() else entry.name
+            for entry in directory.iterdir()
+            if not entry.name.startswith("_")
+            and not entry.name.endswith(skip_suffixes)
+        }
+
+    _user_site = Path(site.getusersitepackages()) if site.ENABLE_USER_SITE else None
+    _env_site = Path(sysconfig.get_paths()["purelib"])
+    _paths = [str(Path(p)) for p in sys.path]
+
+    if (
+        _user_site is not None
+        and _user_site.is_dir()
+        and str(_user_site) in _paths
+        and _paths.index(str(_user_site)) < _paths.index(str(_env_site))
+    ):
+        _shadowed = sorted(_top_level_names(_user_site) & _top_level_names(_env_site))
+        if _shadowed:
+            print("=" * 72)
+            print("WARNING: packages outside this environment are overriding it.")
+            print("")
+            print(f"  shadowing:  {_user_site}")
+            print(f"  shadowed:   {_env_site}")
+            print(f"  {len(_shadowed)} package(s): {', '.join(_shadowed)}")
+            print("")
+            print("Versions you see may not be the versions pixi.lock specifies,")
+            print("and `pixi list` will not show this because it reads the lock")
+            print("file rather than sys.path.")
+            print("")
+            print("To fix, either launch Jupyter through pixi, or set")
+            print("PYTHONNOUSERSITE to 1 in your IDE's kernel environment.")
+            print("Check any one package with:")
+            print("    import pandas; print(pandas.__version__, pandas.__file__)")
+            print("=" * 72)
+except Exception as _exc:  # never let a sanity check break the notebook
+    print(f"(environment sanity check skipped: {_exc})")
+
+
+# %%
 import warnings
 import pandas as pd
 from pyPRMS.metadata.metadata import MetaData
@@ -45,7 +105,7 @@ print(root_dir)
 # %% [markdown]
 # ## Introduction
 # The purpose of this notebook is to setup paths and directories for all nhm-assist notebooks using a provided or requested National Hydrologic Model (NHM) subdomain model (`model_dir`) **Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.**
-# A sample NHM subdomain model is provided in nhm-assist `domain_data` folder for the Willamette River subdomain.
+# A sample NHM subdomain model is provided in the nhm-assist `domain_data` folder for the Walla Walla subdomain.
 
 # %% [markdown]
 # ### A National Hydrologic Model (NHM) subdomain model
@@ -77,7 +137,7 @@ print(root_dir)
 #     - **[HUC2](https://www.sciencebase.gov/catalog/item/6407a507d34e76f5f75e39ec)**
 #     - **NHM-V1_1*** not included in the NHM v1.1 data release [(Markstrom and others, 2024).](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)
 #
-# 2. The **data_domain** folder contains the NHM subdomain model folder(s).
+# 2. The **domain_data** folder contains the NHM subdomain model folder(s).
 #     Any **NHM subdomain model folder** should contain:
 #     - **control.default.bandit** (a control file)
 #     - **myparam.param** (a parameter file)
@@ -115,7 +175,7 @@ print(root_dir)
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **selected NHM domain folder name**.</font><br>
-# <font size = '3'>The default is set to the example NHM subdomain model name, "willamette_river". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
+# <font size = '3'>The default is set to the example NHM subdomain model name, "Walla_Walla". **When these notebooks run from a workspace project this value is ignored:** `subdomain` is overwritten with the project's active model name (set it with `pixi run project-set-active-model`, or option 7 of `pixi run setup`). It takes effect only in the legacy in-repo layout, where it names the model folder under "nhm-assist/domain_data". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
 subdomain = "CrookedRiver"

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, pytest, pandas / geopandas, pyPRMS, pywatershed, folium, pixi (`pixi run --frozen`).
 
-**Spec:** `docs/superpowers/specs/2026-08-30-helper-unification-design.md`
+**Spec:** `docs/design/specs/2026-08-30-helper-unification-design.md`
 
 ## Global Constraints
 
@@ -447,7 +447,7 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'assist.common.assist_u
 
 Unified from src/assist/nhm/nhm_assist_utilities.py and
 src/assist/nhf/nhm_assist_utilities_v2.py. See
-docs/superpowers/specs/2026-08-30-helper-unification-design.md.
+docs/design/specs/2026-08-30-helper-unification-design.md.
 """
 from __future__ import annotations
 

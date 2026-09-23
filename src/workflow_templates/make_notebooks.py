@@ -8,8 +8,10 @@ from typing import Literal
 import jupytext
 from jupytext.paired_paths import InconsistentPath, paired_paths
 
-from assist.workspace.bridge import get_project_workflow_notebooks_dir
-from assist.workspace.kernels import PAIRING_MODE_KERNELS, ensure_kernel_registered
+from assist.workspace.bridge import (
+    get_project_dir,
+    get_project_workflow_notebooks_dir,
+)
 
 
 TEMPLATES_ROOT = Path(__file__).resolve().parent
@@ -26,6 +28,11 @@ WORKFLOW_INPUT_DIRS: dict[str, tuple[Path, ...]] = {
 }
 
 PairingMode = Literal["local", "dev"]
+
+# Pairing modes are about where a notebook's paired .py file lives, and nothing
+# else. Kernel and environment selection belongs to the user's IDE: this
+# package deliberately registers no kernel and writes no kernelspec.
+PAIRING_MODES: tuple[str, ...] = ("local", "dev")
 
 
 def dev_pairing_formats(template_dir: Path, notebook_dir: Path) -> str:
@@ -110,8 +117,6 @@ def _apply_pairing(
     template_dir: Path,
     notebook_dir: Path,
 ) -> None:
-    kernel_name, kernel_display = PAIRING_MODE_KERNELS[pairing_mode]
-
     jupytext_meta = notebook.metadata.setdefault("jupytext", {})
     if pairing_mode == "dev":
         jupytext_meta["formats"] = dev_pairing_formats(template_dir, notebook_dir)
@@ -119,7 +124,7 @@ def _apply_pairing(
         # formats path and local jupytext_version into the shared, committed
         # repo template, churning on every contributor's save. The .ipynb
         # (never committed to nhm-assist) keeps full metadata regardless, so
-        # pairing and the kernel selection are unaffected.
+        # pairing is unaffected.
         jupytext_meta["notebook_metadata_filter"] = "-all"
     else:
         # Pairing comes from the project's jupytext.toml, not from the file.
@@ -128,11 +133,9 @@ def _apply_pairing(
     if not jupytext_meta:
         notebook.metadata.pop("jupytext", None)
 
-    notebook.metadata["kernelspec"] = {
-        "name": kernel_name,
-        "display_name": kernel_display,
-        "language": "python",
-    }
+    # Anything a template carried over is the template author's guess at a
+    # kernel, not this project's to make. Drop it so the IDE asks.
+    notebook.metadata.pop("kernelspec", None)
 
 
 def _patch_existing_notebook(
@@ -144,7 +147,6 @@ def _patch_existing_notebook(
 ) -> str:
     """Bring an existing notebook's metadata in line without touching its cells."""
     notebook = jupytext.read(output_path)
-    kernel_name, _ = PAIRING_MODE_KERNELS[pairing_mode]
     if pairing_mode == "dev":
         wanted_formats = dev_pairing_formats(py_file.parent, output_path.parent)
         wanted_metadata_filter = "-all"
@@ -158,11 +160,10 @@ def _patch_existing_notebook(
     current_jupytext_meta = notebook.metadata.get("jupytext", {})
     current_formats = current_jupytext_meta.get("formats")
     current_metadata_filter = current_jupytext_meta.get("notebook_metadata_filter")
-    current_kernel = (notebook.metadata.get("kernelspec") or {}).get("name")
     if (
         current_formats == wanted_formats
         and current_metadata_filter == wanted_metadata_filter
-        and current_kernel == kernel_name
+        and "kernelspec" not in notebook.metadata
     ):
         return "already configured"
 
@@ -213,7 +214,7 @@ def convert_workflow(
     pairing_mode: PairingMode = "local",
     print_func=print,
 ) -> list[Path]:
-    if pairing_mode not in PAIRING_MODE_KERNELS:
+    if pairing_mode not in PAIRING_MODES:
         raise ValueError(f"unsupported pairing mode: {pairing_mode}")
     if not project_name:
         raise ValueError("project_name is required")
@@ -303,10 +304,6 @@ def main(
         print_func("Error: --workspace-root and --project-name are both required.")
         return 2
 
-    kernel_name, kernel_display = PAIRING_MODE_KERNELS[args.pairing_mode]
-    if not args.dry_run:
-        ensure_kernel_registered(kernel_name, kernel_display)
-
     workflows = list(WORKFLOW_INPUT_DIRS) if args.workflow == "all" else [args.workflow]
 
     for workflow in workflows:
@@ -324,9 +321,17 @@ def main(
         print_func("")
         print_func(f"[{workflow}] {len(created)} notebook(s) in {notebook_dir}")
         print_func(f"[{workflow}] Open them with: jupyter lab {notebook_dir}")
+        # In VS Code / Kiro, open the *project* directory rather than this
+        # notebook subfolder. Those editors read .vscode/settings.json only from
+        # the root folder they were opened on -- they do not walk up -- and that
+        # file is what points the Jupytext Sync extension at a Python that has
+        # jupytext. Open notebooks/<workflow> directly and the extension finds no
+        # interpreter and silently stops syncing on save.
+        project_dir = get_project_dir(args.workspace_root, args.project_name)
         print_func(
-            f"[{workflow}] Or open that folder in VS Code / Kiro and select the "
-            f"'{kernel_display}' kernel."
+            f"[{workflow}] Or open {project_dir} in VS Code / Kiro (the project "
+            f"folder, so its .vscode/settings.json applies), then pick a kernel "
+            f"from this project's pixi environment."
         )
 
     return 0

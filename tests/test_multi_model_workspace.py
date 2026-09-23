@@ -136,9 +136,9 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             config = workspace_root / "Project_A" / "jupytext.toml"
             self.assertEqual(paths["jupytext_config"], config)
             self.assertTrue(config.is_file())
-            self.assertIn('formats = "ipynb,py:percent"', config.read_text())
+            self.assertIn('formats = "ipynb,py:percent"', config.read_text(encoding="utf-8"))
             self.assertIn(
-                'notebook_metadata_filter = "-all"', config.read_text()
+                'notebook_metadata_filter = "-all"', config.read_text(encoding="utf-8")
             )
 
     def test_create_project_never_overwrites_an_existing_jupytext_config(self):
@@ -152,7 +152,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(config.read_text(), custom)
+            self.assertEqual(config.read_text(encoding="utf-8"), custom)
 
     def test_create_project_writes_vscode_jupytext_sync_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,11 +162,11 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
             self.assertEqual(paths["vscode_settings"], settings_path)
-            settings = json.loads(settings_path.read_text())
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 settings["jupytextSync.syncDocuments"],
                 {
-                    "onNotebookDocumentOpen": False,
+                    "onNotebookDocumentOpen": True,
                     "onNotebookDocumentSave": True,
                     "onNotebookDocumentClose": False,
                     "onTextDocumentOpen": False,
@@ -189,7 +189,35 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(settings_path.read_text(), custom)
+            self.assertEqual(settings_path.read_text(encoding="utf-8"), custom)
+
+    def test_repair_vscode_settings_overwrites_stale_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+            service.create_project(workspace_root, "Project_A")
+            settings_path = workspace_root / "Project_A" / ".vscode" / "settings.json"
+            settings_path.write_text(
+                '{"jupytextSync.syncDocuments": {"onNotebookDocumentOpen": false}}',
+                encoding="utf-8",
+            )
+
+            returned = service.repair_vscode_settings(workspace_root, "Project_A")
+
+            self.assertEqual(returned, settings_path)
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            self.assertTrue(
+                settings["jupytextSync.syncDocuments"]["onNotebookDocumentOpen"]
+            )
+            self.assertEqual(
+                settings["jupytextSync.pythonExecutable"], sys.executable
+            )
+
+    def test_repair_vscode_settings_rejects_a_missing_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve()
+
+            with self.assertRaises(FileNotFoundError):
+                service.repair_vscode_settings(workspace_root, "Nope")
 
     def test_create_project_writes_vscode_extension_recommendation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -199,7 +227,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             extensions_path = workspace_root / "Project_A" / ".vscode" / "extensions.json"
             self.assertEqual(paths["vscode_extensions"], extensions_path)
-            extensions = json.loads(extensions_path.read_text())
+            extensions = json.loads(extensions_path.read_text(encoding="utf-8"))
             self.assertIn("caenrigen.jupytext-sync", extensions["recommendations"])
 
     def test_create_project_never_overwrites_existing_vscode_extensions(self):
@@ -213,7 +241,7 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
 
             service.create_project(workspace_root, "Project_A")
 
-            self.assertEqual(extensions_path.read_text(), custom)
+            self.assertEqual(extensions_path.read_text(encoding="utf-8"), custom)
 
     def test_create_model_does_not_require_model_local_notebooks_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -463,6 +491,82 @@ class ProjectSharedNotebookServiceTests(unittest.TestCase):
             self.assertNotEqual(runtime_a["model_root"], runtime_b["model_root"])
             self.assertTrue((runtime_a["model_dir"] / "control.default.bandit").exists())
             self.assertTrue((runtime_b["model_dir"] / "control.default.bandit").exists())
+
+    def test_import_of_plain_model_folder_leaves_derived_artifacts_out_of_source_data(self):
+        """A plain PRMS folder's prior results are not pristine inputs.
+
+        `output/` and `notebook_output_files/` are regenerated by notebooks 4-6
+        into outputs/runtime/. Importing them into inputs/source_data/ both
+        misrepresents derived artifacts as source and doubles what they cost on
+        disk: the runtime seed already skips those two names, so a model
+        imported with stale results carried them in source_data forever. On the
+        216M Walla Walla subdomain that was 181M of dead weight.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve() / "workspace"
+            source = Path(tmpdir).resolve() / "plain_prms_model"
+            source.mkdir(parents=True)
+            (source / "myparam.param").write_text("param\n", encoding="utf-8")
+            (source / "control.default.bandit").write_text("control\n", encoding="utf-8")
+            (source / "cbh.nc").write_text("cbh\n", encoding="utf-8")
+            (source / "GIS").mkdir()
+            (source / "GIS" / "model_layers.gpkg").write_text("gis\n", encoding="utf-8")
+            # Derived artifacts from a previous run of the notebooks.
+            (source / "output").mkdir()
+            (source / "output" / "prcp.nc").write_text("regenerated\n", encoding="utf-8")
+            (source / "notebook_output_files" / "html_maps").mkdir(parents=True)
+            (
+                source / "notebook_output_files" / "html_maps" / "hydrofabric_map.html"
+            ).write_text("<html></html>\n", encoding="utf-8")
+
+            service.import_model(workspace_root, "Project_A", "Model_A", source)
+
+            source_data = (
+                workspace_root / "Project_A" / "models" / "Model_A" / "inputs" / "source_data"
+            )
+            self.assertTrue(
+                (source_data / "myparam.param").is_file(),
+                "the parameter file is genuine source and must be imported",
+            )
+            self.assertTrue(
+                (source_data / "GIS" / "model_layers.gpkg").is_file(),
+                "GIS is genuine source and must be imported",
+            )
+            self.assertFalse(
+                (source_data / "output").exists(),
+                "output/ is regenerated by notebook 4; it is not pristine source",
+            )
+            self.assertFalse(
+                (source_data / "notebook_output_files").exists(),
+                "notebook_output_files/ is regenerated by the notebooks; not source",
+            )
+
+    def test_runtime_seed_still_works_after_derived_artifacts_are_skipped(self):
+        """Dropping derived artifacts at import must not break runtime seeding."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_root = Path(tmpdir).resolve() / "workspace"
+            source = Path(tmpdir).resolve() / "plain_prms_model"
+            source.mkdir(parents=True)
+            (source / "myparam.param").write_text("param\n", encoding="utf-8")
+            (source / "control.default.bandit").write_text("control\n", encoding="utf-8")
+            (source / "output").mkdir()
+            (source / "output" / "stale.nc").write_text("stale\n", encoding="utf-8")
+
+            service.import_model(workspace_root, "Project_A", "Model_A", source)
+            runtime = service.prepare_model_runtime(
+                workspace_root, project_name="Project_A", model_name="Model_A"
+            )
+
+            runtime_dir = runtime["runtime_model_dir"]
+            self.assertTrue(
+                (runtime_dir / "control.default.bandit").is_file(),
+                "runtime must still be seeded from source_data",
+            )
+            self.assertTrue((runtime_dir / "myparam.param").is_file())
+            self.assertFalse(
+                (runtime_dir / "output").exists(),
+                "stale output must not reach runtime by any path",
+            )
 
     def test_import_model_mirrors_structured_source_and_drops_runtime(self):
         with tempfile.TemporaryDirectory() as tmpdir:

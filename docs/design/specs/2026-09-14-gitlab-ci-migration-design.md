@@ -3,7 +3,7 @@
 **Date:** 2026-09-14
 **Status:** Draft, pending review
 **Work item:** [#47 — Migrate CI from GitHub Actions to GitLab CI](https://code.usgs.gov/wma/hytest/nhm-assist/-/work_items/47)
-**Supersedes:** `docs/superpowers/specs/2026-08-25-gitlab-ci-migration-design.md`
+**Supersedes:** `docs/design/specs/2026-08-25-gitlab-ci-migration-design.md`
 **Branch:** off `develop`
 
 ## Why this supersedes the 2026-08-25 spec
@@ -122,9 +122,15 @@ nightly needs only a maintainer to create the schedule, not a file change.
 
 ### Run the `ci` environment, not `dev`
 
-The `ci` environment (`prod` + `test`) postdates the prior spec. It excludes ruff,
-pre-commit, and `proj-data` — 2.4 GB versus `dev`'s 3.2 GB — while sharing the `default`
-solve group, so it resolves to the same package versions users get.
+The `ci` environment (`prod` + `test`) postdates the prior spec. It excludes `proj-data` —
+2.4 GB versus `default`'s 3.2 GB — while sharing the `default` solve group, so it resolves
+to the same package versions users get.
+
+> **Correction (2026-09-22, work item #49):** this paragraph originally claimed `ci` also
+> excludes ruff and pre-commit. It does not. Both are present, as transitive conda
+> dependencies of `pywatershed` 2.x rather than from the `dev` feature — see the rewritten
+> "leaner CI dependency set" note below. `proj-data` is the entire difference between the
+> two environments, and the 2.4 GB / 3.2 GB figures were measured correctly.
 
 ### No `cache:` block in the first pipeline
 
@@ -225,6 +231,10 @@ test:
     - export REQUESTS_CA_BUNDLE="${SSL_CERT_FILE}"
     - export PIP_CERT="${SSL_CERT_FILE}"
     - export GIT_SSL_CAINFO="${SSL_CERT_FILE}"
+    # PROJ uses its own libcurl handle and reads this, not CURL_CA_BUNDLE alone.
+    # `ci` ships without proj-data and without PROJ_NETWORK=OFF, so a datum-shift
+    # grid fetch from cdn.proj.org is permitted here and needs the DOI CA too.
+    - export PROJ_CURL_CA_BUNDLE="${SSL_CERT_FILE}"
   script:
     - pixi run -e ci test
 ```
@@ -241,11 +251,46 @@ Plus `DOIRootCA2.crt` committed at the repository root, copied from the gdptools
 
 ## Recorded constraints on the pixi environment restructuring
 
-The lead developers intend to merge the `dev` environment into `default`, on the grounds
-that most end users need `proj-data` too. This spec does not perform that change, but CI
+> **Update (2026-09-22, work item #49): the merge has happened. One half of this
+> constraint holds; the other half is withdrawn as wrong.**
+>
+> `default` now composes `prod` + `test` + `dev`; the `dev` *environment* is gone while the
+> `dev` *feature* remains, since `dev-future` composes it. `ci` is unchanged at `prod` +
+> `test`.
+>
+> - **"`ci` must not inherit `proj-data`" — still binding, and satisfied.** `proj-data`
+>   sits in the `dev` feature, which `ci` does not compose. It is the *only* package
+>   `default` has that `ci` lacks: 817 MB of `share/proj`, and the whole value of keeping
+>   a separate `ci` environment at all.
+> - **"`ci` must set `PROJ_NETWORK=OFF`" — WITHDRAWN.** An interim note dated 2026-09-18
+>   recorded this as an unfixed defect. That was a misreading of why the setting exists.
+>   `proj-data` and `PROJ_NETWORK=OFF` were introduced together (work item #33) to work
+>   around USGS VPN SSL inspection breaking PROJ's grid fetch from `cdn.proj.org` *on
+>   developer machines*. A WMA runner is not behind that inspection, and the CI job
+>   installs the DOI root CA regardless — which is the same remedy, applied at the job
+>   rather than by avoiding the network. A CI job reaching `cdn.proj.org` is therefore the
+>   intended behaviour, not a hermeticity failure, and the dedicated `ci` activation block
+>   sketched below should **not** be applied.
+>
+>   The one thing this does require is `PROJ_CURL_CA_BUNDLE` in the job's `before_script`,
+>   since PROJ uses its own libcurl handle and does not read `CURL_CA_BUNDLE` alone. That
+>   export has been added to the `.gitlab-ci.yml` above.
+>
+>   In practice this may never fire: the test suite only *constructs* `crs=4326`, and the
+>   reprojections in `src/` are NAD83-family (`4326`↔`5070`, `ESRI:102039`), which do not
+>   normally pull datum-shift grids. See "Risks and open questions" for the fallback if
+>   the first pipeline proves otherwise.
+>
+> The `README.md` quotation below is also superseded: that file no longer describes
+> `proj-data` as scoped to `dev`/`dev-future`, because `default` now carries it.
+
+The lead developers intended to merge the `dev` environment into `default`, on the grounds
+that most end users need `proj-data` too. This spec did not perform that change, but CI
 depends on a property it could silently break, so the constraint is recorded here:
 
 **`ci` must not inherit `proj-data`, and must set `PROJ_NETWORK=OFF`.**
+*(The second clause is withdrawn — see the 2026-09-22 update above. The rest of this
+section is the original text, kept for the record.)*
 
 `proj-data` is ~800 MB of datum-shift grids. `README.md` already documents it as scoped to
 `dev`/`dev-future` specifically "so `default`/`ci` don't pay the extra ~500MB". If
@@ -258,6 +303,7 @@ proj-data = "*"
 [tool.pixi.feature.proj.activation.env]
 PROJ_NETWORK = "OFF"
 
+# WITHDRAWN 2026-09-22 (#49) — do not apply this block; see the update above.
 [tool.pixi.feature.ci.activation.env]
 PROJ_NETWORK = "OFF"          # hermetic: never reach cdn.proj.org
 
@@ -269,21 +315,44 @@ dev     = { features = ["prod", "proj", "test", "dev"], solve-group = "default" 
 
 Same solve group throughout, so all three still resolve to identical versions.
 
-`PROJ_NETWORK=OFF` on `ci` matters independently of that merge. `README.md`'s firewall
-warning describes `pyproj` hanging or failing with `CERTIFICATE_VERIFY_FAILED` while
-fetching datum grids from `cdn.proj.org` under SSL inspection — the same interception the
-DOI certificate exists to handle. A CI job with neither the grids on disk nor network
-fetches disabled is exposed to exactly that. Disabling the fetch is free and makes the job
-hermetic.
+~~`PROJ_NETWORK=OFF` on `ci` matters independently of that merge.~~ **Superseded
+2026-09-22 (#49).** The original argument ran: `README.md`'s firewall warning describes
+`pyproj` hanging or failing with `CERTIFICATE_VERIFY_FAILED` while fetching datum grids
+from `cdn.proj.org` under SSL inspection, so a CI job with neither the grids on disk nor
+network fetches disabled is exposed to exactly that. The error in it is treating "the same
+interception the DOI certificate exists to handle" as a reason to avoid the network, when
+it is a reason to trust the certificate — which the job already does. Exporting
+`PROJ_CURL_CA_BUNDLE` extends that same remedy to PROJ's own libcurl handle, and is the
+change actually adopted. Disabling the fetch instead would trade a working grid lookup for
+silently lower-accuracy transforms.
 
-**A leaner CI dependency set was considered and rejected.** Of the 41 direct dependencies,
-32 are imported somewhere in `src/` or `tests/`. The nine that are not — `distributed`,
-`ipython`, `jupyter-server`, `jupyterlab`, `pyarrow`, `pyogrio`, `rasterio`, `rasterstats`,
-`scikit-image` — are mostly indirect I/O backends for geopandas/pandas or the Jupyter
-runtime. Removing them would save roughly 300 MB of 2,400 MB while introducing a real
-hazard: if CI's environment omits a package that some template imports, CI goes red for a
-problem no user has. The tests import most of the stack precisely because they exercise
-what users run.
+**A leaner CI dependency set was considered and rejected.** The conclusion stands; the
+original reasoning, kept below in strikethrough, measured the wrong thing.
+
+~~Of the 41 direct dependencies, 32 are imported somewhere in `src/` or `tests/`. The nine
+that are not — `distributed`, `ipython`, `jupyter-server`, `jupyterlab`, `pyarrow`,
+`pyogrio`, `rasterio`, `rasterstats`, `scikit-image` — are mostly indirect I/O backends for
+geopandas/pandas or the Jupyter runtime. Removing them would save roughly 300 MB of
+2,400 MB.~~
+
+Work item #49 measured where the weight actually is. **89 of `ci`'s 475 packages — 0.18 GB
+of a 0.48 GB download — are reachable only through `pywatershed`**, whose conda-forge 2.x
+recipe declares its lint, test, doc and optional extras as hard run dependencies: `ruff`,
+`pre-commit`, `pytest-{cov,env,order,xdist}`, `sphinx`, `pandoc`, `git`, `virtualenv`, and
+the `panel`/`holoviews`/`datashader`/`geoviews` stack. Pruning the direct dependency list
+cannot reach any of that, which is why the ~300 MB estimate above overstated what the
+exercise would buy.
+
+The hazard that motivated the rejection is unchanged and still decisive: if CI's
+environment omits a package some template imports, CI goes red for a problem no user has.
+The tests import most of the stack precisely because they exercise what users run.
+
+The real lever is sourcing `pywatershed` from PyPI (where those are genuine extras) or
+moving to `pywatershed` 3, whose conda recipe is already clean — the track `dev-future`
+exists to test. Both are out of scope here: the PyPI route also unpins `python <3.12`,
+which conda `pywatershed` 2.0.4 imposes, and re-solves the whole stack. Neither belongs in
+the change that turns on this repository's first pipeline. See "pywatershed 2.x drags in
+its own dev toolchain" in `AGENTS.md`.
 
 ## Risks and open questions
 
@@ -310,6 +379,18 @@ equivalent. If `pixi install` fails with a certificate error despite the `before
 the ordered fallbacks are: (1) `SSL_CERT_DIR` alongside `SSL_CERT_FILE`; (2) the
 miniforge base image, where conda's `ssl_verify` setting is available; (3) `pixi config
 set tls-no-verify true`, which is insecure and a last resort only.
+
+**PROJ datum-grid fetches from a WMA runner are unproven.** `ci` ships without `proj-data`
+and without `PROJ_NETWORK=OFF`, by the decision recorded above, so if a transform needs a
+datum-shift grid the job will reach `cdn.proj.org` through the same inspected TLS path the
+DOI certificate exists to handle. `PROJ_CURL_CA_BUNDLE` in `before_script` is the intended
+remedy, but it has not been exercised on a runner. This is a low-probability risk: the
+suite only constructs `crs=4326`, and `src/` reprojects within the NAD83 family
+(`4326`↔`5070`, `ESRI:102039`), which does not normally trigger a grid download. If the
+first pipeline does show a `CERTIFICATE_VERIFY_FAILED` or a hang inside `pyproj`, the
+ordered fallbacks are: (1) confirm `PROJ_CURL_CA_BUNDLE` is exported before the failing
+step; (2) set `PROJ_NETWORK=OFF` as a job variable, accepting ballpark transforms in CI;
+(3) add `proj-data` to `ci`, at 817 MB, only if a test genuinely needs grid accuracy.
 
 **GitLab CI cannot be verified locally.** Syntax can be checked with GitLab's CI Lint tool;
 `workflow:` semantics, runner pickup, image pull, and TLS behavior cannot. The first

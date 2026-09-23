@@ -107,10 +107,19 @@ channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
 [tool.pixi.environments]
-default = { features = ["prod"], solve-group = "default" }
+# `default` is the only environment contributors and end users need. `ci`
+# differs from it by proj-data alone -- not by lint or test tooling; see
+# "Environment" and "pywatershed 2.x ..." in AGENTS.md for why, and for what
+# solve groups do and don't do. The dev *feature* is retained below --
+# dev-future still composes it.
+default = { features = ["prod", "test", "dev"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
-dev = { features = ["prod", "test", "dev"], solve-group = "default" }
 dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
+
+# Stops user site-packages shadowing this environment; see "User site-packages"
+# in AGENTS.md.
+[tool.pixi.activation.env]
+PYTHONNOUSERSITE = "1"
 
 # Only what is worth getting from conda-forge: compiled packages and ones that
 # bind to system libraries. Pure-Python requirements come from
@@ -121,6 +130,8 @@ dask = "*"
 distributed = "*"
 fiona = "*"
 geopandas = "*"
+# Temporary hold; see "Temporary dependency pins" in AGENTS.md.
+hdf5 = ">=1.14,<2"
 herbie-data = "*"
 matplotlib = "*"
 netcdf4 = "*"
@@ -142,6 +153,10 @@ rioxarray = ">=0.19.0,<0.24"
 gdptools = ">=0.4.0,<0.5"
 
 [tool.pixi.pypi-dependencies]
+# The editable self-install, which pulls [project.dependencies]. Declared on
+# the default feature so every environment composes it, rather than repeated
+# per feature.
+nhm-assist = { path = ".", editable = true }
 # Not on conda-forge.
 hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
@@ -151,17 +166,13 @@ python = ">=3.11.9,<3.14"
 pywatershed = ">=2.0.1,<3"
 dataretrieval = "<1.2"
 
-[tool.pixi.feature.prod.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
-
 [tool.pixi.feature.dev.dependencies]
 proj-data = "*"
 
+# Scoped to dev on purpose: `ci` gets neither this nor proj-data. Work item
+# #33, and "Environment" in AGENTS.md. Don't "fix" this.
 [tool.pixi.feature.dev.activation.env]
 PROJ_NETWORK = "OFF"
-
-[tool.pixi.feature.dev.pypi-dependencies]
-nhm-assist = { path = ".", editable = true }
 
 [tool.pixi.feature.dev-future.dependencies]
 python = ">=3.12,<3.14"
@@ -176,7 +187,7 @@ description = "End-user entry point: interactive menu to pick a workspace, creat
 [tool.pixi.tasks.dev-mode]
 cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }} --pairing-mode dev"
 args = ["workspace_root", "project_name", { arg = "workflow", default = "nhm" }]
-default-environment = "dev"
+default-environment = "default"
 description = "Contributor mode: generate a project's notebooks paired back to src/workflow_templates/<workflow>/*.py, so editing them in Jupyter edits the templates. Does not launch Jupyter."
 
 [tool.pixi.tasks.notebooks-create-project]
@@ -235,10 +246,13 @@ description = "Import an existing PRMS model folder from <source_dir> into a pro
 
 [tool.pixi.tasks.lint]
 cmd = "ruff check . && ruff format --check ."
-default-environment = "dev"
+default-environment = "default"
 description = "Lint and check formatting with ruff."
 
 [tool.pixi.tasks.test]
-cmd = "pytest tests/"
-default-environment = "dev"
+# `python -m pytest` rather than bare `pytest`: the -m form puts the repo root
+# on sys.path, which tests/unification/ needs. Bare `pytest` collects only 174
+# of 446 tests and errors out on the other 18 modules.
+cmd = "python -m pytest tests/"
+default-environment = "default"
 description = "Run the test suite."

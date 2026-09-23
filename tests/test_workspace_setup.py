@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 import tempfile
 import unittest
@@ -555,12 +556,6 @@ class NotebookLocationActionTests(unittest.TestCase):
             workspace_root=self.workspace_root,
             current_project="Project_A",
         )
-        kernel_patcher = patch.object(
-            setup, "ensure_kernel_registered", return_value=False
-        )
-        kernel_patcher.start()
-        self.addCleanup(kernel_patcher.stop)
-
     def test_prints_the_path_and_the_command_without_spawning_anything(self):
         lines = []
         with patch("subprocess.Popen") as mock_popen:
@@ -573,7 +568,6 @@ class NotebookLocationActionTests(unittest.TestCase):
         self.assertEqual(result.name, "nhm")
         self.assertIn(str(result), output)
         self.assertIn("jupyter lab", output)
-        self.assertIn(setup.DEFAULT_KERNEL_DISPLAY_NAME, output)
 
     def test_generates_notebooks_first_when_they_are_missing(self):
         with patch.object(setup, "generate_nhm_notebooks") as mock_generate:
@@ -591,6 +585,21 @@ class NotebookLocationActionTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_repair_editor_settings_rewrites_the_file_and_reports_the_path(self):
+        lines = []
+
+        result = setup.action_repair_editor_settings(
+            self.state, print_func=lines.append
+        )
+
+        output = "\n".join(lines)
+        self.assertTrue(result.exists())
+        self.assertIn(str(result), output)
+        settings = json.loads(result.read_text(encoding="utf-8"))
+        self.assertTrue(
+            settings["jupytextSync.syncDocuments"]["onNotebookDocumentOpen"]
+        )
 
 
 class LauncherRemovalTests(unittest.TestCase):

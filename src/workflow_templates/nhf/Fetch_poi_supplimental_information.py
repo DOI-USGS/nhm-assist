@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -144,6 +129,10 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             "drainage_area_contrib": nan_list,
         }
     )  # Initialize empty datafame
+    # Same dtype pin as assist.common.assist_utilities.find_missing_gage_info:
+    # a column built from [np.nan]*n is float64, so the first gage name written
+    # into poi_name would force an upcast that pandas 3 refuses.
+    gages_df = gages_df.astype({"poi_agency": "object", "poi_name": "object"})
 
     # Check for resource (supplemental) file, if present, append information to gages_df
     if info_supplement_path.exists():
