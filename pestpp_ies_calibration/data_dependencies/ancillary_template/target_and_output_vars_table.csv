@@ -1,8 +1,0 @@
-target_id,pws_output_var,time_aggregation,start_date,end_date
-aet,hru_actet,monthly,2009-01-01,2020-12-31
-aet,hru_actet,mean_monthly,2009-01-01,2020-12-31
-runoff,hru_outflow,monthly,2009-01-01,2020-12-31
-recharge_norm,recharge,annual,2002-01-01,2013-12-31
-swe,pkwater_equiv,monthly,2010-01-01,2021-12-31
-soil_moist_norm,soil_rechr,monthly,2014-01-01,2025-12-31
-soil_moist_norm,soil_rechr,annual,2014-01-01,2025-12-31
