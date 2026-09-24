@@ -1,7 +1,7 @@
 # Migrate CI to GitLab: repair the test suite, then gate merge requests
 
 **Date:** 2026-09-14
-**Status:** Draft, pending review
+**Status:** Implemented 2026-09-24 in MR !61 (Task A in `7ee9ff8`, merged earlier)
 **Work item:** [#47 — Migrate CI from GitHub Actions to GitLab CI](https://code.usgs.gov/wma/hytest/nhm-assist/-/work_items/47)
 **Supersedes:** `docs/design/specs/2026-08-25-gitlab-ci-migration-design.md`
 **Branch:** off `develop`
@@ -309,6 +309,8 @@ Three additions to the job as first drafted, made on 2026-09-24:
 
 ### Task C — retire GitHub Actions, gated on a green pipeline
 
+**Done 2026-09-24, in MR !61, after the pipeline was green and verified.**
+
 1. Delete `.github/workflows/ci.yaml` and the `.github/` directory.
 2. Rewrite `AGENTS.md`'s CI section: GitLab CI is the real, current gate; describe the
    `wma` tag, the `ci` environment, the `DOI_ROOT_CA` variable, and `[skip pipeline]`.
@@ -510,8 +512,11 @@ merge request is the actual test.
    `python -m pytest`: the task itself, since that is what CI runs. Confirm
    `pixi run --locked -e ci test` too, which is the exact command the job issues.
 2. `.gitlab-ci.yml` passes GitLab's CI Lint tool (project → Build → Pipeline editor →
-   Validate). The API endpoint requires a token scope the developer's token lacks, so this
-   is done in the web UI.
+   Validate). Linting pasted content needs the `POST` lint endpoint, which requires the
+   `api` scope, and the developer's token lacks it. The `GET` endpoint, which lints the
+   file already committed on a ref (`content_ref`), works with `read_api`. Don't pass
+   `dry_run` for this on a branch with an open MR: it simulates a branch pipeline, which
+   the workflow rules correctly refuse, so it reports "did not run".
 3. **On the merge request: read the job log, not the badge.** The log must show the real
    test count — 447 passed, 10 skipped — and a successful `pixi install`. A green check on a job that
    silently collected zero tests is exactly the failure this migration is meant to end.
@@ -526,11 +531,13 @@ merge request is the actual test.
   `git` install, `pixi install` completing without `DOI_ROOT_CA`, `collected 457 items`, and
   `447 passed, 10 skipped`. The job took about 2 min 50 s: roughly 1.5 min installing the
   environment and 41 s of tests.
-- **Item 4: pending.** The first push created two pipelines: a branch pipeline, then an
+- **Item 4: done.** The first push created two pipelines: a branch pipeline, then an
   MR pipeline. That is expected, because the push came before the MR was opened, so
-  `$CI_OPEN_MERGE_REQUESTS` was empty. It does not test this item. The next push to the
-  branch, with the MR open, does.
-- **Item 2: pending.** It is a formality now that GitLab has parsed and run the file.
+  `$CI_OPEN_MERGE_REQUESTS` was empty. The next push, `90cc6e5` with the MR open,
+  created exactly one pipeline: #840882, source `merge_request_event`.
+- **Item 2: done.** The `GET` lint of `feature/47-gitlab-ci` returned `valid: true`
+  with no errors or warnings.
+- **Item 5: done.** Task C landed in the same MR, after items 3 and 4.
 
 ## Maintainer actions this spec cannot perform
 
