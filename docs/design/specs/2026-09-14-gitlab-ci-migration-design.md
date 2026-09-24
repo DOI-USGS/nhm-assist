@@ -405,6 +405,16 @@ ordered fallbacks are: (1) confirm `PROJ_CURL_CA_BUNDLE` is exported before the 
 step; (2) set `PROJ_NETWORK=OFF` as a job variable, accepting ballpark transforms in CI;
 (3) add `proj-data` to `ci`, at 817 MB, only if a test genuinely needs grid accuracy.
 
+**Is `osx-64` still needed? (Recorded 2026-09-24; not decided.)** The workspace locks four
+platforms, and `osx-64` (Intel Macs) is about a quarter of `pixi.lock`: 503 to 513 package
+entries in each of `ci`, `default` and `dev-future`. Every re-lock solves and records it,
+and no CI job here tests it. Dropping it from `[tool.pixi.workspace] platforms` would
+shrink the lock and speed up solving. The cost is that anyone still on an Intel Mac could
+no longer install, and `osx-arm64` builds do not run on Intel hardware. Before removing it,
+ask the team whether anyone develops or runs notebooks on an Intel Mac. If the answer is
+no, remove it in its own commit with a fresh re-lock, so the lock diff shows only the
+dropped platform.
+
 **GitLab CI cannot be verified locally.** Syntax can be checked with GitLab's CI Lint tool;
 `workflow:` semantics, runner pickup, image pull, and TLS behavior cannot. The first
 merge request is the actual test.
