@@ -22,14 +22,15 @@ specific to working here as an agent.
   workflows; see README's "Developing nhm-assist notebooks" section.
 
 There are two environments for this repo: `default` (analysis stack, tests,
-lint tooling, and `proj-data`) and `ci` (identical but without `proj-data`),
-plus `dev-future` on a separate solve group for the next-major dependency
-track. There is no `dev` environment — `pixi run test` and `pixi run lint`
-both run in `default`.
+lint tooling, and `proj-data`) and `ci` (the same minus `proj-data` and the
+lint tooling), plus `dev-future` on a separate solve group for the next-major
+dependency track. There is no `dev` environment — `pixi run test` and
+`pixi run lint` both run in `default`.
 
-"Identical but without `proj-data`" is literal: one package, ~817 MB on disk.
-Read the next section before concluding that `ci` is otherwise leaner, or that
-the feature split in `pyproject.toml` is broken.
+`ci` is 1.9 GB on disk against `default`'s 2.7 GB. The difference is
+`proj-data` plus `ruff`, `pre-commit` and their dependencies — the `dev`
+feature, which `ci` does not compose. Until 2026-09 the difference was
+`proj-data` alone; see the next section for why.
 
 `ci` also deliberately lacks `PROJ_NETWORK=OFF`, which sits on the `dev`
 feature. That variable and `proj-data` together work around USGS VPN SSL
@@ -38,36 +39,67 @@ machines (work item #33). CI runners are not behind that, and the CI job
 installs the DOI root CA anyway, so a CI job is expected to fetch grids over
 the network if it ever needs them. Don't "fix" this.
 
-## pywatershed 2.x drags in its own dev toolchain
+## Why `pywatershed` comes from PyPI, not conda-forge
 
-conda-forge's `pywatershed 2.0.4` declares its lint, test, doc and optional
-extras as *hard run dependencies* — `ruff`, `pre-commit`, `pytest`,
-`pytest-{cov,env,order,xdist}`, `sphinx` and its themes, `git`, `pip`,
-`jupyter`, `cartopy`, `geoviews`, `holoviews`, `hvplot`. `pywatershed` is in
-the `prod` feature, so every environment composing `prod` inherits all of it.
+`[tool.pixi.feature.prod.pypi-dependencies]` sources `pywatershed` from PyPI
+while everything else compiled comes from conda-forge. That is deliberate and
+load-bearing — don't "tidy" it back into `[tool.pixi.feature.prod.dependencies]`.
 
-Consequences worth knowing before you draw conclusions from the manifest:
+conda-forge's `pywatershed 2.x` recipe declares its lint, test, doc and
+optional extras as *hard run dependencies*: `ruff`, `pre-commit`,
+`pytest-{env,order,xdist}`, `sphinx` and its themes, `pandoc`, `git`, `pip`,
+`virtualenv`, `jupyter`, `cartopy`, `geoviews`, `holoviews`, `hvplot`,
+`datashader`, `panel`. `pywatershed` is in the `prod` feature, so every
+environment composing `prod` inherited all of it. The PyPI metadata for the
+same version keeps them as real extras.
 
-- **`ruff` and `pre-commit` are in `ci`** even though `ci` does not compose the
-  `dev` feature. This is not a pixi defect. `pixi list -e ci --explicit` shows
-  `pytest` (from the `test` group, which `ci` does compose) and does *not* show
-  `ruff` or `pre-commit` — pixi applied the declarations correctly; the
-  packages are transitive.
-- **Solve groups are not the cause.** `default` and `ci` share
-  `solve-group = "default"` yet `proj-data` is in `default` only. Solve groups
-  constrain versions, not membership.
-- **89 of `ci`'s 475 packages (0.18 GB of 0.48 GB download) are reachable only
-  through `pywatershed`.** Trimming direct dependencies to slim CI therefore
-  does much less than it looks like it should.
-- **The stack is pinned to Python 3.11**, because that recipe requires
-  `python >=3.10,<3.12` — despite `requires-python = ">=3.11, <3.14"`.
+Measured on the swap (2026-09-22): `ci` went 475 → 412 packages and
+2.4 GB → 1.9 GB on disk; `default` 3.2 GB → 2.7 GB. `ruff` and `pre-commit`
+left `ci` entirely, so the `ci`/`default` split is now visible rather than
+one package wide.
 
-Both upstream sources are already clean: `pywatershed` on PyPI keeps these as
-real extras, and conda-forge's `pywatershed 3.0.0` recipe drops them. So this
-resolves when the repo moves to `pywatershed` 3 — the track `dev-future`
-exists to test, and where `ruff`/`pre-commit`/`pytest` correctly arrive as
-PyPI wheels from the dependency groups. Until then, treat it as upstream
-packaging, not something to work around here.
+Two constraints this creates:
+
+- **`numba` must stay in `[tool.pixi.dependencies]`.** It is ABI-coupled to
+  `numpy` and jit-compiles during `import pywatershed`, so it has to come from
+  conda-forge alongside conda `numpy`, not as a PyPI wheel. `llvmlite` follows
+  it. Everything else pywatershed needs (`flopy`, `pint`, `contextily`,
+  `xmltodict`, `xyzservices`, `epiweeks`) is pure Python and safe from PyPI.
+- **`python` is pinned in the `prod` feature.** The 3.11 cap used to come from
+  the conda recipe (`python >=3.10,<3.12`). Sourcing from PyPI removed it, so
+  `python = ">=3.11.9,<3.12"` now states the policy explicitly. `requires-python`
+  in `[project]` stays wider on purpose: what the package supports, not what we
+  build.
+
+`flopy` is not used by this repo — it is a hard *import-time* dependency of
+`pywatershed`, whose `__init__` imports `MmrToMf6Dfw`, whose module does a
+top-level `import flopy`. `import pywatershed` fails without it. Don't remove it.
+
+conda-forge's `pywatershed 3.0.0` recipe is already clean, so when the repo
+moves to pywatershed 3 (the `dev-future` track) this can go back to
+conda-forge if that is preferred.
+
+### The same problem, one layer down: `pyprms`
+
+`pyprms` declares `sphinx` as a hard runtime dependency in its own PyPI
+metadata, which pulls `sphinx`, `pydata-sphinx-theme`, `sphinx-book-theme`,
+`sphinx-autodoc-typehints` and the `sphinxcontrib-*` set — 15 packages — into
+every environment. `pyprms` is a direct dependency in `[project.dependencies]`
+and already comes from PyPI, so re-sourcing cannot fix this one. It needs an
+upstream change to `pyprms`. It is small and pure Python; noted so the next
+reader doesn't go looking for a local cause.
+
+### What was ruled out, when this was first investigated (#49)
+
+Neither of these is the mechanism, and both are tempting:
+
+- **Solve groups.** `default` and `ci` share `solve-group = "default"` yet
+  `proj-data` is in `default` only. Solve groups constrain versions, not
+  membership.
+- **Dependency-group handling.** `pixi list -e ci --explicit` shows `pytest`,
+  from the `test` group that `ci` composes, and does not show `ruff` or
+  `pre-commit`, from the `dev` group it does not. Pixi applies the declarations
+  correctly.
 
 ## User site-packages
 

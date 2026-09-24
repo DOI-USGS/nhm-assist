@@ -1,21 +1,30 @@
+# ==========================================================================
+# BUILD SYSTEM
+# ==========================================================================
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# ==========================================================================
+# PACKAGE METADATA
+#
+# The published contract: what `pip install nhm-assist` resolves, and what
+# a conda-forge recipe is generated from.
+# ==========================================================================
 [project]
 name = "nhm-assist"
 dynamic = ["version"]
 description = "Python workflows for evaluating, running and interpreting National Hydrologic Model results using pywatershed."
-readme = "README.md"
-license = "CC0-1.0"
-license-files = ["LICENSE.md"]
 authors = [
   { name = "U.S. Geological Survey" },
 ]
 maintainers = [
   { name = "Adel Haj", email = "ahaj@usgs.gov" },
 ]
-requires-python = ">=3.11, <3.14"
+readme = "README.md"
+license = "CC0-1.0"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.11"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -92,6 +101,11 @@ test = ["pytest", "pytest-cov"]
 dev = ["ruff", "pre-commit"]
 dev-future = ["gdptools", "ipyleaflet", "pint-xarray", "tobler"]
 
+# ==========================================================================
+# BUILD BACKEND
+#
+# Version comes from git tags; these say what lands in the wheel.
+# ==========================================================================
 [tool.hatch.version]
 source = "vcs"
 fallback-version = "2.0.0.dev0"
@@ -102,16 +116,20 @@ version-file = "src/assist/_version.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/assist", "src/workflow_templates"]
 
+# ==========================================================================
+# PIXI -- ENVIRONMENTS
+#
+# Which environments exist, which features each composes, and what gets set
+# on activation. Start here to understand the rest of the pixi config.
+# ==========================================================================
 [tool.pixi.workspace]
 channels = ["conda-forge", "nodefaults"]
 platforms = ["osx-64", "osx-arm64", "linux-64", "win-64"]
 
 [tool.pixi.environments]
-# `default` is the only environment contributors and end users need. `ci`
-# differs from it by proj-data alone -- not by lint or test tooling; see
-# "Environment" and "pywatershed 2.x ..." in AGENTS.md for why, and for what
-# solve groups do and don't do. The dev *feature* is retained below --
-# dev-future still composes it.
+# `default` is the only environment contributors and end users need. `ci` drops
+# proj-data and the dev feature's lint tooling; see "Environment" in AGENTS.md.
+# The dev *feature* is retained below -- dev-future still composes it.
 default = { features = ["prod", "test", "dev"], solve-group = "default" }
 ci = { features = ["prod", "test"], solve-group = "default" }
 dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" }
@@ -121,6 +139,12 @@ dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" 
 [tool.pixi.activation.env]
 PYTHONNOUSERSITE = "1"
 
+# ==========================================================================
+# PIXI -- DEPENDENCIES
+#
+# Three layers: the conda-forge table, the PyPI table, then per-feature
+# additions. Read alongside [tool.pixi.environments] above.
+# ==========================================================================
 # Only what is worth getting from conda-forge: compiled packages and ones that
 # bind to system libraries. Pure-Python requirements come from
 # [project.dependencies] via the editable self-install below.
@@ -135,6 +159,9 @@ hdf5 = ">=1.14,<2"
 herbie-data = "*"
 matplotlib = "*"
 netcdf4 = "*"
+# pywatershed jit-compiles during import, and numba is ABI-coupled to numpy.
+# Keep it on conda-forge; do not let it resolve from PyPI.
+numba = "*"
 numpy = "*"
 pandas = ">=2.2,<3"
 pyarrow = "*"
@@ -153,18 +180,23 @@ rioxarray = ">=0.19.0,<0.24"
 gdptools = ">=0.4.0,<0.5"
 
 [tool.pixi.pypi-dependencies]
-# The editable self-install, which pulls [project.dependencies]. Declared on
-# the default feature so every environment composes it, rather than repeated
-# per feature.
+# Editable self-install, pulling [project.dependencies]. On the default
+# feature so every environment composes it.
 nhm-assist = { path = ".", editable = true }
 # Not on conda-forge.
 hydroeval = "==0.1" # Unmaintained. Consider alternative.
 pyprms = "*"
 
 [tool.pixi.feature.prod.dependencies]
-python = ">=3.11.9,<3.14"
-pywatershed = ">=2.0.1,<3"
+# Held at 3.11 deliberately, now that the PyPI pywatershed below no longer
+# caps it. See "Why pywatershed comes from PyPI" in AGENTS.md.
+python = ">=3.11.9,<3.12"
 dataretrieval = "<1.2"
+
+# PyPI, not conda-forge, and on `prod` rather than the default feature. Both
+# are load-bearing; see "Why pywatershed comes from PyPI" in AGENTS.md.
+[tool.pixi.feature.prod.pypi-dependencies]
+pywatershed = ">=2.0.1,<3"
 
 [tool.pixi.feature.dev.dependencies]
 proj-data = "*"
@@ -179,11 +211,19 @@ python = ">=3.12,<3.14"
 pywatershed = ">=3,<4"
 dataretrieval = ">=1.2"
 
+# ==========================================================================
+# PIXI -- TASKS
+#
+# Everything runnable as `pixi run <name>`. Each task's description is what
+# `pixi task list` prints, so keep them accurate.
+# ==========================================================================
+# --- End-user entry point -----------------------------------------------
 [tool.pixi.tasks.setup]
 cmd = "python -m assist.workspace.cli setup"
 default-environment = "default"
 description = "End-user entry point: interactive menu to pick a workspace, create projects, copy/import models, set the active model, and generate notebooks. Prints how to open Jupyter; does not launch it."
 
+# --- Notebook generation ------------------------------------------------
 [tool.pixi.tasks.dev-mode]
 cmd = "python -m workflow_templates.make_notebooks --workflow {{ workflow }} --workspace-root {{ workspace_root }} --project-name {{ project_name }} --pairing-mode dev"
 args = ["workspace_root", "project_name", { arg = "workflow", default = "nhm" }]
@@ -196,6 +236,7 @@ args = ["workspace_root", "project_name", { arg = "workflow", default = "all" }]
 default-environment = "default"
 description = "Generate notebooks from .py templates into a project's notebook directory in the user workspace."
 
+# --- Workspace, project and model management ----------------------------
 [tool.pixi.tasks.workspace-init]
 cmd = "python -m assist.workspace.cli workspace-init --workspace-root {{ workspace_root }}"
 args = ["workspace_root"]
@@ -244,6 +285,7 @@ args = ["workspace_root", "project_name", "model_name", "source_dir"]
 default-environment = "default"
 description = "Import an existing PRMS model folder from <source_dir> into a project under the given model name."
 
+# --- Developer checks ---------------------------------------------------
 [tool.pixi.tasks.lint]
 cmd = "ruff check . && ruff format --check ."
 default-environment = "default"
