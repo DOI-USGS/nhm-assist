@@ -273,7 +273,7 @@ Editing `pyproject.toml` by hand is fine too; run `pixi lock` afterward. To add 
 Two others exist and are rarely needed directly:
 
 - **`ci`** — `default` minus `proj-data` and the lint tooling (`ruff`, `pre-commit`), so continuous integration skips that download. 1.9 GB against `default`'s 2.7 GB.
-- **`dev-future`** — a separate solve group tracking the next major versions of `pywatershed` and `dataretrieval`. Expect real test failures there; it exists to see what is coming.
+- **`dev-future`** — a separate solve group tracking the next major versions of `pywatershed` and `dataretrieval`, with `pandas` and `hdf5` unpinned. Expect real test failures there; it exists to see what is coming.
 
 ### Troubleshooting
 
