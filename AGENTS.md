@@ -122,13 +122,16 @@ one line what `pixi list` structurally cannot answer.
 
 ## Temporary dependency pins
 
-- `hdf5` is held below 2 in `[tool.pixi.dependencies]`. conda-forge's HDF5 2.x
-  migration produced win-64 builds of `libnetcdf`/`netcdf4` that fail to import
-  with "DLL load failed while importing _netCDF4: The specified procedure could
-  not be found", and upstream then withdrew HDF5 2.x for win-64. Without the pin
-  linux-64 solves to 2.x while win-64 and osx sit on 1.14, splitting the stack
-  across platforms. Drop it once conda-forge ships working win-64 HDF5 2.x
-  builds.
+- `hdf5` is held below 2 in `[tool.pixi.dependencies]` to keep every platform
+  on the same HDF5 series. Without the pin linux-64 solves to 2.x while win-64
+  and osx sit on 1.14, splitting the stack across platforms. Drop it once
+  conda-forge ships HDF5 2.x for all four platforms.
+
+  The pin was added in !54 to fix a Windows "DLL load failed while importing
+  _netCDF4" error. That diagnosis was wrong: the failure came from user
+  site-packages shadowing the environment (see "User site-packages" above), and
+  went away once `PYTHONNOUSERSITE` was set. No import failure is known to
+  depend on this pin.
 
 ## Known benign warnings
 

@@ -7,31 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Changes on the `nhf_dev` branch since the 1.1.0 release._
+_Changes since the 1.1.1 release: the pixi workspace restructure, the NHF and PEST++ IES workflows, and one shared codebase for NHM and NHF. Merge request numbers point to the details._
+
+### Upgrading
+
+- **pixi is the only install path.** The legacy `mamba env create -f environment.yaml` flow remains available at the [`1.1.1` release](https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.1.1).
+- **Existing checkouts must rebuild their environment** and point their notebooks at `.pixi/envs/default`. Follow the [upgrade steps in !56](https://code.usgs.gov/wma/hytest/nhm-assist/-/merge_requests/56#note_1115829).
+- **Update imports in your own notebooks and scripts.** Shared helpers now live in `assist.common` (for example `assist.common.map_template`, formerly `assist.nhm.map_template` or `assist.nhf.map_template_v2`). The old `assist.nhm.*` and `assist.nhf.*_v2` modules have been removed.
+- **Regenerating a project's notebooks keeps their cells,** so existing notebooks do not pick up template changes. Create a new project to get the updated notebooks.
 
 ### Added
 
-- **NHF Assist workflow tree (`nhf_assist/`):** Added a parallel National Hydrofabric (NHF) workflow alongside the existing NHM notebooks, with its own `notebook_scripts/` and a set of `_v2` helper modules (`nhm_assist_utilities_v2.py`, `nhm_hydrofabric_v2.py`, `nhm_output_visualization_v2.py`, `output_plots_v2.py`, `map_template_v2.py`, `sf_data_retrieval_v2.py`, `display_controls_v2.py`, `nhm_helpers_v2.py`, `efc.py`, and a new `nhm_config.py` config module). Includes the core numbered notebooks (`0_workspace_setup` through `6_streamflow_output_visualization_new`) and a work-in-progress `2_model_hydrofabric_visualization_FMI` (Flow Management Index) variant.
-- **POI supplemental information notebook:** `Fetch_poi_supplimental_information.py` builds an interactive map of hydrofabric elements and fetches supplemental Point-of-Interest (POI) metadata; the new POI metadata fetch function was also added to the shared helper functions and notebooks.
-- **Domain geopackage builders:** `Create_OHM_domain_geopackage.py` and `Create_child_domain_geopackage.py` generate domain polygons (e.g. one per `basin_id`) for parent and child/subdomain hydrofabrics.
-- **HUC / gage / parameter utilities:** Added supplemental processing notebooks — `Write_huc_12pp_data_as_netcdf.py`, `get_huc_ids.py`, `gf_params_parse.py`, `make_hydat_gage_resource.py`, `make_param_file.py`, `Oregon_GFv2_parameters.py`, and `HRU_geom_check.py`.
-- **PEST++ IES observation & control file workflow:** Added `01_Prepare_observations.py` (builds `allobs.dat` and related observation inputs, replacing `01_Create_allobs_dat.py`), `02_Create_pest_instruction_file.py`, `02b_Create_pest_template_file.py`, and `05_Re-weighting_obs.py` (switches from manual re-weighting to a "phi factor" objective-function approach and prunes localization groups containing only zero-weighted observations).
-- **PEST++ IES forward run scripts:** Added `forward_run.py` and `forward_run_revised.py` for the PESTPP-IES forward model run.
-- Added `make_notebooks.py` to the PESTPP-IES calibration directory to regenerate notebooks from `.py` scripts.
+- **Workspaces and a guided setup menu (!31, !32):** `pixi run setup` creates a workspace outside the repository, holding projects, models and one active model per project. Models, generated notebooks and outputs no longer live in the repository.
+- **NHF workflow (!27, !34):** National Hydrofabric (GFv2) notebooks alongside the NHM ones, under `src/workflow_templates/nhf/`. These include domain geopackage builders for parent and child domains, parameter builders from GFv1.1 and GFv2 sources, POI supplemental information, HUC and HYDAT utilities, a gridMET climate driver template, a Flow Management Index variant of notebook 2, and batch runners in `nhf_assist/` for running workflows across many child models.
+- **PEST++ IES calibration workflow (!35):** notebooks `00` through `05` under `src/workflow_templates/pest/`, with GFv2 variants. Observation preparation replaces `01_Create_allobs_dat`, re-weighting uses a phi-factor objective function, and localization groups with only zero-weighted observations are pruned. Helpers live in `src/assist/pest/`.
+- **BOR Hydromet streamflow:** notebooks 1 and 2 can include Bureau of Reclamation Hydromet gages, with a BOR gage scraper and map.
+- **Contributor dev mode (!46, !55):** `pixi run dev-mode` generates a project's notebooks paired back to the repository templates, so saving a notebook edits the template.
+- **Repair editor settings (!55):** a setup-menu action that brings an existing project's editor settings up to date.
+- **`dev-future` environment (!47):** tracks the next major versions of `pywatershed` and `dataretrieval`.
+- **Environment sanity check (!54):** the first cell of `0_workspace_setup` warns when packages installed outside the environment override it.
+- Module-level map pop-ups, and `scripts/count_domain_hrus.py` to tabulate HRU counts per domain.
+- `AGENTS.md` with operating notes for AI coding agents, and design specs and plans under `docs/design/` (!45, !54).
 
 ### Changed
 
-- **Reorganized NHF directory layout:** Renamed the `nhf-assist` directory to `nhf_assist`, moved and reorganized folder paths, and corrected `.gitignore` entries accordingly (including ignoring `claude.md`).
-- **Rewrote PEST++ setup notebook:** Substantially reworked `03_set_up_PEST++.py` and updated `04_add_localization_matrix.py`, `00_Subset_NHM_baselines.py`, and `helpers/pest_utils.py`.
-- Updated `Observation_standard_deviation.csv` and `localization_groups.csv` ancillary templates, and moved the `pestpp-ies` binary out of the `dependencies/` subdirectory.
-- Merged the latest `main` into `nhf_dev` several times to keep the branch current with the 1.1.0 line.
+- **One shared codebase for NHM and NHF (!49, !50, !51, !52, !53):** helper modules that existed as separate nhm and nhf copies now live once in `assist.common`, and the numbered workflow notebooks (`0` through `6` and `add_pois_to_parameters`) are one template set in `src/workflow_templates/common/`.
+- **WaterData is the canonical streamflow source (!50).** Configs using the retired `nwis_*` names still load. GFv1.1-only map layers are hidden automatically for GFv2 models.
+- **Environments (!47, !54):** `default` carries the analysis stack plus the test and lint tools, and is the one environment users and contributors need. `ci` and `dev-future` exist alongside it.
+- **`pywatershed` is installed from PyPI (!56),** which drops a documentation and lint toolchain the conda-forge package pulled in. Python is pinned to 3.11.
+- **Packaging (!40, !42):** the build backend is `hatchling`, and `[project.dependencies]` declares the full runtime contract.
+- **Notebooks and editors (!46, !54, !55):** nhm-assist no longer registers Jupyter kernels, so choose `.pixi/envs/default` in your editor. No task launches Jupyter, and generated projects sync notebooks when opened.
+- **`check_par_bounds` is stricter (!57):** it stops with an error when bounds are missing or invalid, and checks that each lower bound is below its upper bound.
+- **README** reorganized with sections for users first and developers second (!55).
 
 ### Fixed
 
-- **Reduced SCA memory usage (PR #63):** Lowered memory consumption in snow-covered-area (SCA) calculations by computing Dask tasks earlier and deleting intermediate variables after use.
-- Fixed bugs in the PEST++ IES setup notebooks and several NHF workflow tweaks.
-- Removed user-specific `kernelspec` metadata from notebooks for cleaner, reproducible diffs.
-- Removed an extraneous file and applied small corrections in `03_set_up_PEST++.py` and the `utilities_v2` / `2_FMI` notebook.
+- **`pyproj` behind the USGS VPN (#33, !47, !54):** the `default` environment ships PROJ datum grids, so no per-machine setup is needed.
+- **User site-packages overriding the environment (!54):** anything run through pixi now ignores packages from `pip install --user`.
+- **Parameter-file gages are no longer dropped** by the 1000 m distance filter (#46).
+- **Broken PEST++ IES imports (!57):** restored `pest_utils`, which had been overwritten by a re-export shim.
+- **Notebook breaks found by executing every nhm notebook (!51, !53),** including several `KeyError`s and a latent `NameError` in `Fetch_poi_supplimental_information`.
+- **Stale template headers (!55)** that could make a notebook save overwrite a template.
+- **Reduced SCA memory usage (PR #63):** snow-covered-area calculations compute Dask tasks earlier and free intermediate variables.
+- NaN-coordinate gages no longer crash NHF POI marker maps (!31), and NHF triangle markers are restored.
+- **Tests (!45, !54, !55):** CI previously ran zero tests; the suite now collects every test, and file reads decode as UTF-8 on Windows.
+
+### Removed
+
+- `environment.yaml` and the mamba install flow (!45).
+- The `dev` pixi environment; use `default` (!54).
+- The `nhm-assist` and `nhm-assist-dev` Jupyter kernels. Remove previously registered copies as described in the README's _Upgrading from an older checkout_ section (!54).
+- The `nhm_helpers/` and `nhf_assist/helpers/` folders (!31), and the `assist.nhm.*` and `assist.nhf.*_v2` modules, now in `assist.common`.
 
 ## [1.1.1] — 2026-06-16
 
@@ -91,5 +117,7 @@ This is the initial release of the NHM-Assist notebooks, which are a collection 
 Haj, A.E., Barker, M.I., Norton, P.A., McCreight, J.L., Ludden, L.L., and Snyder, A.M., 2025, nhm-assist: a collection of python workflows presented in Jupyter notebooks for evaluating, running and interpreting National Hydrologic Model (NHM) subdomain models, version 1.0.0: U.S. Geological Survey software release, https://doi.org/10.5066/P1NMW6US.
 
 
+[Unreleased]: https://code.usgs.gov/wma/hytest/nhm-assist/-/compare/1.1.1...main
+[1.1.1]: https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.1.1
 [1.1.0]: https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.1.0
 [1.0.0]: https://code.usgs.gov/wma/hytest/nhm-assist/-/releases/1.0.0
