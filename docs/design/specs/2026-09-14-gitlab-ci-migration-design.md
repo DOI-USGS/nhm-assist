@@ -165,6 +165,10 @@ also tests the spec's inference that WMA runners need the certificate at all.
 gdptools' own job treats it as optional (`test -f DOIRootCA2.crt && … || true`).
 If the first pipeline installs cleanly without the variable, it is not needed.
 
+**Result (2026-09-24):** it did. [job 2286417](https://code.usgs.gov/wma/hytest/nhm-assist/-/jobs/2286417) logged `DOI_ROOT_CA is not set` and then
+installed the environment over HTTPS without error. The variable has not been created. The
+guarded step stays as a harmless fallback in case the job moves to an inspected runner.
+
 ### Commit-message escape instead of a `paths-ignore` equivalent
 
 The old GitHub workflow skipped CI when only `**.md` or `.gitignore` changed. GitLab's
@@ -431,22 +435,28 @@ own PyPI metadata and needs an upstream fix.
 
 ## Risks and open questions
 
-**`tags: [wma]` is inferred, not confirmed.** It is taken from a working pipeline in
+**`tags: [wma]` is inferred, not confirmed.** *Resolved 2026-09-24: the first pipeline's
+job was picked up within seconds.* It is taken from a working pipeline in
 `wma/nhgf/toolsteam/`, one namespace over. If those runners are not scoped to
 `wma/hytest/`, the job sits pending rather than failing loudly. Mitigation: if the first
 pipeline does not pick up within a few minutes, ask the toolsteam for the correct tag
 rather than assuming the file is wrong.
 
-**No runner may be attached at all.** `shared_runners_enabled` is `false`, and confirming
+**No runner may be attached at all.** *Resolved 2026-09-24: a `wma` runner is attached.
+It is a `docker-autoscaler` runner on AWS us-west-2, available to this project even
+though `shared_runners_enabled` is `false`, so it is presumably a group runner.* `shared_runners_enabled` is `false`, and confirming
 otherwise needs Maintainer access. This is the single most likely reason for the first
 pipeline not to run, and it is not fixable from the repository.
 
-**GHCR reachability is unproven.** gdptools proves Docker Hub is reachable; GHCR is a
+**GHCR reachability is unproven.** *Resolved 2026-09-24: the image pulled from GHCR.* gdptools proves Docker Hub is reachable; GHCR is a
 different host. If the image pull fails, the documented fallback is
 `condaforge/miniforge3:latest` with pixi installed in `before_script`, or the Artifactory
 mirror.
 
-**pixi may not honor `SSL_CERT_FILE`.** This is the sharpest technical unknown. pixi's
+**pixi may not honor `SSL_CERT_FILE`.** *Moot as of 2026-09-24: the runner is not behind
+TLS inspection. `pixi install` fetched from conda-forge and PyPI with no `DOI_ROOT_CA` and
+no certificate errors, so the question never arises. It would matter again only on a
+runner that is TLS-inspected.* This is the sharpest technical unknown. pixi's
 downloader is Rust-based, and depending on its TLS backend it may use bundled webpki roots
 rather than the system trust store that `update-ca-certificates` and `SSL_CERT_FILE`
 affect. gdptools sidesteps this with `conda config --set ssl_verify`, which has no pixi
@@ -455,7 +465,9 @@ the ordered fallbacks are: (1) `SSL_CERT_DIR` alongside `SSL_CERT_FILE`; (2) the
 miniforge base image, where conda's `ssl_verify` setting is available; (3) `pixi config
 set tls-no-verify true`, which is insecure and a last resort only.
 
-**PROJ datum-grid fetches from a WMA runner are unproven.** `ci` ships without `proj-data`
+**PROJ datum-grid fetches from a WMA runner are unproven.** *Still unexercised: the first
+pipeline raised no PROJ errors, but nothing shows a grid fetch was attempted. With the
+runner not TLS-inspected, a fetch would most likely just succeed.* `ci` ships without `proj-data`
 and without `PROJ_NETWORK=OFF`, by the decision recorded above, so if a transform needs a
 datum-shift grid the job will reach `cdn.proj.org` through the same inspected TLS path the
 DOI certificate exists to handle. `PROJ_CURL_CA_BUNDLE` in `before_script` is the intended
@@ -506,12 +518,27 @@ merge request is the actual test.
 4. Confirm the pipeline fired *once*, not twice, for a push to a branch with an open MR.
 5. Only after 3 and 4: delete `.github/`, update `AGENTS.md`.
 
+**Recorded 2026-09-24, first pipeline, on MR !61 at `2640e05`:**
+
+- **Item 1: done.** 447 passed and 10 skipped locally, in both `default` and `ci`, via
+  `pixi run --locked -e ci test`.
+- **Item 3: done.** [job 2286417](https://code.usgs.gov/wma/hytest/nhm-assist/-/jobs/2286417) passed. Its log shows the full clone, the
+  `git` install, `pixi install` completing without `DOI_ROOT_CA`, `collected 457 items`, and
+  `447 passed, 10 skipped`. The job took about 2 min 50 s: roughly 1.5 min installing the
+  environment and 41 s of tests.
+- **Item 4: pending.** The first push created two pipelines: a branch pipeline, then an
+  MR pipeline. That is expected, because the push came before the MR was opened, so
+  `$CI_OPEN_MERGE_REQUESTS` was empty. It does not test this item. The next push to the
+  branch, with the MR open, does.
+- **Item 2: pending.** It is a formality now that GitLab has parsed and run the file.
+
 ## Maintainer actions this spec cannot perform
 
-- Confirm or attach a runner; verify the correct tag.
-- Create the `DOI_ROOT_CA` CI/CD variable (type File, not Protected) if the first
-  pipeline shows TLS errors without it. See "Supply the DOI root CA as a CI/CD File
-  variable".
+- ~~Confirm or attach a runner; verify the correct tag.~~ Not needed: a `wma` runner was
+  already available (2026-09-24).
+- ~~Create the `DOI_ROOT_CA` CI/CD variable.~~ Not needed: the runner is not
+  TLS-inspected (2026-09-24). Create it (type File, not Protected) only if a future job
+  shows certificate errors.
 - Create the Pipeline Schedule for the nightly dependency-drift run (`.gitlab-ci.yml`
   already admits `schedule`-sourced pipelines).
 - Enable "Auto-cancel redundant pipelines" so `interruptible: true` has effect.
