@@ -34,6 +34,7 @@ _Changes since the 1.1.1 release: the pixi workspace restructure, the NHF and PE
 - **One shared codebase for NHM and NHF (!49, !50, !51, !52, !53):** helper modules that existed as separate nhm and nhf copies now live once in `assist.common`, and the numbered workflow notebooks (`0` through `6` and `add_pois_to_parameters`) are one template set in `src/workflow_templates/common/`.
 - **WaterData is the canonical streamflow source (!50).** Configs using the retired `nwis_*` names still load. GFv1.1-only map layers are hidden automatically for GFv2 models.
 - **Environments (!47, !54):** `default` carries the analysis stack plus the test and lint tools, and is the one environment users and contributors need. `ci` and `dev-future` exist alongside it.
+- **`dev-future` resolves `pandas` and `hdf5` unpinned;** the pins stay on `default` and `ci`.
 - **`pywatershed` is installed from PyPI (!56),** which drops a documentation and lint toolchain the conda-forge package pulled in. Python is pinned to 3.11.
 - **Packaging (!40, !42):** the build backend is `hatchling`, and `[project.dependencies]` declares the full runtime contract.
 - **Notebooks and editors (!46, !54, !55):** nhm-assist no longer registers Jupyter kernels, so choose `.pixi/envs/default` in your editor. No task launches Jupyter, and generated projects sync notebooks when opened.

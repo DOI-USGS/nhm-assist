@@ -122,16 +122,30 @@ one line what `pixi list` structurally cannot answer.
 
 ## Temporary dependency pins
 
-- `hdf5` is held below 2 in `[tool.pixi.dependencies]` to keep every platform
-  on the same HDF5 series. Without the pin linux-64 solves to 2.x while win-64
-  and osx sit on 1.14, splitting the stack across platforms. Drop it once
-  conda-forge ships HDF5 2.x for all four platforms.
+`hdf5` and `pandas` are pinned on the `prod` feature, so the pins apply to
+`default` and `ci` and deliberately not to `dev-future`, which exists to show
+what the next major versions break. Don't move them back to
+`[tool.pixi.dependencies]`: that is the default feature, which every
+environment composes, and a feature cannot remove a constraint it inherits.
+`[project.dependencies]` carries only the `pandas>=2.2` floor for the same
+reason, the pattern used for `pywatershed`.
+
+- `hdf5 <2`: holds `default` and `ci` on the 1.14 series until HDF5 2.x has run
+  clean in `dev-future`. Today it is redundant in practice: `eccodes` (via
+  `herbie-data` → `cfgrib` → `python-eccodes`) is built only against hdf5
+  1.14.6, so every environment resolves 1.14.6.
 
   The pin was added in !54 to fix a Windows "DLL load failed while importing
   _netCDF4" error. That diagnosis was wrong: the failure came from user
-  site-packages shadowing the environment (see "User site-packages" above), and
-  went away once `PYTHONNOUSERSITE` was set. No import failure is known to
-  depend on this pin.
+  site-packages shadowing the environment (see "User site-packages" above).
+  No import failure is known to depend on this pin.
+- `pandas <3`: pandas 3 changes defaults (copy-on-write, a dedicated string
+  dtype) and this code has not been tested against it. Drop the pin once the
+  test suite and notebooks run clean on pandas 3 in `dev-future`.
+
+After changing either pin, re-solve `dev-future` explicitly with
+`pixi update -e dev-future`: `pixi lock` keeps locked versions that still
+satisfy the constraints.
 
 ## Known benign warnings
 
