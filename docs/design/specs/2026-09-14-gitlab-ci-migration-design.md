@@ -491,7 +491,9 @@ ask the team whether anyone develops or runs notebooks on an Intel Mac. If the a
 no, remove it in its own commit with a fresh re-lock, so the lock diff shows only the
 dropped platform.
 
-**A baseline-parity test is skipped for a stale reason. (Recorded 2026-09-24; follow-up.)**
+**A baseline-parity test is skipped for a stale reason. (Recorded 2026-09-24.)** *Resolved
+2026-09-24: the skip was removed and the test passes, taking the suite to 448 passed and
+9 skipped. It now needs `27f7144` in local history, like the other baseline tests.*
 `test_matches_the_baseline_nhm_loader_on_a_legacy_config` in
 `tests/unification/test_config_schema.py` skips unless a repo-root `subdomain_config.yaml`
 exists. The workspace restructure removed that file permanently. The test does not read it:

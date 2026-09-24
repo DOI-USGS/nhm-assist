@@ -268,10 +268,8 @@ Actions workflow it replaced has been deleted, and the GitHub mirror
   is ever created, it must not be Protected: protected variables never reach
   feature-branch MR pipelines.
 - **Read the log, not the badge.** A green job that collected no tests is
-  still green. As of 2026-09-24 the job collects 457 tests: 447 passed, 10
-  skipped. The skips are example models absent from a checkout, plus one
-  baseline-parity test whose skip condition is stale (see the spec's risks
-  section).
+  still green. As of 2026-09-24 the job collects 457 tests: 448 passed, 9
+  skipped. All 9 skips are example models absent from a checkout.
 
 CI reports but does not yet gate merges: `only_allow_merge_if_pipeline_succeeds`
 is off. While a pipeline is running, GitLab's merge button defaults to
