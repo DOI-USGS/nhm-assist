@@ -20,7 +20,7 @@
 - Pins, exactly: `hdf5 = ">=1.14,<2"` and `pandas = ">=2.2,<3"` on `[tool.pixi.feature.prod.dependencies]`; `pandas = ">=2.2"` in `[tool.pixi.dependencies]`; `"pandas>=2.2"` in `[project.dependencies]`; no `hdf5` entry anywhere else.
 - `dev-future` gets no new entries in `[tool.pixi.feature.dev-future.dependencies]`.
 - No new test file (spec, Verification).
-- Baseline test result in `default`: 5 known failures (see AGENTS.md, CI). The failure set must not grow.
+- Baseline test result in `default`: 2 known failures (`test_the_nhm_package_is_gone` and `test_new_loader_reads_the_repos_live_config`). The CI migration spec lists five; `41849b7` fixed the other three. The failure set must not grow.
 
 ## Review Focus
 
@@ -138,7 +138,7 @@ pandas = ">=2.2,<3"
 
 Check that no pin was left behind:
 
-Run: `grep -n 'hdf5\|pandas' pyproject.toml`
+Run: `command grep -nE '(^|[^a-z])pandas|hdf5' pyproject.toml` (the pattern excludes `geopandas`; `command` bypasses a shell alias such as `ugrep`)
 Expected: exactly four lines. They are `"pandas>=2.2",` in `[project.dependencies]`, `pandas = ">=2.2"` in `[tool.pixi.dependencies]`, and `hdf5 = ">=1.14,<2"` and `pandas = ">=2.2,<3"` under `[tool.pixi.feature.prod.dependencies]`.
 
 - [ ] **Step 3: Re-lock**
@@ -177,7 +177,7 @@ Expected: `✔ Lock-file was already up-to-date`
 - [ ] **Step 8: Run the `default` test suite**
 
 Run: `pixi run test`
-Expected: the same 5 known failures as before (`test_all_template_call_sites` ×2, `test_nothing_in_the_repo_imports_a_retired_path`, `test_the_nhm_package_is_gone`, `test_new_loader_reads_the_repos_live_config`) and no others.
+Expected: the same 2 known failures as before (`test_the_nhm_package_is_gone` and `test_new_loader_reads_the_repos_live_config`) and no others.
 
 - [ ] **Step 9: Stage, then stop for review**
 
@@ -314,9 +314,9 @@ unpinned.
 Run: `pixi run -e dev-future test 2>&1 | tail -40`
 Expected: it runs to completion. Failures are expected and informational (spec, Verification check 6). Record the final `N failed, N passed, N skipped` line and the names of failing test modules. If collection itself errors out on import, record the first import error. That's the most useful single finding for the pandas 3 follow-up.
 
-- [ ] **Step 2: Separate new failures from the known five**
+- [ ] **Step 2: Separate new failures from the known two**
 
-Compare the failing test names with the five known ones listed in Task 1, Step 8. List the rest as "new in `dev-future`". Don't try to classify each one as pandas 3, `pywatershed` 3 or `dataretrieval` 1.2. The MR only needs to record them.
+Compare the failing test names with the two known ones listed in Task 1, Step 8. List the rest as "new in `dev-future`". Don't try to classify each one as pandas 3, `pywatershed` 3 or `dataretrieval` 1.2. The MR only needs to record them.
 
 - [ ] **Step 3: Re-run the lock comparison for the record**
 

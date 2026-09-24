@@ -131,17 +131,21 @@ environment composes, and a feature cannot remove a constraint it inherits.
 reason, the pattern used for `pywatershed`.
 
 - `hdf5 <2`: holds `default` and `ci` on the 1.14 series until HDF5 2.x has run
-  clean in `dev-future`. Today it is redundant in practice: `eccodes` (via
-  `herbie-data` → `cfgrib` → `python-eccodes`) is built only against hdf5
-  1.14.6, so every environment resolves 1.14.6.
+  clean in `dev-future`. Today it is redundant in practice: `eccodes`
+  (required by `herbie-data` directly and through `cfgrib` →
+  `python-eccodes`) is built only against hdf5 1.14.6, so every environment
+  resolves 1.14.6.
 
   The pin was added in !54 to fix a Windows "DLL load failed while importing
   _netCDF4" error. That diagnosis was wrong: the failure came from user
   site-packages shadowing the environment (see "User site-packages" above).
   No import failure is known to depend on this pin.
 - `pandas <3`: pandas 3 changes defaults (copy-on-write, a dedicated string
-  dtype) and this code has not been tested against it. Drop the pin once the
-  test suite and notebooks run clean on pandas 3 in `dev-future`.
+  dtype). On 2026-09-24 the test suite ran on pandas 3.0.6 in `dev-future`
+  with no failures beyond the two `default` also has, alongside that
+  environment's Python 3.13, `pywatershed` 3 and `dataretrieval` 1.3. The
+  notebooks have not been run on pandas 3. Drop the pin once they run clean
+  there too.
 
 After changing either pin, re-solve `dev-future` explicitly with
 `pixi update -e dev-future`: `pixi lock` keeps locked versions that still
@@ -243,8 +247,11 @@ requests on `code.usgs.gov` currently get no CI signal.
 A GitLab CI migration is designed but not yet implemented — see
 `docs/design/specs/2026-09-14-gitlab-ci-migration-design.md` for the
 current design (it supersedes the 2026-08-25 spec). Note that it also
-scopes in repairing the test suite first: `pixi run test` can't collect
-today, and 5 of 446 tests fail underneath that. Don't delete or "fix"
+scopes in repairing the test suite first. The suite now collects all 456
+tests; 2 still fail (`test_the_nhm_package_is_gone`, which a stale
+`src/assist/nhm/__pycache__` trips locally, and
+`test_new_loader_reads_the_repos_live_config`, which expects a repo-root
+config the workspace restructure removed). Don't delete or "fix"
 the GitHub Actions workflow to work around this gap; the plan is to
 replace it with `.gitlab-ci.yml` once that design is implemented, not to
 patch around GitLab not reading it.

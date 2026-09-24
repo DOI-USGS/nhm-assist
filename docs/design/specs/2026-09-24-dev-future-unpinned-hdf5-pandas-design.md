@@ -1,7 +1,7 @@
 # Pixi: keep the `hdf5` and `pandas` pins in `default`/`ci`, drop them in `dev-future`
 
 **Date:** 2026-09-24
-**Status:** Draft, pending review
+**Status:** Implemented on `feature/dev-future-unpin-pins` (2026-09-24)
 **Branch:** off `develop`, after the re-lock commit (see Prerequisite)
 **Builds on:** `docs/design/specs/2026-08-28-packaging-dependency-groups-design.md`
 (the `pywatershed` and `dataretrieval` version splits, §2–§3)
@@ -45,7 +45,7 @@ compose and `dev-future` does not, and `dev-future` sets its own ranges. For
 - Making the code pandas 3 compatible. `dev-future` exists to surface that work,
   not to do it.
 - Removing either pin from `default`/`ci`.
-- Fixing the five known test failures. The GitLab CI migration spec covers them.
+- Fixing the two known test failures (`test_the_nhm_package_is_gone` and `test_new_loader_reads_the_repos_live_config`). The GitLab CI migration spec covers them. It lists five; `41849b7` fixed the other three.
 - Publishing to PyPI. The loosened `[project.dependencies]` is acceptable only
   because nothing is published yet; see Risks.
 
@@ -74,8 +74,8 @@ changes below:
   | libnetcdf / netcdf4 | 4.9.3 / 1.7.3 | 4.9.3 / 1.7.3 |
   | python | 3.13.15 | 3.13.15 |
 
-- **Unpinning `hdf5` has no effect today.** `herbie-data → cfgrib → python-eccodes
-  → eccodes` pins it. Even the newest conda-forge `eccodes` (2.48.0) is built
+- **Unpinning `hdf5` has no effect today.** `eccodes` pins it, required by
+  `herbie-data` both directly and through `cfgrib → python-eccodes`. Even the newest conda-forge `eccodes` (2.48.0) is built
   against `hdf5 >=1.14.6,<1.14.7`. conda-forge does ship hdf5 2.2.0 for all four
   platforms, win-64 included, so the pin's current rationale in AGENTS.md is out of
   date. Unpinning is still worth doing: `dev-future` picks up HDF5 2.x as soon as
@@ -124,7 +124,9 @@ pixi update -e dev-future
 
 ### 3. AGENTS.md, "Temporary dependency pins"
 
-Replace the section with:
+Replace the section with the text below. As implemented, the `pandas` bullet also
+records the `dev-future` test result (Verification check 6), and the `eccodes` chain
+names both paths from `herbie-data`.
 
 ```markdown
 ## Temporary dependency pins
@@ -159,7 +161,7 @@ satisfy the constraints.
 
 - README, "Environments other than `default`": the `dev-future` bullet adds that
   it runs unpinned `pandas` and `hdf5`.
-- CHANGELOG `[Unreleased]` → Changed: "`dev-future` now resolves `pandas` and `hdf5`
+- CHANGELOG `[Unreleased]` → Changed: "`dev-future` resolves `pandas` and `hdf5`
   unpinned; the pins stay on `default` and `ci`."
 
 ## Verification
@@ -176,7 +178,7 @@ satisfy the constraints.
    and hdf5 1.14.6 everywhere. If that differs, name the constraint responsible
    rather than working around it.
 4. **Lock consistent:** `pixi lock --check` passes.
-5. **`default` test suite unchanged:** `pixi run test` gives the same five known
+5. **`default` test suite unchanged:** `pixi run test` gives the same two known
    failures and no new ones.
 6. **`dev-future` test run, informational:** `pixi run -e dev-future test`. Record
    the pass/fail counts in the merge request. Failures here are expected and
