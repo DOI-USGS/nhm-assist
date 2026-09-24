@@ -56,7 +56,11 @@ def test_retired_module_is_unimportable(module):
 
 
 def test_the_nhm_package_is_gone():
-    assert not (REPO_ROOT / "src/assist/nhm").exists()
+    # Asserts on source, not on the directory: git does not remove an untracked
+    # __pycache__ when it deletes the package, and a sourceless .pyc there is
+    # not importable, so a leftover cache is not the package coming back.
+    remaining = sorted((REPO_ROOT / "src/assist/nhm").rglob("*.py"))
+    assert not remaining, remaining
 
 
 def test_the_nhf_package_kept_only_its_real_modules():

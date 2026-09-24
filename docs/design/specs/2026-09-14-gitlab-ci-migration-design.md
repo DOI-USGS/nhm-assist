@@ -111,6 +111,8 @@ genuine regression that CI would have caught had it existed:
 | `test_the_nhm_package_is_gone` | `src/assist/nhm/` contains only `__pycache__`; its sources were deleted in `8e21b32`, but stale `.pyc` files keep the directory present. | Local artifact; passes on a clean checkout |
 | `test_new_loader_reads_the_repos_live_config` | Expects `subdomain_config.yaml` at the repository root. The workspace restructure eliminated repo-root configs; they live under a project's `project_config/` now. | Stale test |
 
+All three are resolved as of 2026-09-24; see Task A for the record of each fix.
+
 ### One test job, nothing else, in the first pipeline
 
 `pixi run -e ci test` and nothing more. This is the first pipeline this repository has ever
@@ -166,34 +168,38 @@ fires on mirror pushes.
 
 ### Task A — repair the test suite
 
-1. Add to `pyproject.toml`:
+1. **Superseded by `07ea89f`.** This step proposed a `[tool.pytest.ini_options]`
+   `pythonpath = ["."]` table. Instead, the `test` task now runs `python -m pytest tests/`,
+   and the `-m` form puts the repository root on `sys.path` so `tests.unification.harness`
+   resolves. No pytest configuration table was added. Bare `pytest` still collects only
+   part of the suite, which the comment on the task records.
 
-   ```toml
-   [tool.pytest.ini_options]
-   pythonpath = ["."]
-   testpaths = ["tests"]
-   ```
+2. **Done in `41849b7`.** `src/workflow_templates/nhf/gf_params_parse.py` now imports
+   `find_missing_gage_info` from `assist.common.assist_utilities`, which resolved three of
+   the five failures.
 
-   This puts the repository root on `sys.path` so `tests.unification.harness` resolves,
-   making `pixi run test` work for the first time. Verified precondition: `python -m pytest
-   tests/` already collects all 446 tests, so `pythonpath` is the only missing piece.
+3. **Done.** `test_the_nhm_package_is_gone` now asserts that `src/assist/nhm/` holds no
+   `*.py` source, rather than that the directory is absent. Git leaves an untracked
+   `__pycache__` behind when it deletes a package, and a sourceless `.pyc` there is not
+   importable, so the leftover is not the package returning.
+   `test_retired_module_is_unimportable` still guards every retired module by name. The
+   fix was verified with the stale `__pycache__` still present, so no local
+   `git clean` is needed.
 
-2. Fix `src/workflow_templates/nhf/gf_params_parse.py:49` to import
-   `find_missing_gage_info` from `assist.common.assist_utilities`. Resolves three of the
-   five failures. Because this is a workflow template, edit the `.py` — the paired notebook
-   updates itself (see `AGENTS.md`).
+4. **Done, re-pointed rather than retired.** The test's one unique claim is that both
+   spellings resolve to the same value, `waterdata_*` and `nwis_*`, whichever one the
+   YAML was written in. The two `tmp_path` schema tests assert only the `waterdata_*`
+   side. It is now
+   `test_both_gage_key_spellings_resolve_whichever_is_written`, parametrized over an
+   `nwis` and a `waterdata` config. Each is written to `tmp_path` from
+   `tests/unification/fabrics.py`'s `COMPLETE_CONFIG`, with that fixture's own `nwis_*`
+   keys dropped so each case holds exactly one spelling.
 
-3. Make `test_the_nhm_package_is_gone` assert on source files rather than directory
-   existence, so stale `__pycache__` cannot fail it. A local `git clean -xdf src/assist/nhm`
-   clears the current artifacts.
-
-4. Re-point `test_new_loader_reads_the_repos_live_config` at a fixture config under
-   `tests/`, or retire it if `test_config_schema.py`'s other cases already cover the loader.
-   The repo-root `subdomain_config.yaml` it wants is gone permanently.
-
-Exit criterion: `pixi run test` exits 0. Current baseline is 446 collected — 431
-passed, 5 failed, 10 skipped — so the target is 436 passed and 10 skipped, minus one
-if fix 4 retires its test rather than re-pointing it.
+Exit criterion: `pixi run test` exits 0. The baseline before steps 3 and 4 (2026-09-24)
+was 456 collected: 444 passed, 2 failed, 10 skipped. After them it is 457 collected:
+447 passed, 10 skipped. That count is +1 from step 3 and +2 from step 4, whose one test
+became two cases. It was confirmed on 2026-09-24 in both the `default` and `ci`
+environments.
 
 ### Task B — `.gitlab-ci.yml`
 
@@ -415,20 +421,32 @@ ask the team whether anyone develops or runs notebooks on an Intel Mac. If the a
 no, remove it in its own commit with a fresh re-lock, so the lock diff shows only the
 dropped platform.
 
+**A baseline-parity test is skipped for a stale reason. (Recorded 2026-09-24; follow-up.)**
+`test_matches_the_baseline_nhm_loader_on_a_legacy_config` in
+`tests/unification/test_config_schema.py` skips unless a repo-root `subdomain_config.yaml`
+exists. The workspace restructure removed that file permanently. The test does not read it:
+it writes its own legacy config to `tmp_path`. So the skip condition is meaningless and the
+test never runs. It is one of the 10 skips. What it does need is the baseline revision
+`27f7144`, which it loads with `git show`. GitLab clones only 20 commits deep by default,
+so unskipping it as-is would fail in CI. It was left untouched in Task A. The follow-up is
+either to change the skip condition to "baseline revision reachable" (it then runs locally
+and skips in CI), or to set `GIT_DEPTH: 0` on the job so it runs in both, at the cost of
+a full clone.
+
 **GitLab CI cannot be verified locally.** Syntax can be checked with GitLab's CI Lint tool;
 `workflow:` semantics, runner pickup, image pull, and TLS behavior cannot. The first
 merge request is the actual test.
 
 ## Verification
 
-1. `pixi run test` passes locally after Task A — 436 passed, 10 skipped. Not
+1. `pixi run test` passes locally after Task A — 447 passed, 10 skipped. Not
    `python -m pytest`: the task itself, since that is what CI runs. Confirm
    `pixi run -e ci test` too, which is the exact command the job issues.
 2. `.gitlab-ci.yml` passes GitLab's CI Lint tool (project → Build → Pipeline editor →
    Validate). The API endpoint requires a token scope the developer's token lacks, so this
    is done in the web UI.
 3. **On the merge request: read the job log, not the badge.** The log must show the real
-   test count — 436 passed, 10 skipped — and a successful `pixi install`. A green check on a job that
+   test count — 447 passed, 10 skipped — and a successful `pixi install`. A green check on a job that
    silently collected zero tests is exactly the failure this migration is meant to end.
 4. Confirm the pipeline fired *once*, not twice, for a push to a branch with an open MR.
 5. Only after 3 and 4: delete `.github/`, update `AGENTS.md`.

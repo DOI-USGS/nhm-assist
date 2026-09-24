@@ -190,13 +190,27 @@ def test_matches_the_baseline_nhm_loader_on_a_legacy_config(tmp_path):
     )
 
 
-def test_new_loader_reads_the_repos_live_config():
-    """Convention-agnostic smoke test: whatever schema the live config is in,
-    the unified loader must read it. Replaces the baseline-parity check that
-    used to run here, which the WaterData default made impossible."""
-    config = load_subdomain_config(REPO_ROOT)
+@pytest.mark.parametrize(
+    "gage_keys",
+    [
+        {"nwis_gages_file": "/tmp/m/NWISgages.csv", "nwis_gage_nobs_min": 365},
+        {"waterdata_gages_file": "/tmp/m/WaterDataGages.csv",
+         "waterdata_gage_nobs_min": 400},
+    ],
+    ids=["nwis", "waterdata"],
+)
+def test_both_gage_key_spellings_resolve_whichever_is_written(tmp_path, gage_keys):
+    """Convention-agnostic smoke test: whichever schema a config is written in,
+    the unified loader must read it and back-fill the other spelling. This used
+    to read the repository's live ./subdomain_config.yaml, which the workspace
+    restructure removed; each schema is now written to a fixture instead."""
+    # BASE carries nwis_* keys; drop them so each config holds one spelling only
+    single_spelling = {k: v for k, v in BASE.items() if not k.startswith("nwis_")}
+    (tmp_path / "subdomain_config.yaml").write_text(
+        yaml.safe_dump({**single_spelling, **gage_keys}), encoding="utf-8"
+    )
+    config = load_subdomain_config(tmp_path)
     for key in ("subdomain", "model_dir", "start_date", "end_date"):
-        assert key in config, f"{key} missing from the live config"
-    # both spellings resolve no matter which one the yaml was written in
+        assert key in config, f"{key} missing from the loaded config"
     assert config["waterdata_gages_file"] == config["nwis_gages_file"]
     assert config["waterdata_gage_nobs_min"] == config["nwis_gage_nobs_min"]
