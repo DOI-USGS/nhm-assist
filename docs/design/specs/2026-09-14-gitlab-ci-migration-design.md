@@ -142,12 +142,28 @@ from the lock file, and it is one more failure mode on a pipeline whose basic vi
 unproven. Ship without it, read the actual install time from the first job log, then add
 caching as a measured follow-up if the number justifies it.
 
-### Commit `DOIRootCA2.crt` at the repository root
+### Supply the DOI root CA as a CI/CD File variable, not a committed file
 
 `pixi install` fetches from conda-forge and PyPI over exactly the HTTPS path that USGS
-TLS inspection intercepts. gdptools solves this by committing the certificate and
-installing it in `before_script`; nhm-assist does the same. The certificate is a public
-DOI root CA, not a secret.
+TLS inspection intercepts, if the runner sits behind it. gdptools handles this by
+committing `DOIRootCA2.crt` and installing it in `before_script`.
+
+nhm-assist does not commit it (decided 2026-09-24). The certificate is public and not a
+secret, since it contains no private key, and gdptools already publishes it. But this
+repository is public and mirrored to GitHub, and publishing DOI's network-inspection
+setup there is avoidable. The job instead reads a File-type CI/CD variable,
+`DOI_ROOT_CA`. GitLab writes the variable's value to a temporary file and sets the
+variable to that file's path.
+
+- **Not Protected.** Protected variables reach only pipelines on protected branches, so
+  merge-request pipelines on feature branches would never see it.
+- **Not Masked.** GitLab cannot mask a multi-line value, and nothing here needs masking.
+- **Project or `wma/hytest` group level.** Group level lets sibling projects reuse it.
+
+If the variable is unset, the job logs that and continues rather than failing. That
+also tests the spec's inference that WMA runners need the certificate at all.
+gdptools' own job treats it as optional (`test -f DOIRootCA2.crt && … || true`).
+If the first pipeline installs cleanly without the variable, it is not needed.
 
 ### Commit-message escape instead of a `paths-ignore` equivalent
 
@@ -205,6 +221,7 @@ environments.
 
 ```yaml
 ---
+# Design and rationale: docs/design/specs/2026-09-14-gitlab-ci-migration-design.md
 stages:
   - test
 
@@ -228,10 +245,23 @@ test:
     - wma
   image: ghcr.io/prefix-dev/pixi:0.76.0-noble
   interruptible: true
+  variables:
+    # Full clone. tests/unification/ reads pre-unification baselines with
+    # `git show <rev>:<path>`, 120-150 commits back; GitLab's default depth of
+    # 20 breaks 34 of them.
+    GIT_DEPTH: "0"
   before_script:
-    # USGS TLS inspection: conda-forge and PyPI fetches fail without the DOI root CA.
-    - cp DOIRootCA2.crt /usr/local/share/ca-certificates/
-    - update-ca-certificates
+    # USGS TLS inspection: conda-forge and PyPI fetches may fail without the DOI
+    # root CA. DOI_ROOT_CA is a File-type CI/CD variable (not Protected, or MR
+    # pipelines on feature branches never see it), so the certificate stays out
+    # of this public repository. If it is unset, the job says so and carries on.
+    - |
+      if [ -n "${DOI_ROOT_CA:-}" ]; then
+        cp "${DOI_ROOT_CA}" /usr/local/share/ca-certificates/DOIRootCA2.crt
+        update-ca-certificates
+      else
+        echo "DOI_ROOT_CA is not set; continuing without the DOI root CA"
+      fi
     - export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     - export CURL_CA_BUNDLE="${SSL_CERT_FILE}"
     - export REQUESTS_CA_BUNDLE="${SSL_CERT_FILE}"
@@ -241,17 +271,43 @@ test:
     # `ci` ships without proj-data and without PROJ_NETWORK=OFF, so a datum-shift
     # grid fetch from cdn.proj.org is permitted here and needs the DOI CA too.
     - export PROJ_CURL_CA_BUNDLE="${SSL_CERT_FILE}"
+    # The pixi image ships no git, and the baseline tests above shell out to it.
+    - apt-get update
+    - apt-get install -y --no-install-recommends git
+    - git config --global --add safe.directory "${CI_PROJECT_DIR}"
   script:
-    - pixi run -e ci test
+    # --locked: fail if pixi.lock is stale rather than re-solving, so CI tests
+    # exactly the committed environment.
+    - pixi run --locked -e ci test
 ```
 
-Plus `DOIRootCA2.crt` committed at the repository root, copied from the gdptools checkout.
+No certificate file is committed; see "Supply the DOI root CA as a CI/CD File variable".
+The variable's value is the text of gdptools' `DOIRootCA2.crt`, tracked there since
+`e393771` (self-signed `CN=DOIRootCA2`, valid until 2036-04-26).
+
+Three additions to the job as first drafted, made on 2026-09-24:
+
+- **`GIT_DEPTH: "0"`.** Many `tests/unification/` modules, not just one, read
+  pre-unification code with `git show <rev>:<path>`. They use three revisions,
+  `27f7144`, `d977633` and `b9ae03d`, which are 120 to 150 commits behind `HEAD`. Against
+  a local 20-commit shallow clone, which is GitLab's default depth, the suite gave 14
+  failed and 20 errors. A full clone passed at 447 passed, 10 skipped. The full `.git`
+  is about 80 MB.
+- **`apt-get install git`.** `ghcr.io/prefix-dev/pixi` installs only `ca-certificates`
+  on top of its base image, so the same tests would fail with no `git` binary even on a
+  full clone. It is installed in `before_script`, scoped to CI, rather than added to the
+  `test` feature. A conda-forge `git` there would sit ahead of every developer's system
+  git inside `pixi run`. `safe.directory` guards against git's ownership check in case the
+  runner's checkout and the job run as different users.
+- **`--locked`.** `pixi run` otherwise re-solves silently when `pixi.lock` and
+  `pyproject.toml` disagree, which would mean CI tests an environment nobody committed.
+  With `--locked`, a stale lock fails the job.
 
 ### Task C — retire GitHub Actions, gated on a green pipeline
 
 1. Delete `.github/workflows/ci.yaml` and the `.github/` directory.
 2. Rewrite `AGENTS.md`'s CI section: GitLab CI is the real, current gate; describe the
-   `wma` tag, the `ci` environment, the DOI certificate step, and `[skip pipeline]`.
+   `wma` tag, the `ci` environment, the `DOI_ROOT_CA` variable, and `[skip pipeline]`.
    Remove the pointer to the superseded spec.
 3. Note the Linux-only coverage change in `AGENTS.md`, not only in this spec.
 
@@ -273,7 +329,7 @@ Plus `DOIRootCA2.crt` committed at the repository root, copied from the gdptools
 >   `proj-data` and `PROJ_NETWORK=OFF` were introduced together (work item #33) to work
 >   around USGS VPN SSL inspection breaking PROJ's grid fetch from `cdn.proj.org` *on
 >   developer machines*. A WMA runner is not behind that inspection, and the CI job
->   installs the DOI root CA regardless — which is the same remedy, applied at the job
+>   installs the DOI root CA when `DOI_ROOT_CA` is set — which is the same remedy, applied at the job
 >   rather than by avoiding the network. A CI job reaching `cdn.proj.org` is therefore the
 >   intended behaviour, not a hermeticity failure, and the dedicated `ci` activation block
 >   sketched below should **not** be applied.
@@ -426,12 +482,11 @@ dropped platform.
 `tests/unification/test_config_schema.py` skips unless a repo-root `subdomain_config.yaml`
 exists. The workspace restructure removed that file permanently. The test does not read it:
 it writes its own legacy config to `tmp_path`. So the skip condition is meaningless and the
-test never runs. It is one of the 10 skips. What it does need is the baseline revision
-`27f7144`, which it loads with `git show`. GitLab clones only 20 commits deep by default,
-so unskipping it as-is would fail in CI. It was left untouched in Task A. The follow-up is
-either to change the skip condition to "baseline revision reachable" (it then runs locally
-and skips in CI), or to set `GIT_DEPTH: 0` on the job so it runs in both, at the cost of
-a full clone.
+test never runs. It is one of the 10 skips. It needs only the baseline revision
+`27f7144`, loaded with `git show`, which Task B's `GIT_DEPTH: "0"` and `git` install
+now provide in CI. It was left untouched in Task A. The remaining follow-up is to remove the
+stale skip, or replace it with "baseline revision reachable" to match how a shallow local
+clone would behave. The test would then run both locally and in CI.
 
 **GitLab CI cannot be verified locally.** Syntax can be checked with GitLab's CI Lint tool;
 `workflow:` semantics, runner pickup, image pull, and TLS behavior cannot. The first
@@ -441,7 +496,7 @@ merge request is the actual test.
 
 1. `pixi run test` passes locally after Task A — 447 passed, 10 skipped. Not
    `python -m pytest`: the task itself, since that is what CI runs. Confirm
-   `pixi run -e ci test` too, which is the exact command the job issues.
+   `pixi run --locked -e ci test` too, which is the exact command the job issues.
 2. `.gitlab-ci.yml` passes GitLab's CI Lint tool (project → Build → Pipeline editor →
    Validate). The API endpoint requires a token scope the developer's token lacks, so this
    is done in the web UI.
@@ -454,6 +509,9 @@ merge request is the actual test.
 ## Maintainer actions this spec cannot perform
 
 - Confirm or attach a runner; verify the correct tag.
+- Create the `DOI_ROOT_CA` CI/CD variable (type File, not Protected) if the first
+  pipeline shows TLS errors without it. See "Supply the DOI root CA as a CI/CD File
+  variable".
 - Create the Pipeline Schedule for the nightly dependency-drift run (`.gitlab-ci.yml`
   already admits `schedule`-sourced pipelines).
 - Enable "Auto-cancel redundant pipelines" so `interruptible: true` has effect.

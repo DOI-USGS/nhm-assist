@@ -1,0 +1,59 @@
+---
+# Design and rationale: docs/design/specs/2026-09-14-gitlab-ci-migration-design.md
+stages:
+  - test
+
+workflow:
+  rules:
+    # Never run in forks or in the GitHub mirror's namespace.
+    - if: $CI_PROJECT_PATH != "wma/hytest/nhm-assist"
+      when: never
+    - if: $CI_COMMIT_MESSAGE =~ /\[skip pipeline\]/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # A push to a branch with an open MR would otherwise double-fire.
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+test:
+  stage: test
+  tags:
+    - wma
+  image: ghcr.io/prefix-dev/pixi:0.76.0-noble
+  interruptible: true
+  variables:
+    # Full clone. tests/unification/ reads pre-unification baselines with
+    # `git show <rev>:<path>`, 120-150 commits back; GitLab's default depth of
+    # 20 breaks 34 of them.
+    GIT_DEPTH: "0"
+  before_script:
+    # USGS TLS inspection: conda-forge and PyPI fetches may fail without the DOI
+    # root CA. DOI_ROOT_CA is a File-type CI/CD variable (not Protected, or MR
+    # pipelines on feature branches never see it), so the certificate stays out
+    # of this public repository. If it is unset, the job says so and carries on.
+    - |
+      if [ -n "${DOI_ROOT_CA:-}" ]; then
+        cp "${DOI_ROOT_CA}" /usr/local/share/ca-certificates/DOIRootCA2.crt
+        update-ca-certificates
+      else
+        echo "DOI_ROOT_CA is not set; continuing without the DOI root CA"
+      fi
+    - export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
+    - export CURL_CA_BUNDLE="${SSL_CERT_FILE}"
+    - export REQUESTS_CA_BUNDLE="${SSL_CERT_FILE}"
+    - export PIP_CERT="${SSL_CERT_FILE}"
+    - export GIT_SSL_CAINFO="${SSL_CERT_FILE}"
+    # PROJ uses its own libcurl handle and reads this, not CURL_CA_BUNDLE alone.
+    # `ci` ships without proj-data and without PROJ_NETWORK=OFF, so a datum-shift
+    # grid fetch from cdn.proj.org is permitted here and needs the DOI CA too.
+    - export PROJ_CURL_CA_BUNDLE="${SSL_CERT_FILE}"
+    # The pixi image ships no git, and the baseline tests above shell out to it.
+    - apt-get update
+    - apt-get install -y --no-install-recommends git
+    - git config --global --add safe.directory "${CI_PROJECT_DIR}"
+  script:
+    # --locked: fail if pixi.lock is stale rather than re-solving, so CI tests
+    # exactly the committed environment.
+    - pixi run --locked -e ci test

@@ -36,7 +36,8 @@ feature, which `ci` does not compose. Until 2026-09 the difference was
 feature. That variable and `proj-data` together work around USGS VPN SSL
 inspection breaking PROJ's datum-grid fetch from `cdn.proj.org` on developer
 machines (work item #33). CI runners are not behind that, and the CI job
-installs the DOI root CA anyway, so a CI job is expected to fetch grids over
+installs the DOI root CA whenever the `DOI_ROOT_CA` CI/CD variable is set (the
+certificate is deliberately not committed to this public repo), so a CI job is expected to fetch grids over
 the network if it ever needs them. Don't "fix" this.
 
 ## Why `pywatershed` comes from PyPI, not conda-forge
