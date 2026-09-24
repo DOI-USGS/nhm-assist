@@ -247,11 +247,11 @@ requests on `code.usgs.gov` currently get no CI signal.
 A GitLab CI migration is designed but not yet implemented — see
 `docs/design/specs/2026-09-14-gitlab-ci-migration-design.md` for the
 current design (it supersedes the 2026-08-25 spec). Note that it also
-scopes in repairing the test suite first. The suite now collects all 456
-tests; 2 still fail (`test_the_nhm_package_is_gone`, which a stale
-`src/assist/nhm/__pycache__` trips locally, and
-`test_new_loader_reads_the_repos_live_config`, which expects a repo-root
-config the workspace restructure removed). Don't delete or "fix"
+scopes in repairing the test suite first. That repair is done: the `test`
+task passes in both `default` and `ci`, with 447 passed and 10 skipped as of
+2026-09-24. The skips are example models absent from a checkout, plus one
+baseline-parity test whose skip condition is stale (recorded in the spec's
+risks section). Don't delete or "fix"
 the GitHub Actions workflow to work around this gap; the plan is to
 replace it with `.gitlab-ci.yml` once that design is implemented, not to
 patch around GitLab not reading it.
