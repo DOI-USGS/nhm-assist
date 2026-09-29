@@ -145,16 +145,13 @@ def test_every_path_key_becomes_a_Path(tmp_path):
 # and C2 (start_date/end_date no longer normalized to %m/%d/%Y). Neither of
 # the synthetic-fixture tests above exercises the repo's real, nhm-shaped
 # config or compares against the baseline loader, which is exactly why both
-# regressions shipped. Uses the repository's actual ./subdomain_config.yaml
-# (nhm schema: nwis_* keys, no resource_gages_file) as the input, and the
-# pre-unification nhm loader (BASELINE_REV) as the oracle.
+# regressions shipped. Uses the nhm-shaped BASE fixture (nwis_* keys, no
+# resource_gages_file), written to tmp_path, as the input, and the
+# pre-unification nhm loader (BASELINE_REV) as the oracle. It needs BASELINE_REV
+# in the local git history, like the other baseline tests; CI clones in full.
 NHM_BASELINE_PATH = "src/assist/nhm/nhm_assist_utilities.py"
 
 
-@pytest.mark.skipif(
-    not (REPO_ROOT / "subdomain_config.yaml").exists(),
-    reason="repository's real ./subdomain_config.yaml is not present",
-)
 def test_matches_the_baseline_nhm_loader_on_a_legacy_config(tmp_path):
     """The new loader's output must be a superset of the baseline nhm
     loader's output, with every shared key equal.

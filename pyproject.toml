@@ -294,8 +294,8 @@ description = "Lint and check formatting with ruff."
 
 [tool.pixi.tasks.test]
 # `python -m pytest` rather than bare `pytest`: the -m form puts the repo root
-# on sys.path, which tests/unification/ needs. Bare `pytest` collects only 174
-# of 446 tests and errors out on the other 18 modules.
+# on sys.path, which tests/unification/ needs. Bare `pytest` cannot import
+# `tests.unification.*` and errors out on every module that does.
 cmd = "python -m pytest tests/"
 default-environment = "default"
 description = "Run the test suite."

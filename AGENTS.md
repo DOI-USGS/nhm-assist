@@ -36,7 +36,8 @@ feature, which `ci` does not compose. Until 2026-09 the difference was
 feature. That variable and `proj-data` together work around USGS VPN SSL
 inspection breaking PROJ's datum-grid fetch from `cdn.proj.org` on developer
 machines (work item #33). CI runners are not behind that, and the CI job
-installs the DOI root CA anyway, so a CI job is expected to fetch grids over
+installs the DOI root CA whenever the `DOI_ROOT_CA` CI/CD variable is set (the
+certificate is deliberately not committed to this public repo), so a CI job is expected to fetch grids over
 the network if it ever needs them. Don't "fix" this.
 
 ## Why `pywatershed` comes from PyPI, not conda-forge
@@ -238,20 +239,40 @@ guilty.
 
 ## CI
 
-CI currently runs on GitHub Actions (`.github/workflows/ci.yaml`): pixi +
-the `tests/` suite. This only fires on pushes to the read-only GitHub
-mirror (`github.com/DOI-USGS/nhm-assist`) — GitLab, where development
-actually happens, does not read `.github/workflows/*` at all, so merge
-requests on `code.usgs.gov` currently get no CI signal.
+CI is GitLab CI, defined in `.gitlab-ci.yml`. It runs one job, `test`: the
+`test` task in the `ci` environment, `pixi run --locked -e ci test`, on the
+pinned `ghcr.io/prefix-dev/pixi` image. The design and its evidence are in
+`docs/design/specs/2026-09-14-gitlab-ci-migration-design.md`. The GitHub
+Actions workflow it replaced has been deleted, and the GitHub mirror
+(`github.com/DOI-USGS/nhm-assist`) now runs no CI.
 
-A GitLab CI migration is designed but not yet implemented — see
-`docs/design/specs/2026-09-14-gitlab-ci-migration-design.md` for the
-current design (it supersedes the 2026-08-25 spec). Note that it also
-scopes in repairing the test suite first. That repair is done: the `test`
-task passes in both `default` and `ci`, with 447 passed and 10 skipped as of
-2026-09-24. The skips are example models absent from a checkout, plus one
-baseline-parity test whose skip condition is stale (recorded in the spec's
-risks section). Don't delete or "fix"
-the GitHub Actions workflow to work around this gap; the plan is to
-replace it with `.gitlab-ci.yml` once that design is implemented, not to
-patch around GitLab not reading it.
+- **When it runs.** On merge requests, on pushes to a branch with no open MR,
+  and on schedules. A push to a branch that has an open MR does not start a
+  second pipeline. Put `[skip pipeline]` in a commit message to skip one.
+  Forks never run it.
+- **Runner.** `tags: [wma]` selects an AWS-hosted autoscaling runner that this
+  project can use even though `shared_runners_enabled` is `false`.
+- **Linux only.** The GitHub workflow ran on Linux, macOS and Windows; this
+  job runs on Linux only, because that is all the WMA runners provide. A
+  Windows- or macOS-only break will not show up in CI.
+- **Full clone, and `git` installed in the job.** Many `tests/unification/`
+  tests read pre-unification code with `git show <rev>:<path>`, from revisions
+  far behind `HEAD`. Don't lower `GIT_DEPTH` or drop the `git` install: about
+  34 tests fail on GitLab's default 20-commit clone, and the pixi image ships
+  without `git`.
+- **`--locked`.** A `pixi.lock` out of date with `pyproject.toml` fails the job
+  instead of being re-solved. Re-lock and commit the lock with the change.
+- **DOI root CA.** The certificate is deliberately not committed to this public
+  repo. The job installs it only if a File-type CI/CD variable, `DOI_ROOT_CA`,
+  is set. The current runners are not TLS-inspected, so it is not set. If it
+  is ever created, it must not be Protected: protected variables never reach
+  feature-branch MR pipelines.
+- **Read the log, not the badge.** A green job that collected no tests is
+  still green. As of 2026-09-24 the job collects 457 tests: 448 passed, 9
+  skipped. All 9 skips are example models absent from a checkout.
+
+CI reports but does not yet gate merges: `only_allow_merge_if_pipeline_succeeds`
+is off. While a pipeline is running, GitLab's merge button defaults to
+"Set to auto-merge". Merging before it finishes needs "Merge immediately".
+Turning the gate on and adding a nightly schedule are Maintainer settings,
+not file changes.
