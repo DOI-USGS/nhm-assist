@@ -51,8 +51,12 @@ matching starting ``.param``. Common overrides::
     # pin the iteration and the structural starting .param explicitly
     ... --iteration 3 --starting-param D:/.../models/SandyRiver/inputs/source_data/myparam.param
 
+    # also export the best realization for one observation group (e.g. the
+    # hru_streamflow/runoff target), named myparam_lowest_runoff_mon.param
+    ... --phi-group runoff_mon
+
     # just list the best realizations and their phi, write nothing
-    ... --list
+    ... --list --phi-group runoff_mon
 
 The starting ``.param`` supplies structure, dimensions, metadata, and the
 values of every non-calibrated parameter, so it MUST match the calibration
@@ -82,6 +86,9 @@ DEFAULT_PARAM_SEARCH_ROOT = pl.Path(r"d:\nhm-workspace\Oregon_Recharge\models")
 
 # Columns in *.phi.actual.csv that are summary stats, not realizations.
 _PHI_META = ("iteration", "total_runs", "mean", "standard_deviation", "min", "max")
+
+# Non-group bookkeeping columns in *.phi.group.csv (the rest are obs groups).
+_GROUP_META = ("iteration", "total_runs", "obs_realization", "par_realization")
 
 
 # --------------------------------------------------------------------------- #
@@ -184,6 +191,92 @@ def pick_realizations(run_dir: pl.Path, case: str, iteration: int,
     return reals.head(n)
 
 
+def pick_realizations_by_group(run_dir: pl.Path, case: str, iteration: int,
+                               group: str, n: int = 5) -> pd.Series:
+    """Return the ``n`` lowest-phi realizations for a single observation ``group``.
+
+    Ranks by one column of ``<case>.phi.group.csv`` -- the per-group phi
+    breakdown PEST++ writes alongside the total phi. Each row of that file is one
+    realization at a given iteration, identified by the ``obs_realization``
+    column (``base`` included). The returned Series is indexed by realization
+    name (str) with the group's phi as values, ascending. Zeros (failed/absent
+    runs) are dropped, matching ``pick_realizations``.
+    """
+    g = _read_group_table(run_dir, case, iteration)
+    if group not in g.columns:
+        avail = [c for c in g.columns if c not in _GROUP_META]
+        raise SystemExit(
+            f"phi group '{group}' not found. Available groups:\n  " + "\n  ".join(avail)
+        )
+    s = g[group].astype(float)
+    s = s[s > 0].sort_values()
+    return s.head(n)
+
+
+def _read_group_table(run_dir: pl.Path, case: str, iteration: int) -> pd.DataFrame:
+    """Return ``<case>.phi.group.csv`` rows for ``iteration``, indexed by realization."""
+    gpath = run_dir / f"{case}.phi.group.csv"
+    if not gpath.exists():
+        raise SystemExit(f"no {case}.phi.group.csv in {run_dir}")
+    g = pd.read_csv(gpath)
+    g = g[g["iteration"] == iteration].copy()
+    g.index = g["obs_realization"].astype(str)
+    return g
+
+
+def resolve_groups(run_dir: pl.Path, case: str, iteration: int,
+                   groups=None, prefix: str = None,
+                   drop_all_zero: bool = True) -> list[str]:
+    """Resolve an explicit ``groups`` list and/or a name ``prefix`` to real columns.
+
+    A group whose phi is zero for every realization at this iteration (e.g. the
+    ``streamflow_nodata`` zero-weight bucket) is dropped when ``drop_all_zero``.
+    Raises if any explicitly named group is missing.
+    """
+    g = _read_group_table(run_dir, case, iteration)
+    available = [c for c in g.columns if c not in _GROUP_META]
+    chosen: list[str] = []
+    if groups:
+        missing = [x for x in groups if x not in available]
+        if missing:
+            raise SystemExit(
+                "phi group(s) not found: " + ", ".join(missing)
+                + "\nAvailable:\n  " + "\n  ".join(available)
+            )
+        chosen.extend(groups)
+    if prefix:
+        pref = [c for c in available if c.startswith(prefix)]
+        if not pref:
+            raise SystemExit(
+                f"no phi groups start with '{prefix}'. Available:\n  "
+                + "\n  ".join(available)
+            )
+        chosen.extend(c for c in pref if c not in chosen)
+    if drop_all_zero:
+        kept = [c for c in chosen if float(g[c].abs().sum()) > 0]
+        dropped = [c for c in chosen if c not in kept]
+        if dropped:
+            print(f"    (skipping all-zero group(s): {', '.join(dropped)})")
+        chosen = kept
+    if not chosen:
+        raise SystemExit("no non-zero phi groups selected")
+    return chosen
+
+
+def pick_realizations_by_groups(run_dir: pl.Path, case: str, iteration: int,
+                                groups: list[str], n: int = 5) -> pd.Series:
+    """Rank realizations by the *summed* phi across several observation ``groups``.
+
+    Sums the named group columns of ``<case>.phi.group.csv`` per realization,
+    then returns the ``n`` lowest (ascending). ``base`` is included. Rows where
+    the summed phi is zero (failed/absent runs) are dropped.
+    """
+    g = _read_group_table(run_dir, case, iteration)
+    total = g[groups].astype(float).sum(axis=1)
+    total = total[total > 0].sort_values()
+    return total.head(n)
+
+
 def _load_ensemble(run_dir: pl.Path, case: str, iteration: int) -> pd.DataFrame:
     """Load the parameter ensemble table; index = realization name (str)."""
     df = pd.read_csv(
@@ -250,14 +343,19 @@ def _assert_domain_match(run_dir: pl.Path, starting_param: pl.Path, md) -> None:
 
 
 def build_param_files(
-    targets: dict[str, str],
+    targets,
     run_dir: pl.Path,
     starting_param: pl.Path,
     case: str = "prior_mc_reweight",
     iteration: int | None = None,
     out_dir: pl.Path | None = None,
 ) -> list[pl.Path]:
-    """Build a ``.param`` file for each ``{realization: filename}`` in ``targets``.
+    """Build a ``.param`` file for each (realization, filename) target.
+
+    ``targets`` may be a ``{realization: filename}`` mapping or a sequence of
+    ``(realization, filename)`` pairs. The pair form allows the *same*
+    realization to be written under more than one name (e.g. when the lowest
+    total-phi and lowest single-group realization coincide).
 
     ``iteration=None`` auto-detects the final iteration. Each output file is a
     complete PRMS parameter set: calibrated parameters take the realization's
@@ -274,8 +372,10 @@ def build_param_files(
     _assert_domain_match(run_dir, starting_param, md)
     ens = _load_ensemble(run_dir, case, iteration)
 
+    pairs = list(targets.items()) if isinstance(targets, dict) else list(targets)
+
     written: list[pl.Path] = []
-    for real_id, out_name in targets.items():
+    for real_id, out_name in pairs:
         if real_id not in ens.index:
             raise SystemExit(f"realization '{real_id}' not in {case}.{iteration}.par.csv")
         print(f"\n=== realization {real_id} -> {out_name} ===")
@@ -303,28 +403,50 @@ def _safe_name(real_id: str) -> str:
 
 def _resolve_targets(args, run_dir: pl.Path, case: str, iteration: int) -> dict:
     """Turn CLI selection (--reals / --best / default) into {real_id: filename}."""
-    if args.reals:
-        ids = list(args.reals)
-    elif args.best:
-        ids = list(pick_realizations(run_dir, case, iteration, n=args.best).index)
-    else:
-        # default: base + lowest non-base member
-        ranked = pick_realizations(run_dir, case, iteration, n=50)
-        ids = ["base"] if "base" in ranked.index else []
-        nonbase = [r for r in ranked.index if r != "base"]
-        if nonbase:
-            ids.append(nonbase[0])
+    def _name(rid):
+        return "myparam_base.param" if rid == "base" else f"myparam_real_{_safe_name(rid)}.param"
 
-    targets: dict[str, str] = {}
-    for rid in ids:
-        if rid == "base":
-            targets[rid] = "myparam_base.param"
-        else:
-            # if base isn't in the set, don't imply "nonbase"
-            label = "lowest_nonbase" if (args.reals is None and args.best is None) else _safe_name(rid)
-            targets[rid] = f"myparam_{label}.param" if rid != "base" else "myparam_base.param"
-            if args.reals is not None or args.best is not None:
-                targets[rid] = f"myparam_real_{_safe_name(rid)}.param"
+    if args.reals:
+        return [(rid, _name(rid)) for rid in args.reals]
+
+    if args.best:
+        ids = list(pick_realizations(run_dir, case, iteration, n=args.best).index)
+        return [(rid, _name(rid)) for rid in ids]
+
+    # default: base + lowest total-phi non-base member, plus (optionally) the
+    # lowest non-base member for a specific observation group. Returned as a
+    # list of pairs so the group winner can share a realization with the total
+    # winner yet still get its own group-named file.
+    targets: list[tuple[str, str]] = []
+    ranked = pick_realizations(run_dir, case, iteration, n=50)
+    if "base" in ranked.index:
+        targets.append(("base", "myparam_base.param"))
+    nonbase = [r for r in ranked.index if r != "base"]
+    if nonbase:
+        targets.append((nonbase[0], "myparam_lowest_nonbase.param"))
+
+    if args.phi_group:
+        granked = pick_realizations_by_group(run_dir, case, iteration,
+                                             args.phi_group, n=50)
+        g_nonbase = [r for r in granked.index if r != "base"]
+        if g_nonbase:
+            targets.append(
+                (g_nonbase[0], f"myparam_lowest_{_safe_name(args.phi_group)}.param")
+            )
+
+    if args.phi_groups or args.phi_groups_prefix:
+        groups = resolve_groups(run_dir, case, iteration,
+                                groups=args.phi_groups, prefix=args.phi_groups_prefix)
+        label = args.phi_groups_label
+        if not label:
+            label = "streamflow" if args.phi_groups_prefix == "streamflow_" else "groups"
+        print(f"    summed-group ranking uses: {', '.join(groups)}")
+        granked = pick_realizations_by_groups(run_dir, case, iteration, groups, n=50)
+        g_nonbase = [r for r in granked.index if r != "base"]
+        if g_nonbase:
+            targets.append(
+                (g_nonbase[0], f"myparam_lowest_{_safe_name(label)}.param")
+            )
     return targets
 
 
@@ -353,8 +475,27 @@ def main(argv=None) -> int:
     sel.add_argument("--best", type=int, default=None,
                      help="Export the N lowest-phi realizations.")
 
+    ap.add_argument("--phi-group", default=None,
+                    help="In the default selection, also export the lowest-phi "
+                         "non-base realization for this observation group "
+                         "(a column of <case>.phi.group.csv, e.g. 'runoff_mon'). "
+                         "Written as myparam_lowest_<group>.param.")
+    ap.add_argument("--phi-groups", nargs="+", default=None,
+                    help="Also export the lowest non-base realization ranked by "
+                         "the SUMMED phi across these groups. Combine with "
+                         "--phi-groups-prefix to add name-matched groups.")
+    ap.add_argument("--phi-groups-prefix", default=None,
+                    help="Add every phi group whose name starts with this prefix "
+                         "to the --phi-groups set (e.g. 'streamflow_' for all "
+                         "POI-gage streamflow groups). All-zero groups like "
+                         "streamflow_nodata are skipped automatically.")
+    ap.add_argument("--phi-groups-label", default=None,
+                    help="Filename label for the summed-groups output "
+                         "(default: 'streamflow' when using the streamflow_ "
+                         "prefix, else 'groups'). File: myparam_lowest_<label>.param.")
     ap.add_argument("--list", action="store_true",
-                    help="List the lowest-phi realizations and exit (writes nothing).")
+                    help="List the lowest-phi realizations and exit (writes nothing). "
+                         "With --phi-group, also lists that group's ranking.")
     args = ap.parse_args(argv)
 
     run_dir = args.run_dir.resolve()
@@ -371,8 +512,20 @@ def main(argv=None) -> int:
     if args.list:
         n = args.best or 10
         ranked = pick_realizations(run_dir, case, iteration, n=n)
-        print(f"\n{n} lowest-phi realizations at iteration {iteration}:")
+        print(f"\n{n} lowest total-phi realizations at iteration {iteration}:")
         print(ranked.to_string())
+        if args.phi_group:
+            granked = pick_realizations_by_group(run_dir, case, iteration,
+                                                 args.phi_group, n=n)
+            print(f"\n{n} lowest '{args.phi_group}' phi realizations at iteration {iteration}:")
+            print(granked.to_string())
+        if args.phi_groups or args.phi_groups_prefix:
+            groups = resolve_groups(run_dir, case, iteration,
+                                    groups=args.phi_groups, prefix=args.phi_groups_prefix)
+            print(f"\nsummed-group ranking uses: {', '.join(groups)}")
+            granked = pick_realizations_by_groups(run_dir, case, iteration, groups, n=n)
+            print(f"{n} lowest SUMMED-group phi realizations at iteration {iteration}:")
+            print(granked.to_string())
         return 0
 
     md = MetaData().metadata

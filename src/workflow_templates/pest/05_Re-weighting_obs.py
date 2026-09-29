@@ -177,14 +177,14 @@ num_reals = pst.pestpp_options["ies_num_reals"]
 phi_new_comps = {
     "actet_mean_mon": 0.08,
     "recharge_ann": 0.08,
-    "runoff_mon": 0.04,
+    "runoff_mon": 0.08,
     "swe_monthly": 0.12,
     "soil_moist_ann": 0.08,
     "soil_moist_mean_mon": 0.08,
     "streamflow_mon": 0.12,
     "streamflow_mean_mon": 0.12,
     "scnd": 0.12,
-    "_low": 0.16,
+    "_low": 0.12,
 }
 
 # %%
@@ -202,15 +202,39 @@ fig, ax = plt.subplot_mosaic(
                             """,
     figsize=(8, 6),
 )
+# Keep each category the same color across both pie charts. Chart "a" uses the
+# raw phi_components names while chart "b" renames scnd/_low to
+# streamflow_high/streamflow_low, so normalize both to a common key before
+# assigning colors. A single color map, keyed by that common category name and
+# built from the union of both charts' categories, is then indexed per chart in
+# its own key order.
+_pie_rename = {"scnd": "streamflow_high", "_low": "streamflow_low"}
+
+
+def _pie_cat(key):
+    return _pie_rename.get(key, key)
+
+
+_all_pie_cats = list(
+    dict.fromkeys(
+        [_pie_cat(k) for k in pst.phi_components.keys()]
+        + [_pie_cat(k) for k in phi_new_comps_plot.keys()]
+    )
+)
+_pie_cmap = plt.get_cmap("tab20")
+_pie_colors = {cat: _pie_cmap(i % _pie_cmap.N) for i, cat in enumerate(_all_pie_cats)}
+
 ax["a"].pie(
     pst.phi_components.values(),
     labels=[i.replace("_", "\n") for i in pst.phi_components.keys()],
+    colors=[_pie_colors[_pie_cat(k)] for k in pst.phi_components.keys()],
     startangle=180,
     textprops={"fontsize": 12},
 )
 ax["b"].pie(
     phi_new_comps_plot.values(),
     labels=[i.replace("_", "\n") for i in phi_new_comps_plot.keys()],
+    colors=[_pie_colors[_pie_cat(k)] for k in phi_new_comps_plot.keys()],
     textprops={"fontsize": 12},
 )
 plt.savefig(pestpp_model_dir / f'postprocessing/reweighting_{config["subdomain"]}.pdf')
@@ -309,41 +333,46 @@ pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight_gsa.pst"), version=2
 obs = pst.observation_data
 
 # %%
-for cn, _ in obs.groupby("obgnme"):
+phi_group_file = pestpp_model_dir / "prior_mc_reweight.phi.group.csv"
+phi_group = pd.read_csv(phi_group_file)
 
-    if cn.startswith("streamflow_"):
-        """
-        Assign weight value for observatons in the obsevation group name "streamflow_no_data".
-        """
-        if cn == "streamflow_nodata":
-            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
-            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
-            print(
-                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
-            )
+# The file is appended to across runs; take the most recent `base` realization
+# row (falling back to the last row if no `base` realization is present).
+base_rows = phi_group[phi_group["obs_realization"] == "base"]
+last_row = (base_rows if not base_rows.empty else phi_group).iloc[-1]
 
-        else:
+# Group columns are everything after the run-bookkeeping columns.
+meta_cols = ["iteration", "total_runs", "obs_realization", "par_realization"]
+group_cols = [c for c in phi_group.columns if c not in meta_cols]
 
-            mask_cn_and_notzero = (obs.obgnme == cn) & (obs["obsval"] != 0)
+achieved_phi = last_row[group_cols].astype(float)
+total_phi = achieved_phi.sum()
 
-            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
-            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
-            print(
-                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
-            )
+# Map the target-fraction keys (which use scnd/_low) onto the group names that
+# appear in the phi.group.csv (streamflow_high/streamflow_low), matching the
+# renaming used for the pie chart above.
+target_rename = {"scnd": "streamflow_high", "_low": "streamflow_low"}
+target_frac = {target_rename.get(k, k): v for k, v in phi_new_comps.items()}
 
-    else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
-
-        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
-
-        min_val = obs.loc[mask_cn, "weight"].min()
-        max_val = obs.loc[mask_cn, "weight"].max()
-        print(
-            f"Observation weights {cn} range {min_val} to {max_val}for n={len(obs.loc[mask_cn])}"
-        )
+phi_balance = pd.DataFrame(
+    {
+        "phi": achieved_phi,
+        "achieved_frac": achieved_phi / total_phi if total_phi > 0 else 0.0,
+    }
+)
+phi_balance["target_frac"] = phi_balance.index.map(target_frac)
+phi_balance = phi_balance.sort_values("achieved_frac", ascending=False)
 
 print(
-    "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
+    f"Achieved per-group phi balance for the 'base' realization "
+    f"(total phi = {total_phi:.4g}):\n"
+)
+print(phi_balance.to_string())
+print(
+    "\nachieved_frac is each group's share of the total composite phi that "
+    "PEST++-IES actually produced; target_frac is the requested share from "
+    "phi_new_comps (NaN = group not assigned a target). These reflect the "
+    "reweighting strategy; the raw obs weights do not."
 )
 
 # %%

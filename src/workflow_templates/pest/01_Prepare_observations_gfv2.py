@@ -619,7 +619,13 @@ inds = [
     for i in cdat.indexes["time"]
     for j in cdat.indexes["hru_id"]
 ]
-runoff_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
+# Bias adjustment: increase each monthly runoff value by 83% (multiply by 1.83)
+# before writing to allobs.dat. Applied to the observation values only; the
+# ensemble_std written to allobs_std.dat is left unadjusted.
+RUNOFF_BIAS_FACTOR = 1.83
+runoff_mon = (
+    cdat.ensemble_mean * RUNOFF_BIAS_FACTOR
+)  # (cdat.upper_bound + cdat.lower_bound) / 2
 runoff_mon_std = cdat.ensemble_std
 
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
