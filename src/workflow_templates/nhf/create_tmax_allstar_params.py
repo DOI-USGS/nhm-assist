@@ -41,7 +41,7 @@
 # 3. Download HRRR data (via standalone script `run_hrrr_download_s3.py`)
 # 4. Process HRRR: load cache, compute monthly means, grid-to-HRU weights
 # 5. Compare ERA5 vs HRRR vs NHM v1.1 visually
-# 6. Write final parameters using HRRR-derived values
+# 6. Write final HRRR-derived parameters back into the PRMS parameter file
 #
 # ## References
 # - Norton, P.A., ERA5 tmax_allstar workflow, nhm_v1.1_workflows GitLab repository
@@ -68,11 +68,40 @@ sys.path.append(str(root_dir))
 
 # %%
 # === PATHS ===
-v2_gpkg_path = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\GIS\model_layers.gpkg")
+# The CHILD model geopackage (Flaming Gorge subbasin), whose nhru layer matches
+# the parameter file we read from and write to (1,745 HRUs). Its HRU id column
+# is "hru_id", a 1..N model index — NOT "nat_hru_id" (that is the CONUS parent
+# gfv2r2.gpkg id) and NOT "model_hru_idx" (older fabric spelling).
+v2_gpkg_path = pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\GIS\model_layers.gpkg")
+# HRU identifier column in v2_gpkg_path's nhru layer and in the derived weight
+# frames. The grid-to-HRU weighting indexes output arrays as id-1, so this
+# column must be the model's 1..N HRU index for the child being written.
+hru_id_col = "hru_id"
 land_sea_mask = pl.Path(r"D:\nhm-assist\data_dependencies\nhm_v1.1_workflows-master\tmax_allstar\land_sea_mask_upk.nc")
-era5_data_dir = pl.Path(r"D:\ERA5_data")  # Where downloaded ERA5 files will be stored
-output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
+# ERA5 downloads are domain-specific (fetch_era5_data derives the bbox from the
+# child geopackage), so they live in a child-specific folder. The OHM-domain
+# ERA5 grids under D:\ERA5_data do NOT cover Flaming Gorge, so ERA5 must be
+# re-downloaded here if the ERA5-vs-HRRR comparison is wanted.
+era5_data_dir = pl.Path(r"D:\nhm-workspace\GF2v2_conus\fabrics\FlamingGorge\ERA5_data")
+# The HRRR processed cache is the full native CONUS grid (12, 1059, 1799),
+# domain-agnostic and reusable across child models — it is clipped to the basin
+# at weighting time. Kept separate from era5_data_dir so the ~60-hour HRRR
+# download is not re-triggered per child.
+hrrr_data_dir = pl.Path(r"D:\nhm-assist\data_dependencies\hrrr_data")
+# Scratch location for the ERA5 grid-to-HRU weights CSV (era5_weights.csv) — the
+# only thing written here. Part of the dormant ERA5 comparison branch; the final
+# tmax_allsnow/tmax_allrain_offset parameters are NOT written here, they go
+# straight into the child param_file. Kept alongside the child ERA5 data.
+output_dir = pl.Path(r"D:\nhm-workspace\GF2v2_conus\fabrics\FlamingGorge\ERA5_data")
 output_dir.mkdir(parents=True, exist_ok=True)
+
+# The PRMS parameter file is the single source and sink for tmax_allsnow and
+# tmax_allrain_offset: input HRU count comes from it (Step H4) and the final
+# HRRR-derived values are written straight back into it (final cell). It is
+# loaded with pyPRMS in Step H4, mirroring create_smidx_exp_param.py.
+param_file = pl.Path(
+    r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\myparam.param"
+)
 
 # === PARAMETERS ===
 start_year = 2007
@@ -108,7 +137,7 @@ ymon_mean = process_era5_ptype_masking(era5_data_dir, start_year, end_year)
 from assist.nhf.make_pws_params import compute_era5_hru_weights
 
 weights_df = compute_era5_hru_weights(
-    v2_gpkg_path, era5_data_dir, start_year, grid_spacing, output_dir
+    v2_gpkg_path, era5_data_dir, start_year, grid_spacing, output_dir, hru_id_col=hru_id_col
 )
 
 # %% [markdown]
@@ -121,23 +150,8 @@ hru_gdf = gpd.read_file(v2_gpkg_path, layer="nhru")
 nhru = len(hru_gdf)
 
 allsnow_f, allrain_f, allrain_offset = apply_era5_weights_to_hrus(
-    ymon_mean, weights_df, nhru
+    ymon_mean, weights_df, nhru, hru_id_col=hru_id_col
 )
-
-# %% [markdown]
-# ## Step 5: Write output parameter CSVs
-
-# %%
-def write_param_csv(filepath, param_name, data):
-    """Write parameter in paramdb CSV format ($id, values by month)."""
-    nhru, nmonths = data.shape
-    rows = []
-    # Flatten in Fortran order (column-major): all HRUs for month 1, then month 2, etc.
-    flat = data.ravel(order="F")
-    for i, val in enumerate(flat):
-        rows.append({"$id": i + 1, param_name: val})
-    pd.DataFrame(rows).to_csv(filepath, index=False)
-    print(f"Wrote {filepath.name}: {len(rows)} rows")
 
 # %% [markdown]
 # ## Map: tmax_allsnow and tmax_allrain_offset by HRU
@@ -218,8 +232,46 @@ hrrr_end_date = "2025-06-30"
 # This downloads the full CONUS HRRR grid (~1799 x 1059 at 3km) for every hour.
 # from assist.nhf.make_pws_params import fetch_hrrr_ptype_data
 #
-# hrrr_cache_file = era5_data_dir / "hrrr_processed_cache.npz"
+# hrrr_cache_file = hrrr_data_dir / "hrrr_processed_cache.npz"
 # hrrr_result = fetch_hrrr_ptype_data(hrrr_start_date, hrrr_end_date, hrrr_cache_file)
+
+# %% [markdown]
+# ### Check the existing HRRR cache before deciding to download
+# The HRRR processed cache is the full CONUS grid, so it is reusable across child
+# models and does NOT need re-downloading for Flaming Gorge. This cell reports
+# what is already cached in `hrrr_data_dir` — the time span of the downloaded
+# data and the last month on hand — so you don't re-run the (very long) download
+# by mistake.
+
+# %%
+# Report the span of HRRR data already downloaded (from hrrr_completed_months.txt,
+# a sorted list of "YYYY-MM" the download writes). Warn loudly that re-downloading
+# is a multi-day job before anyone uncomments the Step H1 fetch above.
+_hrrr_cache = hrrr_data_dir / "hrrr_processed_cache.npz"
+_hrrr_months_file = hrrr_data_dir / "hrrr_completed_months.txt"
+
+if _hrrr_cache.exists():
+    print(f"HRRR processed cache found: {_hrrr_cache}")
+    if _hrrr_months_file.exists():
+        _months = [ln.strip() for ln in _hrrr_months_file.read_text().splitlines() if ln.strip()]
+        _months.sort()
+        if _months:
+            print(f"  Downloaded span : {_months[0]} through {_months[-1]}")
+            print(f"  Last month on hand: {_months[-1]}")
+            print(f"  Months downloaded : {len(_months)}")
+    else:
+        print(f"  (No {_hrrr_months_file.name} alongside the cache; span unknown.)")
+    print("  This cache is the full CONUS HRRR grid and covers Flaming Gorge, so")
+    print("  there is NO need to download again.")
+else:
+    print(f"No HRRR cache found at {_hrrr_cache}.")
+    print("  Step H2-H3 below will fail to load it until it exists.")
+
+print()
+print("*** WARNING: re-downloading HRRR (the Step H1 fetch above) takes a VERY long")
+print("    time — on the order of ~60 hours / multiple days with Herbie. Only")
+print("    uncomment and run it if the cache is genuinely missing or you need a")
+print("    different time span. :)")
 
 # %% [markdown]
 # ### Steps H2–H3: Compute HRRR monthly climatology and grid-to-HRU weights
@@ -233,16 +285,27 @@ hrrr_end_date = "2025-06-30"
 # %%
 from assist.nhf.make_pws_params import process_hrrr_climatology_and_weights
 
-hrrr_cache_file = era5_data_dir / "hrrr_processed_cache.npz"
+hrrr_cache_file = hrrr_data_dir / "hrrr_processed_cache.npz"
 hrrr_ymon_snow, hrrr_ymon_rain, hrrr_weights = process_hrrr_climatology_and_weights(
-    hrrr_cache_file, v2_gpkg_path
+    hrrr_cache_file, v2_gpkg_path, hru_id_col=hru_id_col
 )
 
 # %% [markdown]
 # ### Step H4: Apply weights — compute HRRR area-weighted tmax per HRU per month
 
 # %%
-nhru_hrrr = len(hru_gdf)
+# Load the PRMS parameter file once (same API as create_smidx_exp_param.py) and
+# size the output arrays from the param file's HRU dimension so the written
+# arrays line up with the param file's HRU ordering. Assert it matches the
+# geopackage so a domain mismatch fails loudly instead of writing misaligned values.
+from pyPRMS import ParameterFile
+from pyPRMS.metadata.metadata import MetaData
+
+pdb = ParameterFile(param_file, metadata=MetaData().metadata, verbose=False)
+nhru_hrrr = len(pdb.get("tmax_allsnow").data)
+assert nhru_hrrr == len(hru_gdf), (
+    f"param file HRU count ({nhru_hrrr}) != geopackage HRU count ({len(hru_gdf)})"
+)
 
 # Default fill values for HRUs with no valid observations for a given month.
 # From the original v1.1 workflow (process_era5_tmax_allstar.py, nan= argument).
@@ -256,7 +319,7 @@ rain_nan_default = 274.65  # K
 hrrr_allsnow = np.full((nhru_hrrr, 12), snow_nan_default)
 hrrr_allrain = np.full((nhru_hrrr, 12), rain_nan_default)
 
-hrrr_hru_groups = hrrr_weights.groupby("model_hru_idx")
+hrrr_hru_groups = hrrr_weights.groupby(hru_id_col)
 
 for month_idx in range(12):
     snow_flat = hrrr_ymon_snow[month_idx].flatten()
@@ -382,11 +445,12 @@ v1_model_dir = pl.Path(r"D:\nhm-assist\data_dependencies\20240524_v1.1_gm_precal
 v1_param_file = v1_model_dir / "myparam.param"
 v1_gis_file = v1_model_dir / "GIS" / "model_nhru.shp"
 
-# Read param file with pyPRMS
+# Read param file with pyPRMS. Use a distinct handle (v1_pdb) so it does not
+# clobber `pdb`, which points at the target parameter file we write to below.
 prms_meta = MetaData().metadata
-pdb = ParameterFile(v1_param_file, metadata=prms_meta, verbose=False)
-v1_nhm_ids = pdb.get("nhm_id").data  # ordering of HRUs in the param file
-v1_allsnow_vals = pdb.get("tmax_allsnow").data  # shape: (nhru, 12)
+v1_pdb = ParameterFile(v1_param_file, metadata=prms_meta, verbose=False)
+v1_nhm_ids = v1_pdb.get("nhm_id").data  # ordering of HRUs in the param file
+v1_allsnow_vals = v1_pdb.get("tmax_allsnow").data  # shape: (nhru, 12)
 
 print(f"v1.1 subdomain: {len(v1_nhm_ids)} HRUs, tmax_allsnow shape: {v1_allsnow_vals.shape}")
 
@@ -458,7 +522,7 @@ plt.show()
 
 # %% jupyter={"source_hidden": true}
 # v1.1 tmax_allrain_offset from param file
-v1_allrain_offset_vals = pdb.get("tmax_allrain_offset").data  # shape: (nhru, 12)
+v1_allrain_offset_vals = v1_pdb.get("tmax_allrain_offset").data  # shape: (nhru, 12)
 v1_hru_gdf["tmax_allrain_offset"] = v1_allrain_offset_vals[v1_hru_gdf["param_idx"].values, compare_month]
 
 # v2 ERA5
@@ -555,7 +619,7 @@ hru_v2_hrrr_clipped = hru_v2_hrrr[hru_v2_hrrr.intersects(v1_envelope)].copy()
 
 # Layer: v2 ERA5
 folium.GeoJson(
-    hru_v2_map_clipped[["model_hru_idx", "tmax_allsnow", "geometry"]].to_json(),
+    hru_v2_map_clipped[[hru_id_col, "tmax_allsnow", "geometry"]].to_json(),
     name=f"v2 ERA5 tmax_allsnow ({month_names[compare_month]})",
     style_function=lambda f: {
         "fillColor": cmap_allsnow(f["properties"]["tmax_allsnow"]) if f["properties"]["tmax_allsnow"] is not None else "gray",
@@ -563,13 +627,13 @@ folium.GeoJson(
         "weight": 0.2,
         "fillOpacity": 0.7,
     },
-    tooltip=folium.GeoJsonTooltip(fields=["model_hru_idx", "tmax_allsnow"]),
+    tooltip=folium.GeoJsonTooltip(fields=[hru_id_col, "tmax_allsnow"]),
     show=False,
 ).add_to(m)
 
 # Layer: v2 HRRR
 folium.GeoJson(
-    hru_v2_hrrr_clipped[["model_hru_idx", "tmax_allsnow", "geometry"]].to_json(),
+    hru_v2_hrrr_clipped[[hru_id_col, "tmax_allsnow", "geometry"]].to_json(),
     name=f"v2 HRRR tmax_allsnow ({month_names[compare_month]})",
     style_function=lambda f: {
         "fillColor": cmap_allsnow(f["properties"]["tmax_allsnow"]) if f["properties"]["tmax_allsnow"] is not None else "gray",
@@ -577,7 +641,7 @@ folium.GeoJson(
         "weight": 0.2,
         "fillOpacity": 0.7,
     },
-    tooltip=folium.GeoJsonTooltip(fields=["model_hru_idx", "tmax_allsnow"]),
+    tooltip=folium.GeoJsonTooltip(fields=[hru_id_col, "tmax_allsnow"]),
     show=False,
 ).add_to(m)
 
@@ -591,20 +655,25 @@ m
 # ### Write final parameters using HRRR-derived values
 # The HRRR-derived values better represent the physiography of the landscape
 # compared to ERA5, which shows grid-like artifacts from the coarser resolution.
-# Overwriting the ERA5 output files with HRRR results.
+# The final `tmax_allsnow` and `tmax_allrain_offset` values are written straight
+# back into the PRMS parameter file (`param_file`), mirroring the write pattern
+# in `create_smidx_exp_param.py`.
 
 # %%
 # Compute HRRR allrain_offset
 hrrr_allrain_offset_final = hrrr_allrain_f - hrrr_allsnow_f
 
-print("Writing HRRR-derived parameters (replacing ERA5 output):")
+print("Writing HRRR-derived parameters into the parameter file:")
 print(f"  tmax_allsnow range: {np.nanmin(hrrr_allsnow_f):.2f} - {np.nanmax(hrrr_allsnow_f):.2f} °F")
 print(f"  tmax_allrain_offset range: {np.nanmin(hrrr_allrain_offset_final):.2f} - {np.nanmax(hrrr_allrain_offset_final):.2f} °F")
 
-write_param_csv(output_dir / "tmax_allsnow.csv", "tmax_allsnow", hrrr_allsnow_f)
-write_param_csv(output_dir / "tmax_allrain_offset.csv", "tmax_allrain_offset", hrrr_allrain_offset_final)
+# Assign the native (nhru, 12) arrays and let pyPRMS serialize them, then write
+# the parameter file once (same API as create_smidx_exp_param.py).
+pdb.get("tmax_allsnow").data = hrrr_allsnow_f
+pdb.get("tmax_allrain_offset").data = hrrr_allrain_offset_final
+pdb.write_parameter_file(str(param_file))
 
-print(f"\nFinal parameters written to {output_dir}")
+print(f"\nUpdated tmax_allsnow and tmax_allrain_offset in parameter file: {param_file}")
 print("Source: HRRR 3km (2014-09 to 2026-09)")
 
 # %%

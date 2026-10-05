@@ -3,6 +3,21 @@
 #
 # Adapted from Mark Markstrom's workflows (nhm_v1.1_workflows/solar_rad/param_calc).
 #
+# ## Two modes of operation
+# This workflow runs in one of two modes, decided automatically in the
+# Configuration cell by whether the input parameter CSVs exist in
+# `param_source_dir`:
+#
+# - **Update a parameter database (CSV files):** when the per-HRU input CSVs
+#   (e.g. `hru_lat.csv`) are present in `param_source_dir`, inputs are read from
+#   those CSVs and the computed parameters (`jh_coef_hru`, `dday_intcp`,
+#   `dday_slope`) are written back out as CSVs. Point `climate_dir` at the
+#   climate drivers you want to use.
+# - **Update values in a parameter file:** when those input CSVs are absent, the
+#   inputs are read from the PRMS parameter file (`param_file`, using the climate
+#   drivers located in the model folder) and the computed parameters are written
+#   directly back into that parameter file instead of to CSVs.
+#
 # ## Parameters produced:
 # | Parameter | Description | Inputs needed |
 # |-----------|-------------|---------------|
@@ -26,10 +41,26 @@ import pathlib as pl
 # ## Configuration
 
 # %%
-param_source_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
-climate_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\gridmet_climate_drivers")
-output_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
+param_source_dir = pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\param_source_files")
+climate_dir = pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime")
+output_dir = pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\param_source_files")
+param_file = pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\myparam.param")
 output_dir.mkdir(parents=True, exist_ok=True)
+
+# Decide the input source up front: if the per-HRU input CSVs are absent, the
+# PRMS parameter file is the source. In that case the workflow reads inputs from
+# param_file and writes the computed parameters (jh_coef_hru, dday_intcp,
+# dday_slope) straight back into param_file instead of to CSVs.
+use_param_file = not (param_source_dir / "hru_lat.csv").exists()
+
+_pdb = None  # ParameterFile handle; loaded when param_file is the input source
+if use_param_file:
+    from pyPRMS import ParameterFile
+    from pyPRMS.metadata.metadata import MetaData
+    print(f"Input source: parameter file ({param_file})")
+    _pdb = ParameterFile(param_file, metadata=MetaData().metadata, verbose=False)
+else:
+    print(f"Input source: CSVs in {param_source_dir}")
 
 # %% [markdown]
 # ## Step 1: Compute `jh_coef_hru`
@@ -61,17 +92,22 @@ print(f"  Range: {jh_coef_hru.min():.2f} to {jh_coef_hru.max():.2f} °F")
 ds_tmin.close()
 
 # %%
-# Write jh_coef_hru.csv
+# Write jh_coef_hru.csv (only when CSVs are the input source; otherwise this
+# parameter is written directly to the param file at the end of Step 5).
 jh_coef_hru_out = pd.DataFrame({
     "$id": range(1, len(jh_coef_hru) + 1),
     "jh_coef_hru": jh_coef_hru,
 })
-jh_coef_hru_out.to_csv(output_dir / "jh_coef_hru.csv", index=False)
-print(f"Wrote jh_coef_hru.csv: {len(jh_coef_hru_out)} rows")
+if use_param_file:
+    print(f"Input from param file — jh_coef_hru will be written to {param_file.name}, not CSV")
+else:
+    jh_coef_hru_out.to_csv(output_dir / "jh_coef_hru.csv", index=False)
+    print(f"Wrote jh_coef_hru.csv: {len(jh_coef_hru_out)} rows")
 print(f"  Range: {jh_coef_hru.min():.2f} — {jh_coef_hru.max():.2f} °F")
 
 # %%
 len(jh_coef_hru_out)
+
 
 # %% [markdown]
 # ## Step 2: Generate Solar Table (`soltab_potsw`)
@@ -79,10 +115,36 @@ len(jh_coef_hru_out)
 # radiation for each HRU for each day of the year.
 
 # %%
-# Load HRU parameters needed for solar geometry
-hru_lat = pd.read_csv(param_source_dir / "hru_lat.csv")["hru_lat"].values
-hru_slope = pd.read_csv(param_source_dir / "hru_slope.csv")["hru_slope"].values
-hru_aspect = pd.read_csv(param_source_dir / "hru_aspect.csv")["hru_aspect"].values
+# Load HRU parameters needed for solar geometry.
+# Prefer the per-parameter CSV in the given directory; if a CSV is missing,
+# fall back to reading the value from the PRMS parameter file (loaded as _pdb
+# in the Configuration cell when use_param_file is True).
+def load_hru_param(name, csv_dir=None):
+    """Return an HRU param as an array: from <name>.csv if present, else param_file.
+
+    csv_dir selects where to look for the CSV (defaults to param_source_dir); the
+    param-file fallback is unaffected.
+    """
+    global _pdb
+    if csv_dir is None:
+        csv_dir = param_source_dir
+    csv_path = csv_dir / f"{name}.csv"
+    if csv_path.exists():
+        print(f"  {name}: from {csv_path.name}")
+        return pd.read_csv(csv_path)[name].values
+
+    if _pdb is None:
+        from pyPRMS import ParameterFile
+        from pyPRMS.metadata.metadata import MetaData
+        print(f"  loading param file: {param_file}")
+        _pdb = ParameterFile(param_file, metadata=MetaData().metadata, verbose=False)
+    print(f"  {name}: from param file")
+    return np.asarray(_pdb.get(name).data)
+
+
+hru_lat = load_hru_param("hru_lat")
+hru_slope = load_hru_param("hru_slope")
+hru_aspect = load_hru_param("hru_aspect")
 
 nhru = len(hru_lat)
 print(f"Loaded {nhru} HRUs")
@@ -206,7 +268,7 @@ import geopandas as gpd
 
 # Load v2 HRUs in native CRS (Albers — matches Farnsworth raster)
 hru_gdf = gpd.read_file(
-    pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\GIS\model_layers.gpkg"),
+    pl.Path(r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\GIS\model_layers.gpkg"),
     layer="nhru",
 )
 print(f"Loaded {len(hru_gdf)} v2 HRUs, CRS: {hru_gdf.crs}")
@@ -356,13 +418,12 @@ radj_wppt = 0.55
 radadj_intcp = 1.0
 radadj_slope_val = 0.02
 
-# Load tmax_allsnow and tmax_allrain_offset
-tmax_allsnow_df = pd.read_csv(output_dir / "tmax_allsnow.csv")
-tmax_allrain_offset_df = pd.read_csv(output_dir / "tmax_allrain_offset.csv")
-
+# Load tmax_allsnow and tmax_allrain_offset.
+# Prefer the per-parameter CSV in param_source_dir; if missing, fall back to
+# the PRMS parameter file (via load_hru_param, defined in Step 2).
 # Reshape (nhru x 12)
-tmax_allsnow_vals = tmax_allsnow_df["tmax_allsnow"].values.reshape((nhru, 12))
-tmax_allrain_offset_vals = tmax_allrain_offset_df["tmax_allrain_offset"].values.reshape((nhru, 12))
+tmax_allsnow_vals = load_hru_param("tmax_allsnow", csv_dir=output_dir).reshape((nhru, 12))
+tmax_allrain_offset_vals = load_hru_param("tmax_allrain_offset", csv_dir=output_dir).reshape((nhru, 12))
 tmax_allrain = tmax_allsnow_vals + tmax_allrain_offset_vals
 
 # pptadj computation
@@ -429,15 +490,19 @@ print(f"  Range: {dday_intcp.min():.1f} to {dday_intcp.max():.1f}")
 print(f"  Unique values: {sorted(np.unique(dday_intcp))}")
 
 # Write dday_intcp.csv — all HRUs for month 1 first, then month 2, etc.
-dday_intcp_out = []
-row_id = 1
-for imon in range(12):
-    for ihru in range(nhru):
-        dday_intcp_out.append({"$id": row_id, "dday_intcp": int(dday_intcp[imon, ihru])})
-        row_id += 1
+# (only when CSVs are the input source; otherwise written to the param file below).
+if use_param_file:
+    print(f"Input from param file — dday_intcp will be written to {param_file.name}, not CSV")
+else:
+    dday_intcp_out = []
+    row_id = 1
+    for imon in range(12):
+        for ihru in range(nhru):
+            dday_intcp_out.append({"$id": row_id, "dday_intcp": int(dday_intcp[imon, ihru])})
+            row_id += 1
 
-pd.DataFrame(dday_intcp_out).to_csv(output_dir / "dday_intcp.csv", index=False)
-print(f"Wrote dday_intcp.csv: {len(dday_intcp_out)} rows")
+    pd.DataFrame(dday_intcp_out).to_csv(output_dir / "dday_intcp.csv", index=False)
+    print(f"Wrote dday_intcp.csv: {len(dday_intcp_out)} rows")
 
 # %%
 # Compute dday_slope
@@ -511,14 +576,34 @@ for p in [90, 95, 99, 99.5, 99.9, 100]:
     print(f"  {p:5.1f}%: {np.percentile(dday_slope_monthly[6, :], p):.4f}")
 
 # %%
-# Write dday_slope.csv
-dday_slope_out = []
-for ihru in range(nhru):
-    for imon in range(12):
-        dday_slope_out.append({"$id": ihru * 12 + imon + 1, "dday_slope": dday_slope_monthly[imon, ihru]})
+# Write dday_slope.csv (only when CSVs are the input source; otherwise written
+# to the param file below).
+if use_param_file:
+    print(f"Input from param file — dday_slope will be written to {param_file.name}, not CSV")
+else:
+    dday_slope_out = []
+    for ihru in range(nhru):
+        for imon in range(12):
+            dday_slope_out.append({"$id": ihru * 12 + imon + 1, "dday_slope": dday_slope_monthly[imon, ihru]})
 
-pd.DataFrame(dday_slope_out).to_csv(output_dir / "dday_slope.csv", index=False)
-print(f"Wrote dday_slope.csv: {len(dday_slope_out)} rows")
+    pd.DataFrame(dday_slope_out).to_csv(output_dir / "dday_slope.csv", index=False)
+    print(f"Wrote dday_slope.csv: {len(dday_slope_out)} rows")
+
+# %%
+# When the parameter file is the input source, write the three computed
+# parameters straight back into it (instead of the CSVs skipped above), then
+# save the file once. A copy of the param file is kept in the workspace source
+# folder, so editing in place here is fine.
+# Orientation: jh_coef_hru is (nhru,); dday_intcp and dday_slope are
+# (nhru, nmonths), while our arrays are (12, nhru), so they are transposed.
+if use_param_file:
+    _pdb.get("jh_coef_hru").data = jh_coef_hru            # (nhru,)
+    _pdb.get("dday_intcp").data = dday_intcp.T            # (nhru, 12)
+    _pdb.get("dday_slope").data = dday_slope_monthly.T    # (nhru, 12)
+    _pdb.write_parameter_file(str(param_file))
+    print(f"Updated jh_coef_hru, dday_intcp, dday_slope in parameter file: {param_file}")
+else:
+    print("Inputs came from CSVs; parameters written to CSV, parameter file not modified.")
 
 # %% [markdown]
 # ## Step 6: Compute `jh_coef`
@@ -571,14 +656,22 @@ print(f"jh_coef shape: {jh_coef.shape}")
 print(f"  Range: {jh_coef.min():.6f} — {jh_coef.max():.6f}")
 
 # %%
-# Write jh_coef.csv
-jh_coef_out = []
-for ihru in range(nhru):
-    for imon in range(12):
-        jh_coef_out.append({"$id": ihru * 12 + imon + 1, "jh_coef": jh_coef[ihru, imon]})
+# Write jh_coef (only when CSVs are the input source; otherwise written to the
+# param file below). jh_coef is computed here in Step 6, after the write-back
+# cell that saved the other three parameters, so it gets its own write-back:
+# jh_coef is (nhru, nmonths) in the param file, which matches our array here.
+if use_param_file:
+    _pdb.get("jh_coef").data = jh_coef                   # (nhru, 12)
+    _pdb.write_parameter_file(str(param_file))
+    print(f"Updated jh_coef in parameter file: {param_file}")
+else:
+    jh_coef_out = []
+    for ihru in range(nhru):
+        for imon in range(12):
+            jh_coef_out.append({"$id": ihru * 12 + imon + 1, "jh_coef": jh_coef[ihru, imon]})
 
-pd.DataFrame(jh_coef_out).to_csv(output_dir / "jh_coef.csv", index=False)
-print(f"Wrote jh_coef.csv: {len(jh_coef_out)} rows")
+    pd.DataFrame(jh_coef_out).to_csv(output_dir / "jh_coef.csv", index=False)
+    print(f"Wrote jh_coef.csv: {len(jh_coef_out)} rows")
 
 # %% [markdown]
 # ## Summary

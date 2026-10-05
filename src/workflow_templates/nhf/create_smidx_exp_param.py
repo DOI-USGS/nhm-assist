@@ -111,27 +111,72 @@ import pathlib as pl
 
 # %%
 param_source_dir = pl.Path(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files"
+    r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\param_source_files"
 )
 climate_dir = pl.Path(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\gridmet_climate_drivers"
+    r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime"
 )
 out_dir = pl.Path(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\created_hru_params"
+    r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\param_source_files"
+)
+param_file = pl.Path(
+    r"D:\nhm-workspace\GF2v2_conus\models\FlamingGorge\outputs\runtime\myparam.param"
 )
 out_dir.mkdir(parents=True, exist_ok=True)
+
+# Decide the input source up front: if the per-HRU input CSVs are absent, the
+# PRMS parameter file is the source. In that case the workflow reads inputs from
+# param_file and writes the computed smidx_exp straight back into param_file
+# instead of to a CSV.
+use_param_file = not (param_source_dir / "carea_max.csv").exists()
+
+_pdb = None  # ParameterFile handle; loaded when param_file is the input source
+if use_param_file:
+    from pyPRMS import ParameterFile
+    from pyPRMS.metadata.metadata import MetaData
+    print(f"Input source: parameter file ({param_file})")
+    _pdb = ParameterFile(param_file, metadata=MetaData().metadata, verbose=False)
+else:
+    print(f"Input source: CSVs in {param_source_dir}")
+
 
 # %% [markdown]
 # ## Step 1: Read source parameters
 
 # %%
-carea_max_df = pd.read_csv(param_source_dir / "carea_max.csv")
-smidx_coef_df = pd.read_csv(param_source_dir / "smidx_coef.csv")
-soil_moist_max_df = pd.read_csv(param_source_dir / "soil_moist_max.csv")
+# Read each input parameter from its per-parameter CSV when present, otherwise
+# from the PRMS parameter file (loaded as _pdb in the paths cell). The "$id"
+# column is only produced in CSV mode; it is used solely to label the output
+# CSV rows, so it stays None when the param file is the source.
+def load_param(name):
+    """Return an input parameter as an array: from <name>.csv if present, else param_file."""
+    global _pdb
+    csv_path = param_source_dir / f"{name}.csv"
+    if csv_path.exists():
+        print(f"  {name}: from {csv_path.name}")
+        return pd.read_csv(csv_path)[name].values
 
-print(f"carea_max: {len(carea_max_df)} HRUs, range: {carea_max_df['carea_max'].min():.6f} - {carea_max_df['carea_max'].max():.6f}")
-print(f"smidx_coef: {len(smidx_coef_df)} HRUs, range: {smidx_coef_df['smidx_coef'].min():.6f} - {smidx_coef_df['smidx_coef'].max():.6f}")
-print(f"soil_moist_max: {len(soil_moist_max_df)} HRUs, range: {soil_moist_max_df['soil_moist_max'].min():.6f} - {soil_moist_max_df['soil_moist_max'].max():.6f}")
+    if _pdb is None:
+        from pyPRMS import ParameterFile
+        from pyPRMS.metadata.metadata import MetaData
+        print(f"  loading param file: {param_file}")
+        _pdb = ParameterFile(param_file, metadata=MetaData().metadata, verbose=False)
+    print(f"  {name}: from param file")
+    return np.asarray(_pdb.get(name).data)
+
+
+# "$id" labels for the output CSV; only available when carea_max comes from CSV.
+smidx_exp_ids = None
+if not use_param_file:
+    smidx_exp_ids = pd.read_csv(param_source_dir / "carea_max.csv")["$id"]
+
+carea_max = load_param("carea_max")
+smidx_coef = load_param("smidx_coef")
+soil_moist_max = load_param("soil_moist_max")
+
+print(f"carea_max: {len(carea_max)} HRUs, range: {carea_max.min():.6f} - {carea_max.max():.6f}")
+print(f"smidx_coef: {len(smidx_coef)} HRUs, range: {smidx_coef.min():.6f} - {smidx_coef.max():.6f}")
+print(f"soil_moist_max: {len(soil_moist_max)} HRUs, range: {soil_moist_max.min():.6f} - {soil_moist_max.max():.6f}")
 
 # %% [markdown]
 # ## Step 2: Compute ppt_max per HRU
@@ -161,7 +206,7 @@ print(f"  Range: {ppt_max.min():.4f} - {ppt_max.max():.4f} inches")
 # soil moisture index.
 
 # %%
-soil_moist_max = soil_moist_max_df["soil_moist_max"].values
+# soil_moist_max was read in Step 1 (from CSV or the param file).
 smidx_max = (1.1 * soil_moist_max) + (0.5 * ppt_max)
 
 print(f"smidx_max computed for {len(smidx_max)} HRUs")
@@ -177,9 +222,7 @@ print(f"  Range: {smidx_max.min():.4f} - {smidx_max.max():.4f}")
 # `smidx_coef` must be less than `carea_max` to produce a valid (positive) log value.
 
 # %%
-carea_max = carea_max_df["carea_max"].values
-smidx_coef = smidx_coef_df["smidx_coef"].values
-
+# carea_max and smidx_coef were read in Step 1 (from CSV or the param file).
 # Floor smidx_coef at a small value to avoid division by zero
 smidx_coef = np.where(smidx_coef == 0.0, 0.00000001, smidx_coef)
 
@@ -233,17 +276,29 @@ print(f"  Range: {smidx_exp.min():.6f} - {smidx_exp.max():.6f}")
 print(f"  Mean: {smidx_exp.mean():.6f}")
 
 # %% [markdown]
-# ## Step 7: Write smidx_exp.csv
+# ## Step 7: Write smidx_exp
+#
+# When the inputs came from CSVs, write `smidx_exp.csv`. When the parameter file
+# was the input source, write `smidx_exp` straight back into it instead. The
+# DataFrame is built in both modes so the comparison and histogram cells below
+# work regardless of source.
 
 # %%
+# "$id" labels: from the input CSV when available, else a 1..N range.
+smidx_exp_ids = smidx_exp_ids if smidx_exp_ids is not None else range(1, len(smidx_exp) + 1)
 smidx_exp_df = pd.DataFrame({
-    "$id": carea_max_df["$id"],
+    "$id": smidx_exp_ids,
     "smidx_exp": smidx_exp,
 })
 
-smidx_exp_df.to_csv(out_dir / "smidx_exp.csv", index=False)
-print(f"Wrote smidx_exp.csv: {len(smidx_exp_df)} rows")
-print(f"  Output: {out_dir / 'smidx_exp.csv'}")
+if use_param_file:
+    _pdb.get("smidx_exp").data = smidx_exp
+    _pdb.write_parameter_file(str(param_file))
+    print(f"Updated smidx_exp in parameter file: {param_file}")
+else:
+    smidx_exp_df.to_csv(out_dir / "smidx_exp.csv", index=False)
+    print(f"Wrote smidx_exp.csv: {len(smidx_exp_df)} rows")
+    print(f"  Output: {out_dir / 'smidx_exp.csv'}")
 
 # %% [markdown]
 # ## Compare to existing smidx_exp (if available)
