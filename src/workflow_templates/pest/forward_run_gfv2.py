@@ -624,16 +624,16 @@ def _snap_tiny_to_zero(da, threshold=1e-12):
 
 # %%
 # Set in "pestpp_ies_calibration/notebooks/00_Subset_NHM_baselines_gfv2.ipynb"
-aet_start = '2009-01-01'
-aet_end = '2020-12-31'
+aet_start = '2008-10-01'
+aet_end = '2020-09-30'
 recharge_start = '2002-01-01'
 recharge_end = '2013-12-31'
-runoff_start = '2009-01-01'
-runoff_end = '2020-12-31'
-soil_rechr_start = '2013-01-01'
-soil_rechr_end = '2024-12-31'
-swe_start = '2010-01-01'
-swe_end = '2021-12-31'
+runoff_start = '2008-10-01'
+runoff_end = '2020-09-30'
+soil_rechr_start = '2012-10-01'
+soil_rechr_end = '2024-09-30'
+swe_start = '2018-10-01'
+swe_end = '2021-09-30'
 
 # set in "pestpp_ies_calibration/notebooks/01_Prepare_observations_gfv2.ipynb"
 seg_outflow_start = '1980-01-01' 
