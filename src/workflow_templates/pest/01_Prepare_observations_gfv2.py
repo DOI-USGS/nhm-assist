@@ -71,6 +71,88 @@ from assist.common import efc
 config = load_subdomain_config(config_root)
 # con.print(config)
 
+# %%
+# Water-year-aware calibration flag + helpers. The four helper functions below
+# are byte-identical to the copies in notebook 00 and the forward run; obs/model
+# positional alignment relies on the definitions being literally the same text.
+# Do not edit one without the others. (_annual_rule is unused in 01 but kept so
+# the cross-file byte-identity diff over all four helpers holds.)
+water_years = config["water_years"]
+
+
+def _year_labels(time_coord, water_years):
+    """Integer year-label array for each timestep, per the water_years flag.
+
+    water_years == False -> calendar year = time.dt.year
+    water_years == True  -> water year    = time.dt.year + (time.dt.month >= 10)
+                            (Oct-Dec belong to the NEXT year's water year;
+                             WY2010 = Oct 2009 - Sep 2010 -> label 2010)
+
+    Returns a plain numpy INTEGER array aligned to `time_coord`, suitable for
+    np.isin(...) masks. Works on any xarray datetime coord (daily or monthly).
+    """
+    yr = time_coord.dt.year
+    if water_years:
+        # time_coord.dt.month >= 10 is a boolean DataArray; adding it to the int
+        # year DataArray upcasts True->1 / False->0, so the result stays an int
+        # DataArray (verified on the installed xarray/pandas). .values is thus an
+        # integer ndarray, which np.isin compares cleanly against a Python-int
+        # cal-year list.
+        yr = yr + (time_coord.dt.month >= 10)
+    return yr.values
+
+
+def _cal_years(start, end, water_years):
+    """Odd (calibration) year labels spanning [start, end] inclusive, in the
+    flag's year space. Odd = calibration, even = validation (unchanged); only
+    the YEAR DEFINITION changes with the flag.
+    """
+    s = pd.to_datetime(start)
+    e = pd.to_datetime(end)
+    if water_years:
+        lo = s.year + (1 if s.month >= 10 else 0)
+        hi = e.year + (1 if e.month >= 10 else 0)
+    else:
+        lo, hi = s.year, e.year
+    return [int(y) for y in range(lo, hi + 1) if y % 2 != 0]
+
+
+def _annual_rule(water_years, *, recharge=False):
+    """xarray resample rule for annual aggregation.
+
+    Both rules label bins at the period END: 'YE' at Dec 31, 'YE-SEP' at Sep 30
+    of the END year (verified on pandas 2.3.3). This END-year labeling is why
+    _year_labels lines up with the resample stamp (see FR-D / FR-B notes).
+
+    Recharge is ALWAYS calendar-year ('YE') regardless of the flag (its source
+    has no sub-annual data). Everything else: 'YE-SEP' (water year) when
+    water_years else 'YE' (calendar year).
+
+    'YE' (not 'Y') is used deliberately: on pandas>=2.2 'Y' is a deprecated
+    alias that emits a FutureWarning; 'YE' is the modern spelling and produces
+    byte-identical Dec-31 labels to today's resample('Y').
+    """
+    if recharge:
+        return "YE"
+    return "YE-SEP" if water_years else "YE"
+
+
+def _streamflow_cal_val_years(start, end, water_years):
+    """Streamflow odd/even split. NOTE: end year EXCLUSIVE (range(lo, hi)),
+    unlike the HRU targets' _cal_years. water_years shifts the year space the
+    same way as _year_labels. Returns (cal_years, val_years).
+    """
+    s = pd.to_datetime(start)
+    e = pd.to_datetime(end)
+    if water_years:
+        lo = s.year + (1 if s.month >= 10 else 0)
+        hi = e.year + (1 if e.month >= 10 else 0)
+    else:
+        lo, hi = s.year, e.year
+    yrs = list(range(lo, hi))  # end EXCLUSIVE, preserved
+    return [y for y in yrs if y % 2 != 0], [y for y in yrs if y % 2 == 0]
+
+
 # %% [markdown]
 # # Prepare Observations for PEST++ IES Parameter Estimation
 #
@@ -1250,14 +1332,12 @@ seg_outflow_end = "2025-12-31"
 # seg_outflow_start = "2011-01-01"  # Note: For ease, the start and end dates must be same as those designated in
 # seg_outflow_end = "2022-12-31"  #    "the Create_pest_model_observation_file."
 
-## Set up validation years
-start_year = pd.to_datetime(seg_outflow_start).year
-end_year = pd.to_datetime(seg_outflow_end).year
-streamflow_years = np.array(range(start_year, end_year))
-
-## We will choose even years as validation
-val_years = [i for i in streamflow_years if i % 2 == 0]
-cal_years = [i for i in streamflow_years if i % 2 != 0]
+## Set up calibration/validation years (odd = calibration, even = validation).
+## End year EXCLUSIVE, in the water_years-flag year space (byte-identical helper
+## to the forward run's FR-G).
+cal_years, val_years = _streamflow_cal_val_years(
+    seg_outflow_start, seg_outflow_end, water_years
+)
 
 # read in param file
 param_file = config["model_dir"] / "myparam.param"
@@ -1324,7 +1404,7 @@ cdat = cdat[["discharge", "efc", "high_low"]]
 # 1-2 days from the following validation (even) year. Masking the daily series
 # first guarantees every 5-day calibration value is built only from calibration
 # -year days. (cdat itself is left intact for the monthly/validation outputs.)
-cdat_cal_daily = cdat.sel(time=cdat["time"].dt.year.isin(cal_years).values)
+cdat_cal_daily = cdat.sel(time=np.isin(_year_labels(cdat["time"], water_years), cal_years))
 
 # Discharge: 5-day resample mean — do not skip NaN so incomplete bins produce NaN
 cdat_5day_discharge = cdat_cal_daily["discharge"].resample(time="5D").mean(skipna=False)
@@ -1423,7 +1503,7 @@ cdat_monthly
 # %%
 # Creates a dataframe time series of monthly values (average daily rate for the month)
 cdat_monthly = cdat.resample(time="ME").mean(skipna=True)
-cdat_monthly["year"] = [pd.to_datetime(i).year for i in cdat_monthly.time.values]
+cdat_monthly["year"] = _year_labels(cdat_monthly["time"], water_years)
 
 # %%
 # Creates dataframe time series of mean monthly (mean of all jan, feb, mar....) for parameter estimation and validation
@@ -1457,7 +1537,9 @@ cdat_5day = cdat_5day.fillna(-9999)
 
 # Only the calibration (odd) years are written to allobs.dat; validation
 # (even) years are omitted here.
-cdat_5day_cal = cdat_5day.isel(time=cdat_5day["time"].dt.year.isin(cal_years).values)
+cdat_5day_cal = cdat_5day.isel(
+    time=np.isin(_year_labels(cdat_5day["time"], water_years), cal_years)
+)
 
 # Ship the surviving 5-day bin time index so the remote forward_run can emit
 # modeled streamflow_5day values for EXACTLY these bins (and no others). The

@@ -212,10 +212,61 @@ cal_config_table
 # odd years = calibration, even years = validation.
 
 
-def _cal_val_years(start, end):
-    """Return (cal_years, val_years) from start/end date strings."""
-    years = np.arange(pd.to_datetime(start).year, pd.to_datetime(end).year + 1)
-    return [int(y) for y in years if y % 2 != 0], [int(y) for y in years if y % 2 == 0]
+def _year_labels(time_coord, water_years):
+    """Integer year-label array for each timestep, per the water_years flag.
+
+    water_years == False -> calendar year = time.dt.year
+    water_years == True  -> water year    = time.dt.year + (time.dt.month >= 10)
+                            (Oct-Dec belong to the NEXT year's water year;
+                             WY2010 = Oct 2009 - Sep 2010 -> label 2010)
+
+    Returns a plain numpy INTEGER array aligned to `time_coord`, suitable for
+    np.isin(...) masks. Works on any xarray datetime coord (daily or monthly).
+    """
+    yr = time_coord.dt.year
+    if water_years:
+        # time_coord.dt.month >= 10 is a boolean DataArray; adding it to the int
+        # year DataArray upcasts True->1 / False->0, so the result stays an int
+        # DataArray (verified on the installed xarray/pandas). .values is thus an
+        # integer ndarray, which np.isin compares cleanly against a Python-int
+        # cal-year list.
+        yr = yr + (time_coord.dt.month >= 10)
+    return yr.values
+
+
+def _cal_years(start, end, water_years):
+    """Odd (calibration) year labels spanning [start, end] inclusive, in the
+    flag's year space. Odd = calibration, even = validation (unchanged); only
+    the YEAR DEFINITION changes with the flag.
+    """
+    s = pd.to_datetime(start)
+    e = pd.to_datetime(end)
+    if water_years:
+        lo = s.year + (1 if s.month >= 10 else 0)
+        hi = e.year + (1 if e.month >= 10 else 0)
+    else:
+        lo, hi = s.year, e.year
+    return [int(y) for y in range(lo, hi + 1) if y % 2 != 0]
+
+
+def _annual_rule(water_years, *, recharge=False):
+    """xarray resample rule for annual aggregation.
+
+    Both rules label bins at the period END: 'YE' at Dec 31, 'YE-SEP' at Sep 30
+    of the END year (verified on pandas 2.3.3). This END-year labeling is why
+    _year_labels lines up with the resample stamp (see FR-D / FR-B notes).
+
+    Recharge is ALWAYS calendar-year ('YE') regardless of the flag (its source
+    has no sub-annual data). Everything else: 'YE-SEP' (water year) when
+    water_years else 'YE' (calendar year).
+
+    'YE' (not 'Y') is used deliberately: on pandas>=2.2 'Y' is a deprecated
+    alias that emits a FutureWarning; 'YE' is the modern spelling and produces
+    byte-identical Dec-31 labels to today's resample('Y').
+    """
+    if recharge:
+        return "YE"
+    return "YE-SEP" if water_years else "YE"
 
 
 def _get_period(target_id, time_agg):
@@ -227,22 +278,32 @@ def _get_period(target_id, time_agg):
     return row["start_date"].strip(), row["end_date"].strip()
 
 
+water_years = config["water_years"]
+
 aet_start, aet_end = _get_period("aet", "mean_monthly")
-aet_cal_years, aet_val_years = _cal_val_years(aet_start, aet_end)
+aet_cal_years = _cal_years(aet_start, aet_end, water_years)
 
 recharge_start, recharge_end = _get_period("recharge_norm", "annual")
-recharge_cal_years, recharge_val_years = _cal_val_years(recharge_start, recharge_end)
+# Recharge: its cal-year LIST follows the flag (water-year space when the flag
+# is on), like every other target. Only recharge's AGGREGATION is carved out
+# (always calendar) and only its selection LABEL comparison stays calendar --
+# see Site 00-D and the Recharge resolution. The LIST is NOT pinned calendar.
+recharge_cal_years = _cal_years(recharge_start, recharge_end, water_years)
 
 runoff_start, runoff_end = _get_period("runoff", "monthly")
-runoff_cal_years, runoff_val_years = _cal_val_years(runoff_start, runoff_end)
+runoff_cal_years = _cal_years(runoff_start, runoff_end, water_years)
 
 soil_rechr_start, soil_rechr_end = _get_period("soil_moist_norm", "monthly")
-soil_rechr_cal_years, soil_rechr_val_years = _cal_val_years(
-    soil_rechr_start, soil_rechr_end
-)
+soil_rechr_cal_years = _cal_years(soil_rechr_start, soil_rechr_end, water_years)
 
 swe_start, swe_end = _get_period("swe", "monthly")
-swe_cal_years, swe_val_years = _cal_val_years(swe_start, swe_end)
+swe_cal_years = _cal_years(swe_start, swe_end, water_years)
+
+# Ship the water_years flag to the remote forward run (same ancillary pattern
+# as streamflow_5day_bins.csv). The forward run reads this; missing -> False.
+pd.DataFrame({"water_years": ["true" if water_years else "false"]}).to_csv(
+    ancillary_dir / "cal_year_config.csv", index=False
+)
 
 # %%
 swe_cal_years
@@ -619,7 +680,7 @@ nhm_ids = list(set(hru_gdf.nhm_id))
 # Sort by ascending hru_id before writing (nhm_ids comes from a set, so its
 # order is otherwise arbitrary).
 c_da = (
-    AET_all.sel(time=AET_all["time.year"].isin(aet_cal_years))
+    AET_all.sel(time=np.isin(_year_labels(AET_all["time"], water_years), aet_cal_years))
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -827,7 +888,9 @@ RUN_all = xr.open_dataset(baselines_dir / "runoff_targets.nc", chunks="auto")
 
 # %%
 c_da = (
-    RUN_all.sel(time=RUN_all["time.year"].isin(runoff_cal_years))
+    RUN_all.sel(
+        time=np.isin(_year_labels(RUN_all["time"], water_years), runoff_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -844,8 +907,18 @@ RCH_all = xr.open_dataset(baselines_dir / "recharge_targets.nc", chunks="auto")
 # RCH_all
 
 # %%
+# Recharge is pre-annualized CALENDAR-year data (Jan-1 stamps; verified) with
+# no sub-annual resolution to re-aggregate. Its AGGREGATION stays calendar
+# ('YE') always. The cal-year LIST follows the flag (odd water years when on),
+# but the selection COMPARES using calendar labels (month 1 < 10 -> year
+# unchanged) so a Jan-1 stamp labeled 2003 is selected when 2003 is in the
+# list. The model side (FR-B) resamples to Dec-31 stamps, also calendar-labeled
+# (water_years=False in _year_labels) -- a Dec-31-2003 stamp has the same
+# calendar year label 2003, so both sides select the same recharge years.
 c_da = (
-    RCH_all.sel(time=RCH_all["time.year"].isin(recharge_cal_years))
+    RCH_all.sel(
+        time=np.isin(_year_labels(RCH_all["time"], water_years=False), recharge_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -923,14 +996,31 @@ fig_rch.show()
 # ### Subset Annual Soil Moisture
 
 # %%
-SOM_ann_all = xr.open_dataset(
-    baselines_dir / "soil_moisture_targets_annual.nc", chunks="auto"
-)
+if water_years:
+    # Rebuild the annual soil-moisture target from the MONTHLY baseline so its
+    # labels match the model side's YE-SEP water-year aggregation (FR-D). The
+    # pre-annualized annual file is Jan-1 (calendar) labeled, which would
+    # disagree with the model's water-year stamps under the flag.
+    SOM_mon_for_ann = xr.open_dataset(
+        baselines_dir / "soil_moisture_targets_monthly.nc", chunks="auto"
+    )
+    SOM_ann_all = SOM_mon_for_ann.resample(time=_annual_rule(water_years)).mean()
+else:
+    # OFF-FLAG: read the pre-annualized Jan-1-stamped annual file exactly as the
+    # worktree does today. This preserves the current calendar pairing: obs Jan-1
+    # file read + model resample('Y') -> Dec-31. Do NOT use YE-SEP here even
+    # though the main-repo template already does so unconditionally -- the off-
+    # flag branch reproduces the WORKTREE behavior, not the main-repo state.
+    SOM_ann_all = xr.open_dataset(
+        baselines_dir / "soil_moisture_targets_annual.nc", chunks="auto"
+    )
 SOM_ann_all
 
 # %%
 c_da = (
-    SOM_ann_all.sel(time=SOM_ann_all["time.year"].isin(soil_rechr_cal_years))
+    SOM_ann_all.sel(
+        time=np.isin(_year_labels(SOM_ann_all["time"], water_years), soil_rechr_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -952,7 +1042,11 @@ print(f"Cal years requested: {soil_rechr_cal_years}")
 
 # %%
 c_da = (
-    SOM_mon_all.sel(time=SOM_mon_all["time.year"].isin(soil_rechr_cal_years))
+    SOM_mon_all.sel(
+        time=np.isin(
+            _year_labels(SOM_mon_all["time"], water_years), soil_rechr_cal_years
+        )
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -1109,7 +1203,9 @@ SM_plot.close()
 # there are no resample year-boundary effects to worry about).
 SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
 c_da_swe = (
-    SWE_daily.sel(time=SWE_daily["time.year"].isin(swe_cal_years))
+    SWE_daily.sel(
+        time=np.isin(_year_labels(SWE_daily["time"], water_years), swe_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -1143,7 +1239,9 @@ SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
 
 SWE_monthly = SWE_daily.resample(time="1ME").mean()
 c_da_mo = (
-    SWE_monthly.sel(time=SWE_monthly["time.year"].isin(swe_cal_years))
+    SWE_monthly.sel(
+        time=np.isin(_year_labels(SWE_monthly["time"], water_years), swe_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
@@ -1168,13 +1266,15 @@ c_da_mo.close()
 
 SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
 c_da_swe = (
-    SWE_daily.sel(time=SWE_daily["time.year"].isin(swe_cal_years))
+    SWE_daily.sel(
+        time=np.isin(_year_labels(SWE_daily["time"], water_years), swe_cal_years)
+    )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
 c_da_swe_5day = c_da_swe.resample(time="5D").mean()
 c_da_swe_5day = c_da_swe_5day.isel(
-    time=c_da_swe_5day["time"].dt.year.isin(swe_cal_years).values
+    time=np.isin(_year_labels(c_da_swe_5day["time"], water_years), swe_cal_years)
 )
 c_da_swe_5day = c_da_swe_5day.dropna(dim="time", how="any")
 c_da_swe_5day.attrs["averaging_method"] = (

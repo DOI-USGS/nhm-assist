@@ -17,6 +17,118 @@ con = Console()
 
 
 # %%
+# Water-year-aware calibration helpers. These are byte-identical to the copies
+# in notebook 00 (00_Subset_NHM_baselines_gfv2.py) and notebook 01
+# (01_Prepare_observations_gfv2.py); the obs/model positional alignment rests on
+# the definitions being literally the same text. Do not edit one without the
+# others. The forward run has no `assist` import and must stay self-contained for
+# the remote run, so they are duplicated here rather than imported.
+def _year_labels(time_coord, water_years):
+    """Integer year-label array for each timestep, per the water_years flag.
+
+    water_years == False -> calendar year = time.dt.year
+    water_years == True  -> water year    = time.dt.year + (time.dt.month >= 10)
+                            (Oct-Dec belong to the NEXT year's water year;
+                             WY2010 = Oct 2009 - Sep 2010 -> label 2010)
+
+    Returns a plain numpy INTEGER array aligned to `time_coord`, suitable for
+    np.isin(...) masks. Works on any xarray datetime coord (daily or monthly).
+    """
+    yr = time_coord.dt.year
+    if water_years:
+        # time_coord.dt.month >= 10 is a boolean DataArray; adding it to the int
+        # year DataArray upcasts True->1 / False->0, so the result stays an int
+        # DataArray (verified on the installed xarray/pandas). .values is thus an
+        # integer ndarray, which np.isin compares cleanly against a Python-int
+        # cal-year list.
+        yr = yr + (time_coord.dt.month >= 10)
+    return yr.values
+
+
+def _cal_years(start, end, water_years):
+    """Odd (calibration) year labels spanning [start, end] inclusive, in the
+    flag's year space. Odd = calibration, even = validation (unchanged); only
+    the YEAR DEFINITION changes with the flag.
+    """
+    s = pd.to_datetime(start)
+    e = pd.to_datetime(end)
+    if water_years:
+        lo = s.year + (1 if s.month >= 10 else 0)
+        hi = e.year + (1 if e.month >= 10 else 0)
+    else:
+        lo, hi = s.year, e.year
+    return [int(y) for y in range(lo, hi + 1) if y % 2 != 0]
+
+
+def _annual_rule(water_years, *, recharge=False):
+    """xarray resample rule for annual aggregation.
+
+    Both rules label bins at the period END: 'YE' at Dec 31, 'YE-SEP' at Sep 30
+    of the END year (verified on pandas 2.3.3). This END-year labeling is why
+    _year_labels lines up with the resample stamp (see FR-D / FR-B notes).
+
+    Recharge is ALWAYS calendar-year ('YE') regardless of the flag (its source
+    has no sub-annual data). Everything else: 'YE-SEP' (water year) when
+    water_years else 'YE' (calendar year).
+
+    'YE' (not 'Y') is used deliberately: on pandas>=2.2 'Y' is a deprecated
+    alias that emits a FutureWarning; 'YE' is the modern spelling and produces
+    byte-identical Dec-31 labels to today's resample('Y').
+    """
+    if recharge:
+        return "YE"
+    return "YE-SEP" if water_years else "YE"
+
+
+def _streamflow_cal_val_years(start, end, water_years):
+    """Streamflow odd/even split. NOTE: end year EXCLUSIVE (range(lo, hi)),
+    unlike the HRU targets' _cal_years. water_years shifts the year space the
+    same way as _year_labels. Returns (cal_years, val_years).
+    """
+    s = pd.to_datetime(start)
+    e = pd.to_datetime(end)
+    if water_years:
+        lo = s.year + (1 if s.month >= 10 else 0)
+        hi = e.year + (1 if e.month >= 10 else 0)
+    else:
+        lo, hi = s.year, e.year
+    yrs = list(range(lo, hi))  # end EXCLUSIVE, preserved
+    return [y for y in yrs if y % 2 != 0], [y for y in yrs if y % 2 == 0]
+
+
+def _read_water_years_flag(ancillary_dir, default=False):
+    """Read the water_years flag shipped from notebook 00.
+
+    Contract: cal_year_config.csv has one column `water_years` whose single
+    value is the lowercase token 'true' or 'false'. Missing file or
+    unreadable/unknown value -> default (False = calendar year), so a forward
+    run shipped without the flag reproduces the legacy calendar-year behavior
+    rather than erroring on the remote host.
+    """
+    p = ancillary_dir / "cal_year_config.csv"
+    if not p.exists():
+        con.print(
+            f"[yellow]cal_year_config.csv not found in {ancillary_dir}; "
+            f"defaulting water_years={default} (calendar year).[/yellow]"
+        )
+        return default
+    try:
+        token = (
+            pd.read_csv(p, dtype={"water_years": str})["water_years"]
+            .iloc[0]
+            .strip()
+            .lower()
+        )
+    except (KeyError, IndexError, ValueError, AttributeError):
+        con.print(
+            "[yellow]cal_year_config.csv unreadable; "
+            f"defaulting water_years={default}.[/yellow]"
+        )
+        return default
+    return token == "true"
+
+
+# %%
 sttime = time.time()
 
 # %%
@@ -432,6 +544,9 @@ print("#### RUN DONE, TIME TO POSTPROCESS ####")
 
 # %%
 rootdir = pl.Path('./')# Path to location of cutouts
+# Read the water_years flag shipped by notebook 00 (ancillary/cal_year_config.csv).
+# Missing/unreadable -> False (legacy calendar-year behavior).
+water_years = _read_water_years_flag(rootdir / "ancillary")
 
 # %% [markdown]
 # var_output_files = ['hru_actet.nc', 'recharge.nc', 'soil_rechr.nc', 'snowcov_area.nc', 'seg_outflow.nc',]#output files of interest
@@ -543,16 +658,14 @@ actet_daily = modelobsdat.hru_actet.sel(time=slice(aet_start, aet_end))
 
 # %%
 # Calibration (odd) years for the AET period, matching notebook 00's
-# _cal_val_years rule (odd years within [start.year, end.year] inclusive).
-aet_years = np.arange(
-    pd.to_datetime(aet_start).year, pd.to_datetime(aet_end).year + 1
-)
-aet_cal_years = [int(y) for y in aet_years if y % 2 != 0]
+# _cal_years rule (odd years within [start.year, end.year] inclusive), in the
+# flag's year space.
+aet_cal_years = _cal_years(aet_start, aet_end, water_years)
 
 # Restrict the daily series to the calibration years BEFORE resampling so that
 # no even (validation) year contributes to a calibration monthly value.
 actet_daily_cal = actet_daily.sel(
-    time=actet_daily["time"].dt.year.isin(aet_cal_years).values
+    time=np.isin(_year_labels(actet_daily["time"], water_years), aet_cal_years)
 )
 
 # %%
@@ -598,7 +711,12 @@ recharge_daily = modelobsdat.recharge.sel(time=slice(recharge_start, recharge_en
 
 # %%
 # Annual mean of the daily recharge rate over the FULL recharge period.
-recharge_annual = recharge_daily.resample(time = 'Y').mean()
+# Recharge aggregates on the CALENDAR year ALWAYS (its source has no sub-annual
+# data to re-bin to a water year), so _annual_rule(..., recharge=True) == 'YE'
+# regardless of the flag.
+recharge_annual = recharge_daily.resample(
+    time=_annual_rule(water_years, recharge=True)
+).mean()
 
 # Normalize per HRU across time (each HRU scaled to its own 0-1), matching the
 # target construction in notebook 06 (min/max over time per HRU, with a
@@ -622,14 +740,21 @@ recharge_annual_norm = _snap_tiny_to_zero(
 
 
 # Restrict to calibration (odd) years AFTER normalizing over the full period,
-# matching notebook 00's _cal_val_years rule (odd years within the recharge
-# period). The target file RCH_annual.nc contains only these calibration years.
-recharge_years = np.arange(
-    pd.to_datetime(recharge_start).year, pd.to_datetime(recharge_end).year + 1
-)
-recharge_cal_years = [int(y) for y in recharge_years if y % 2 != 0]
+# matching notebook 00's _cal_years rule. The cal-year LIST follows the flag
+# (byte-identical _cal_years call to 00-A). But recharge aggregates on the
+# CALENDAR year (annual stamp is Dec 31), and the selection COMPARES using
+# calendar labels (water_years=False in _year_labels): a Dec-31-N stamp keeps
+# calendar year N (the +1 water-year shift is NOT applied), so it is selected
+# when N is in the list -- byte-identical to the obs side (00-D), whose Jan-1-N
+# stamp also keeps calendar year N. Comparing with water-year labels would shift
+# the Dec-31 stamp +1 on the model side only and desync. The target file
+# RCH_annual.nc contains only these calibration years.
+recharge_cal_years = _cal_years(recharge_start, recharge_end, water_years)
 recharge_annual_norm = recharge_annual_norm.sel(
-    time=recharge_annual_norm['time'].dt.year.isin(recharge_cal_years).values
+    time=np.isin(
+        _year_labels(recharge_annual_norm["time"], water_years=False),
+        recharge_cal_years,
+    )
 )
 # #### Write values to template file
 
@@ -660,12 +785,9 @@ soil_rechr_daily = modelobsdat.soil_rechr.sel(time=slice(soil_rechr_start, soil_
 #   3. normalize per HRU per CALENDAR MONTH to 0-1 (each HRU's Jan values
 #      scaled by that HRU's Jan min/max across years, etc.), and
 #   4. average by calendar month (groupby('time.month').mean()).
-soil_rechr_years = np.arange(
-    pd.to_datetime(soil_rechr_start).year, pd.to_datetime(soil_rechr_end).year + 1
-)
-soil_rechr_cal_years = [int(y) for y in soil_rechr_years if y % 2 != 0]
+soil_rechr_cal_years = _cal_years(soil_rechr_start, soil_rechr_end, water_years)
 soil_rechr_daily_cal = soil_rechr_daily.sel(
-    time=soil_rechr_daily['time'].dt.year.isin(soil_rechr_cal_years).values
+    time=np.isin(_year_labels(soil_rechr_daily["time"], water_years), soil_rechr_cal_years)
 )
 
 # monthly mean of the daily rate (calibration years only)
@@ -700,7 +822,7 @@ soil_rechr_mean_monthly = soil_rechr_monthly_norm.groupby('time.month').mean()
 # HRU over the WHOLE period to 0-1 (min/max over time per HRU, zero-range
 # guard). Normalize over the full soil-moisture period FIRST, then select the
 # calibration (odd) years -- consistent with the recharge treatment.
-soil_rechr_annual = soil_rechr_daily.resample(time = 'Y').mean()
+soil_rechr_annual = soil_rechr_daily.resample(time=_annual_rule(water_years)).mean()
 _sma_min = soil_rechr_annual.min(dim='time')
 _sma_max = soil_rechr_annual.max(dim='time')
 _sma_range = (_sma_max - _sma_min)
@@ -713,7 +835,9 @@ soil_rechr_annual_norm = _snap_tiny_to_zero(
     ).fillna(0.0)
 )
 soil_rechr_annual_norm = soil_rechr_annual_norm.sel(
-    time=soil_rechr_annual_norm['time'].dt.year.isin(soil_rechr_cal_years).values
+    time=np.isin(
+        _year_labels(soil_rechr_annual_norm["time"], water_years), soil_rechr_cal_years
+    )
 )
 
 
@@ -758,12 +882,11 @@ hru_streamflow_out_monthly = hru_streamflow_out_daily.resample(time = 'm').mean(
 # only these calibration years (in cfs, not normalized). Filter AFTER the
 # monthly resample: resampling rebuilds a continuous monthly axis that would
 # otherwise re-insert the even (validation) years as empty bins.
-runoff_years = np.arange(
-    pd.to_datetime(runoff_start).year, pd.to_datetime(runoff_end).year + 1
-)
-runoff_cal_years = [int(y) for y in runoff_years if y % 2 != 0]
+runoff_cal_years = _cal_years(runoff_start, runoff_end, water_years)
 hru_streamflow_out_monthly = hru_streamflow_out_monthly.sel(
-    time=hru_streamflow_out_monthly['time'].dt.year.isin(runoff_cal_years).values
+    time=np.isin(
+        _year_labels(hru_streamflow_out_monthly["time"], water_years), runoff_cal_years
+    )
 )
 
 # %%
@@ -804,12 +927,9 @@ swe_monthly = swe_daily.resample(time='1ME').mean()
 # rebuilds a continuous monthly axis that would otherwise re-insert the even
 # validation years as empty bins). Matches SWE_monthly.nc, which keeps only
 # the calibration years.
-swe_years = np.arange(
-    pd.to_datetime(swe_start).year, pd.to_datetime(swe_end).year + 1
-)
-swe_cal_years = [int(y) for y in swe_years if y % 2 != 0]
+swe_cal_years = _cal_years(swe_start, swe_end, water_years)
 swe_monthly = swe_monthly.sel(
-    time=swe_monthly['time'].dt.year.isin(swe_cal_years).values
+    time=np.isin(_year_labels(swe_monthly["time"], water_years), swe_cal_years)
 )
 
 # %%
@@ -862,11 +982,9 @@ seg_outflow_daily = seg_outflow_daily.sel(
 ## Calibration/validation year split, matching notebook 01 exactly:
 ##   streamflow_years = range(start_year, end_year)  # NOTE: end year EXCLUSIVE
 ##   odd years = calibration, even years = validation
-start_year = pd.to_datetime(seg_outflow_start).year
-end_year = pd.to_datetime(seg_outflow_end).year
-streamflow_years = np.array(range(start_year, end_year))
-val_years = [i for i in streamflow_years if i % 2 == 0]
-cal_years = [i for i in streamflow_years if i % 2 != 0]
+cal_years, val_years = _streamflow_cal_val_years(
+    seg_outflow_start, seg_outflow_end, water_years
+)
 
 # %% [markdown]
 # #### streamflow_5day: 5-day-averaged discharge on the calibration bins
@@ -884,7 +1002,7 @@ cal_years = [i for i in streamflow_years if i % 2 != 0]
 # Filter daily to calibration (odd) years BEFORE 5-day binning so no validation
 # -year day leaks into a calibration 5-day bin (same reasoning as notebook 01).
 seg_outflow_cal_daily = seg_outflow_daily.sel(
-    time=seg_outflow_daily['time'].dt.year.isin(cal_years).values
+    time=np.isin(_year_labels(seg_outflow_daily["time"], water_years), cal_years)
 )
 seg_outflow_5day = seg_outflow_cal_daily.resample(time='5D').mean()
 
@@ -923,9 +1041,9 @@ seg_outflow_monthly = seg_outflow_daily.resample(time='ME').mean(skipna=True)
 # %%
 # Split monthly series into calibration (odd) and validation (even) years
 # using a mask on the month timestamps' year.
-_mon_year = seg_outflow_monthly['time'].dt.year
-seg_outflow_monthly_val = seg_outflow_monthly.sel(time=_mon_year.isin(val_years).values)
-seg_outflow_monthly_cal = seg_outflow_monthly.sel(time=_mon_year.isin(cal_years).values)
+_mon_year = _year_labels(seg_outflow_monthly["time"], water_years)
+seg_outflow_monthly_val = seg_outflow_monthly.sel(time=np.isin(_mon_year, val_years))
+seg_outflow_monthly_cal = seg_outflow_monthly.sel(time=np.isin(_mon_year, cal_years))
 
 # %%
 seg_outflow_mean_monthly_cal = seg_outflow_monthly_cal.groupby('time.month').mean(skipna=True)
