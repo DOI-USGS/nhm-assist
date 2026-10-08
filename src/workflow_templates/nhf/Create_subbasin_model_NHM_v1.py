@@ -205,6 +205,24 @@ aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\Malheur_Lake.shp")
 aoi_layer = None  # set to None for shapefiles
 
 # %% [markdown]
+# ### Setup the child model directory structure
+
+# %%
+# Derive child model name from AOI filename
+child_model_name = aoi_path.stem  # e.g. "Malheur_Lake" from "Malheur_Lake.shp"
+
+# Create child model directory
+child_hf_dir = project_dir / "fabrics" / child_model_name
+child_hf_dir.mkdir(parents=True, exist_ok=True)
+child_gis_dir = child_hf_dir / "GIS"
+child_gis_dir.mkdir(parents=True, exist_ok=True)
+
+# Output GeoPackage path
+child_gpkg = child_gis_dir / "child_nhf_domain.gpkg"
+print(f"Child model: {child_model_name}")
+print(f"Output: {child_gpkg}")
+
+# %% [markdown]
 # ## Load AOI
 
 # %%
@@ -420,7 +438,7 @@ folium.LayerControl(collapsed=True, position="bottomright").add_to(m_preview)
 # Save the preview map into v1's HTML maps output folder and open it in a
 # browser. (v1 keeps its existing notebook_output_files layout rather than the
 # v2 project `fabrics/<aoi>/GIS` layout.)
-preview_out_dir = pl.Path(root_dir / r"notebooks\notebook_output_files\html_maps")
+preview_out_dir = pl.Path(child_gis_dir)
 preview_out_dir.mkdir(parents=True, exist_ok=True)
 preview_map_file = preview_out_dir / "segment_selection_preview.html"
 m_preview.save(str(preview_map_file))
@@ -746,7 +764,7 @@ if interior_hrus_for_map is not None and len(interior_hrus_for_map) > 0:
 folium.LayerControl(collapsed=True, position="bottomright").add_to(m_hru_preview)
 
 # Save the HRU preview map into v1's HTML maps output folder and open it.
-hru_preview_out_dir = pl.Path(proj_dir / "GIS")
+hru_preview_out_dir = pl.Path(child_gis_dir)
 hru_preview_out_dir.mkdir(parents=True, exist_ok=True)
 hru_preview_map_file = hru_preview_out_dir / "hru_selection_preview.html"
 m_hru_preview.save(str(hru_preview_map_file))
@@ -971,7 +989,7 @@ folium.LayerControl(collapsed=True, position="bottomright").add_to(m)
 m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
 # Save
-out_html = pl.Path(root_dir / r"notebooks\notebook_output_files\html_maps")
+out_html = pl.Path(child_gis_dir)
 out_html.mkdir(parents=True, exist_ok=True)
 map_file = out_html / "NHM_v1_1_subbasin_selector.html"
 m.save(str(map_file))
@@ -992,21 +1010,6 @@ m
 # - `nsegment` — selected segments
 # - `npoi` — POIs whose `poi_segment_v1_1` is in the selected segments
 # - `domain` — dissolved HRU boundary (holes filled)
-
-# %%
-# Derive child model name from AOI filename
-child_model_name = aoi_path.stem  # e.g. "Malheur_Lake" from "Malheur_Lake.shp"
-
-# Create child model directory
-child_hf_dir = project_dir / "fabrics" / child_model_name
-child_hf_dir.mkdir(parents=True, exist_ok=True)
-child_gis_dir = child_hf_dir / "GIS"
-child_gis_dir.mkdir(parents=True, exist_ok=True)
-
-# Output GeoPackage path
-child_gpkg = child_gis_dir / "child_nhf_domain.gpkg"
-print(f"Child model: {child_model_name}")
-print(f"Output: {child_gpkg}")
 
 # %%
 # Get the set of selected segment IDs for POI filtering

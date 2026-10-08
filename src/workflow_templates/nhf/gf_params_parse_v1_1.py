@@ -18,13 +18,31 @@ jupyter_black.load()
 # Find and set the "nhm-assist" root directory
 # Find the repo root via the editable-installed `assist` package â€” robust
 # against sibling clones, cwd quirks, and arbitrary checkout directory names.
-import assist as _assist_pkg
-
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2]/ "nhf_assist"
-
-# from assist.common.sf_data_retrieval import fetch_single_nwis_gage
-from assist.common.sf_data_retrieval import fetch_daily_discharge_batch
+from assist.workspace.bridge import resolve_repo_root
 from assist.common.assist_utilities import find_missing_gage_info
+from assist.common.sf_data_retrieval import fetch_daily_discharge_batch
+from dataretrieval import waterdata
+
+root_dir = resolve_repo_root()
+
+def find_project_root(start=None):
+    """Walk up from `start` (default: current working dir) to the nhm-assist
+    project root, identified by the `.nhm-assist-project` marker file."""
+    start = pl.Path(start or pl.Path.cwd()).resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / ".nhm-assist-project").is_file():
+            return candidate
+    raise FileNotFoundError(
+        "Could not locate a '.nhm-assist-project' marker in any parent of "
+        f"{start}. Open this notebook from within a project workspace."
+    )
+
+
+# Project workspace root (e.g. D:\\nhm-workspace\\GF2v2_conus). Outputs go here,
+# under the project's `fabrics` folder — NOT back into the nhf_assist repo.
+project_dir = find_project_root()
+print(f"Project root: {project_dir}")
+
 
 
 # %%
@@ -226,19 +244,19 @@ parent_pdb.check()
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "model_domain"  # Powder_River, John_Day_River
+child_name = "Malheur_Lake"  # Powder_River, John_Day_River
 
-hydrofabric_dir = root_dir / "hydrofabric_domain_data"
+hydrofabric_dir = project_dir / "fabrics"
 
-child_path = f"hydrofabric_domain_data/{child_name}"
+child_path = f"fabrics/{child_name}"
 
-child_hf_dir = root_dir / child_path
+child_hf_dir = project_dir / child_path
 if child_hf_dir.is_dir():
-    child_pws_dir = root_dir / f"domain_data/{child_name}"
+    child_pws_dir = project_dir / f"fabrics/{child_name}"
     child_pws_dir.mkdir(parents=True, exist_ok=True)
 else:
     print(f"The child directory {child_path} does not exist.")
-    p = root_dir / "hydrofabric_domain_data/"
+    p = project_dir / "fabrics"
     print(f"Please choose from the folowing list. ({p.resolve()}):")
     for folder in p.iterdir():
         if folder.is_dir():
@@ -450,7 +468,7 @@ hru_child_gdf = hru_gdb.copy()
 # Change to column names to match child poigages gdf
 
 # hru_child_gdf.drop(columns="nhm_hru_seg", inplace=True)  # Junk from national coverage
-hru_child_gdf.drop(columns="nhm_id", inplace=True)  # Junk from national coverage
+# hru_child_gdf.drop(columns="nhm_id", inplace=True)  # Junk from national coverage
 
 hru_child_gdf.rename(
     columns={"hru_segment_v1_1": "nhm_hru_seg", "nhru_v1_1": "nhm_id"}, inplace=True
@@ -468,25 +486,9 @@ hru_child_gdf
 seg_gdb.columns
 
 # %%
-# print(
-#     "Of the",
-#     len(list(poi_gdf_child.Type_Gage)),
-#     "'type_gage' pois in the GF, only",
-#     len(gage_poi_flow_list),
-#     "have discharge data in NWIS for the simulation period, and will be included in the parameter file.",
-# )
-# poi_gdf3 = poi_gdf_child.loc[poi_gdf_child["Type_Gage"].isin(gage_poi_flow_list)]
-# print(
-#     "Only the",
-#     len(gage_poi_flow_list),
-#     "poigages that have flow will be included in the parameter file.",
-#     "If other gages are needed, refer to the following section.",
-# )
-
-# %%
 # Change to column names to match child poigages gdf
 seg_child_gdf = seg_gdb.copy()
-seg_child_gdf.drop(columns="seg_id_nhm", inplace=True)  # vestigial ids
+# seg_child_gdf.drop(columns="seg_id_nhm", inplace=True)  # vestigial ids
 # seg_child_gdf.drop(columns="tosegment_v1_1", inplace=True)  # vestigial ids
 
 seg_child_gdf.rename(
@@ -1020,7 +1022,7 @@ P.write_pdf(f"{child_pws_dir}/digraph.pdf")
 # %%
 child_pdb.write_parameter_file(
     f"{child_pws_dir}/myparam.param",
-    header=["GFv2 derived"],
+    header=["GFv1_1 derived"],
 )
 # child_pdb.write_parameter_file(
 #     f"{child_dir}/"pywatershed_model_files/myparam.param",
