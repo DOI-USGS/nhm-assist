@@ -159,9 +159,39 @@ def check_par_bounds(par_starting_vals, bnds, bnds_path):
             f"[PASS] No extra parameters in {bnds_path} without corresponding entries in `par_starting_vals`."
         )
 
+    # Per-row bound sanity: PEST++ requires parlbnd < parubnd for every adjustable
+    # parameter. Degenerate bounds (e.g. a collapsed percent band where
+    # parval1 == 0 gives parlbnd == parubnd == 0) make pestpp-ies abort during
+    # control-file processing ("bounds are busted: 0 >= 0"). Catch them here at
+    # setup instead of on the cluster. Only rows where BOTH bounds are populated
+    # are checked, so this is safe to call before bounds have been assigned
+    # (unset bounds are NaN and skipped).
+    if {"parlbnd", "parubnd"}.issubset(par_starting_vals.columns):
+        lb = pd.to_numeric(par_starting_vals["parlbnd"], errors="coerce")
+        ub = pd.to_numeric(par_starting_vals["parubnd"], errors="coerce")
+        both_set = lb.notna() & ub.notna()
+        busted = both_set & (lb >= ub)
+        if busted.any():
+            all_passed = False
+            n_busted = int(busted.sum())
+            examples = par_starting_vals.loc[
+                busted, ["parname", "parlbnd", "parubnd"]
+            ].head(10)
+            print(
+                f"[FAIL] {n_busted} parameter(s) have busted bounds "
+                f"(parlbnd >= parubnd). PEST++ will reject these. Examples:"
+            )
+            print(examples.to_string(index=False))
+        else:
+            print("[PASS] All populated per-row bounds satisfy parlbnd < parubnd.")
+
     if all_passed:
         print("[PASS] par/bounds consistency check completed successfully.")
     else:
         print("[FAIL] par/bounds consistency check found issues (see messages above).")
+        raise ValueError(
+            "check_par_bounds: parameter/bounds consistency check failed "
+            "(see messages above). Fix bounds before writing the .pst / template."
+        )
 
-    # return all_passed
+    return all_passed

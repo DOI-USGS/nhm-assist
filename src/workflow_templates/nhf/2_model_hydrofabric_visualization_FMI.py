@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -33,10 +18,10 @@ jupyter_black.load()
 # fallback to the package location — works for editable and non-editable installs.
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import make_hf_map_elements, evaluate_and_fix_nhru_geometry
-from assist.nhf.map_template_v2 import make_hf_map, make_geo_map, make_geo_legend
+from assist.common.hydrofabric import make_hf_map_elements, evaluate_and_fix_nhru_geometry
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
     find_missing_gage_info,
     fetch_non_ref_npoigages_info,
@@ -130,7 +115,7 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     waterdata_gages_aoi,
@@ -138,8 +123,8 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],
@@ -165,21 +150,22 @@ con.print(
 poi_df
 
 # %%
-map_file = make_hf_map(
-    root_dir=root_dir,
-    hru_gdf=hru_gdf,
-    # HW_basins_gdf=HW_basins_gdf,
-    # HW_basins=HW_basins,
-    poi_df=poi_df,
-    poi_gage_id_sel="",
-    seg_gdf=seg_gdf,
-    waterdata_gages_aoi=waterdata_gages_aoi,
-    gages_df=gages_df,
-    html_maps_dir=config["html_maps_dir"],
-    Folium_maps_dir=config["Folium_maps_dir"],
-    param_filename=config["param_filename"],
-    subdomain=config["subdomain"],
-)
+if not os.environ.get("NHM_BATCH_MODE"):
+    map_file = make_hf_map(
+        root_dir=root_dir,
+        hru_gdf=hru_gdf,
+        # HW_basins_gdf=HW_basins_gdf,
+        # HW_basins=HW_basins,
+        poi_df=poi_df,
+        poi_gage_id_sel="",
+        seg_gdf=seg_gdf,
+        waterdata_gages_aoi=waterdata_gages_aoi,
+        gages_df=gages_df,
+        html_maps_dir=config["html_maps_dir"],
+        Folium_maps_dir=config["Folium_maps_dir"],
+        param_filename=config["param_filename"],
+        subdomain=config["subdomain"],
+    )
 
 # %%
 poi_df
@@ -325,43 +311,45 @@ cols = dict(
     zip(col_names, col_types)
 )  # Creates a dictionary of column header and datatype called below.
 
-fmi_df = pd.read_csv(
-    fmi_df_file,
-    dtype=cols,
-    usecols=[
+try:
+    fmi_df = pd.read_csv(
+        fmi_df_file,
+        dtype=cols,
+        usecols=[
+            "storage_index",
+            "use_index",
+            "flow_management_index",
+            "poi_gage_id",
+        ],
+    )
+
+    npoigages_df = fmi_df.merge(
+        npoigages_df,
+        left_on="poi_gage_id",
+        right_on="poi_gage_id",
+        how="outer",
+    )
+    npoigages_df["ohm_cal"] = "no"
+    cols = [
+        "huc10",
+        "poi_gage_id",
+        "ohm_cal",
+        "gagesII",
+        "flow_management_index",
         "storage_index",
         "use_index",
-        "flow_management_index",
-        "poi_gage_id",
-    ],
-)
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+    ]
+    npoigages_df = npoigages_df[cols]
+    npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
 
-npoigages_df = fmi_df.merge(
-    npoigages_df,
-    left_on="poi_gage_id",
-    right_on="poi_gage_id",
-    how="outer",
-)
-npoigages_df["ohm_cal"] = "no"
-cols = [
-    "huc10",
-    "poi_gage_id",
-    "ohm_cal",
-    "gagesII",
-    "flow_management_index",
-    "storage_index",
-    "use_index",
-    "poi_agency",
-    "poi_name",
-    "latitude",
-    "longitude",
-]
-npoigages_df = npoigages_df[cols]
-npoigages_df.sort_values(by=["huc10", "poi_gage_id"], inplace=True)
-
-
-npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
-npoigages_df.to_csv(npoigages_info_file_path, index=False)
+    npoigages_info_file_path = model_dir / "metadata" / "npoigages_cal_list.csv"
+    npoigages_df.to_csv(npoigages_info_file_path, index=False)
+except FileNotFoundError:
+    print(f"  [SKIP] fmi_gages_info.csv not found for this model — skipping FMI merge.")
 
 # %%
 

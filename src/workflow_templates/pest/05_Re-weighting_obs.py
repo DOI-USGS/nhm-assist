@@ -1,45 +1,19 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
-import sys
 import os
+import sys
 import pathlib as pl
 import warnings
+import pandas as pd
+import xarray as xr
+import numpy as np
+import shutil
+import datetime
 
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+import io
 
-import pandas as pd
-import shutil
-import pywatershed as pws
-import xarray as xr
-import numpy as np
-import datetime
-
-# import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -47,12 +21,22 @@ f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-# Find and set the "nhm-assist" root directory
-# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
-# fallback to the package location — works for editable and non-editable installs.
-from assist.workspace.bridge import resolve_repo_root
+from rich.console import Console
+from rich import pretty
 
-root_dir = resolve_repo_root()
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -64,31 +48,37 @@ if project_context:
     )
     config_root = active_model_root / "config"
 else:
+    active_model_root = None
     config_root = root_dir
 
-from dotenv import load_dotenv
+print(root_dir)
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-load_dotenv(dotenv_path=dotenv_path)
-
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
-from assist.nhm import efc
-
-from assist.pest.pest_utils import (
-    pars_to_tpl_entries,
-    pars_to_tpl_entries_2,
-    write_to_json_tpl,
-    check_par_bounds,
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
 )
 
-config = load_subdomain_config(root_dir)
+from assist.pest.pest_utils import (
+    pars_to_tpl_entries_2,
+    check_par_bounds,
+    write_to_json_tpl,
+)
 
-sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
+from assist.common import efc
+
+config = load_subdomain_config(config_root)
+# con.print(config)
+
+
+# sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 
@@ -101,17 +91,30 @@ else:
 
 interrupt_notebook = False
 import matplotlib.pyplot as plt
-
 plt.rcParams['pdf.fonttype'] = 42
 
-config = load_subdomain_config(root_dir)
 
 # %%
+if not (config["model_dir"] / "pestpp_ies").exists():
+    (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = root_dir / "pestpp_ies_calibration"
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
+
+if not (pestpp_model_dir / "observation_data").exists():
+    (pestpp_model_dir / "observation_data").mkdir()
 obsdir = pestpp_model_dir / "observation_data"
+
+if not (pestpp_model_dir / "ancillary").exists():
+    (pestpp_model_dir / "ancillary").mkdir()
 ancillary_dir = pestpp_model_dir / "ancillary"
+
+if not (pestpp_model_dir / "output").exists():
+    (pestpp_model_dir / "output").mkdir()
 output_dir = pestpp_model_dir / "output"
+
 
 if not (pestpp_model_dir / "postprocessing").exists():
     (pestpp_model_dir / "postprocessing").mkdir()
@@ -132,23 +135,56 @@ pst = pyemu.Pst(os.path.join(pestpp_model_dir, "prior_mc_loc.pst"))
 num_reals = pst.pestpp_options["ies_num_reals"]
 
 # %% [markdown]
-# ### changing from manual re-weighting to using the 'phi factor' approach
+# # Re-Weight Observations Using Phi Factors
+#
+# This notebook adjusts observation weights using the PEST++ "phi factor" approach,
+# which assigns each observation group a target fractional contribution to the total
+# objective function (phi). This replaces manual per-observation weight adjustments
+# with a group-level proportional allocation that PEST++ enforces internally.
+#
+# **Output files:**
+# - `phi_factors.csv` — Two-column file mapping observation group patterns to their
+#   target phi fraction (must sum to 1.0).
+# - `prior_mc_reweight.pst` — Updated control file referencing the phi factors.
+# - `prior_mc_reweight_gsa.pst` — Variant control file configured for global
+#   sensitivity analysis (Morris method).
+# - `loc.mat` — Updated localization matrix with zero-weighted groups removed.
+# - `postprocessing/reweighting_<subdomain>.pdf` — Pie chart comparing original vs.
+#   target phi contributions.
+#
+# **How phi factors work in PEST++ IES:**
+# Rather than specifying absolute weights, the user defines the *relative* contribution
+# each observation group should have to the total objective function. PEST++ internally
+# scales weights so that each group's phi contribution matches the specified fraction.
+# This simplifies weight balancing across heterogeneous observation types.
+#
+# **Workflow steps:**
+# 1. Load the localized control file (`prior_mc_loc.pst`).
+# 2. Define target phi fractions for each observation group.
+# 3. Visualize original vs. target phi contributions.
+# 4. Write `phi_factors.csv` and update the control file.
+# 5. Remove zero-weighted groups from the localization matrix.
+# 6. Run `noptmax=0` verification, then set `noptmax=-1` for the full run.
+# 7. (Optional) Write a GSA variant of the control file.
+
+# %% [markdown]
+# ## Define Target Phi Fractions
+# Each key is a pattern matched against observation group names. The values are
+# the target fractional contribution to the total objective function. These must
+# sum to 1.0.
 
 # %%
-# Assign relative contributions to the objective function
-# Check with Mike: Is PEST remapping and combining obs based on the key in this dict?
 phi_new_comps = {
     "actet_mean_mon": 0.08,
-    "actet_mon": 0.04,
     "recharge_ann": 0.08,
-    "runoff_mon": 0.16,
-    #                  'sca_daily':.1,
+    "runoff_mon": 0.08,
+    "swe_monthly": 0.12,
     "soil_moist_ann": 0.08,
-    "soil_moist_mon": 0.1,
-    "streamflow_mean_mon_cal": 0.1,
+    "soil_moist_mean_mon": 0.08,
     "streamflow_mon": 0.12,
-    "scnd": 0.14,
-    "_low": 0.1,
+    "streamflow_mean_mon": 0.12,
+    "scnd": 0.12,
+    "_low": 0.12,
 }
 
 # %%
@@ -166,15 +202,39 @@ fig, ax = plt.subplot_mosaic(
                             """,
     figsize=(8, 6),
 )
+# Keep each category the same color across both pie charts. Chart "a" uses the
+# raw phi_components names while chart "b" renames scnd/_low to
+# streamflow_high/streamflow_low, so normalize both to a common key before
+# assigning colors. A single color map, keyed by that common category name and
+# built from the union of both charts' categories, is then indexed per chart in
+# its own key order.
+_pie_rename = {"scnd": "streamflow_high", "_low": "streamflow_low"}
+
+
+def _pie_cat(key):
+    return _pie_rename.get(key, key)
+
+
+_all_pie_cats = list(
+    dict.fromkeys(
+        [_pie_cat(k) for k in pst.phi_components.keys()]
+        + [_pie_cat(k) for k in phi_new_comps_plot.keys()]
+    )
+)
+_pie_cmap = plt.get_cmap("tab20")
+_pie_colors = {cat: _pie_cmap(i % _pie_cmap.N) for i, cat in enumerate(_all_pie_cats)}
+
 ax["a"].pie(
     pst.phi_components.values(),
     labels=[i.replace("_", "\n") for i in pst.phi_components.keys()],
+    colors=[_pie_colors[_pie_cat(k)] for k in pst.phi_components.keys()],
     startangle=180,
     textprops={"fontsize": 12},
 )
 ax["b"].pie(
     phi_new_comps_plot.values(),
     labels=[i.replace("_", "\n") for i in phi_new_comps_plot.keys()],
+    colors=[_pie_colors[_pie_cat(k)] for k in phi_new_comps_plot.keys()],
     textprops={"fontsize": 12},
 )
 plt.savefig(pestpp_model_dir / f'postprocessing/reweighting_{config["subdomain"]}.pdf')
@@ -217,7 +277,10 @@ pst.control_data.noptmax = 0
 pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
-# ### update the localization matrix to remove groups with only 0-weighted obs
+# ## Update Localization Matrix
+# Remove observation groups that have only zero-weighted observations (e.g.,
+# `streamflow_nodata`) from the localization matrix to avoid unnecessary
+# computation.
 
 # %%
 # read in the localization matrix from the run directory
@@ -246,7 +309,10 @@ pst.control_data.noptmax = -1
 pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight.pst"), version=2)
 
 # %% [markdown]
-# ### spit out control file for GSA
+# ## Write GSA Control File (Optional)
+# Create a variant of the control file configured for Morris-method global
+# sensitivity analysis. This can be run independently to identify the most
+# influential parameters before committing to a full IES run.
 
 # %%
 pst.pestpp_options["gsa_morris_r"] = 18
@@ -267,41 +333,46 @@ pst.write(os.path.join(pestpp_model_dir, "prior_mc_reweight_gsa.pst"), version=2
 obs = pst.observation_data
 
 # %%
-for cn, _ in obs.groupby("obgnme"):
+phi_group_file = pestpp_model_dir / "prior_mc_reweight.phi.group.csv"
+phi_group = pd.read_csv(phi_group_file)
 
-    if cn.startswith("streamflow_"):
-        """
-        Assign weight value for observatons in the obsevation group name "streamflow_no_data".
-        """
-        if cn == "streamflow_nodata":
-            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
-            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
-            print(
-                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
-            )
+# The file is appended to across runs; take the most recent `base` realization
+# row (falling back to the last row if no `base` realization is present).
+base_rows = phi_group[phi_group["obs_realization"] == "base"]
+last_row = (base_rows if not base_rows.empty else phi_group).iloc[-1]
 
-        else:
+# Group columns are everything after the run-bookkeeping columns.
+meta_cols = ["iteration", "total_runs", "obs_realization", "par_realization"]
+group_cols = [c for c in phi_group.columns if c not in meta_cols]
 
-            mask_cn_and_notzero = (obs.obgnme == cn) & (obs["obsval"] != 0)
+achieved_phi = last_row[group_cols].astype(float)
+total_phi = achieved_phi.sum()
 
-            min_val = obs.loc[obs["obgnme"] == cn, "weight"].min()
-            max_val = obs.loc[obs["obgnme"] == cn, "weight"].max()
-            print(
-                f"Observation weights {cn} range {min_val} to {max_val} for n={len(obs.loc[obs['obgnme'] == cn])}"
-            )
+# Map the target-fraction keys (which use scnd/_low) onto the group names that
+# appear in the phi.group.csv (streamflow_high/streamflow_low), matching the
+# renaming used for the pie chart above.
+target_rename = {"scnd": "streamflow_high", "_low": "streamflow_low"}
+target_frac = {target_rename.get(k, k): v for k, v in phi_new_comps.items()}
 
-    else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
-
-        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
-
-        min_val = obs.loc[mask_cn, "weight"].min()
-        max_val = obs.loc[mask_cn, "weight"].max()
-        print(
-            f"Observation weights {cn} range {min_val} to {max_val}for n={len(obs.loc[mask_cn])}"
-        )
+phi_balance = pd.DataFrame(
+    {
+        "phi": achieved_phi,
+        "achieved_frac": achieved_phi / total_phi if total_phi > 0 else 0.0,
+    }
+)
+phi_balance["target_frac"] = phi_balance.index.map(target_frac)
+phi_balance = phi_balance.sort_values("achieved_frac", ascending=False)
 
 print(
-    "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
+    f"Achieved per-group phi balance for the 'base' realization "
+    f"(total phi = {total_phi:.4g}):\n"
+)
+print(phi_balance.to_string())
+print(
+    "\nachieved_frac is each group's share of the total composite phi that "
+    "PEST++-IES actually produced; target_frac is the requested share from "
+    "phi_new_comps (NaN = group not assigned a target). These reflect the "
+    "reweighting strategy; the raw obs weights do not."
 )
 
 # %%

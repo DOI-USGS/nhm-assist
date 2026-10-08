@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -20,6 +5,13 @@ import pathlib as pl
 import warnings
 
 warnings.filterwarnings("ignore")
+
+# Provide a display() fallback when running outside Jupyter
+try:
+    display
+except NameError:
+    display = print
+
 from rich.console import Console
 
 con = Console()
@@ -30,16 +22,26 @@ import jupyter_black
 
 jupyter_black.load()
 
-# Find and set the "nhm-assist" root directory
-# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
-# fallback to the package location — works for editable and non-editable installs.
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+
+# from assist.workspace.bridge import resolve_workflow_root
+# workflow_root_dir = resolve_workflow_root(cwd=os.getcwd())
+
 from assist.workspace.bridge import resolve_repo_root
-root_dir = resolve_repo_root() / "nhf_assist"
+
+root_dir = resolve_repo_root()
 
 # from assist.nhf.sf_data_retrieval_v2_1 import fetch_single_nwis_gage
-from assist.nhf.sf_data_retrieval_v2_1 import fetch_daily_discharge_batch
-from assist.nhf.nhm_assist_utilities_v2 import find_missing_gage_info
+from assist.common.sf_data_retrieval import fetch_daily_discharge_batch
+from assist.common.assist_utilities import find_missing_gage_info
 
+
+# %%
+root_dir
 
 # %%
 import glob
@@ -511,7 +513,25 @@ def find_nearest_endpoint(points_gdf, lines_gdf, line_id_col):
 # The parent domain may be CONUS in scale or a regional domain. In this case, the parent domain is portions of Region 16, 17, and 18 that cover contributing areas to the Oregon Satae watersheds.
 
 # %%
-parent_dir = root_dir / f"hydrofabric_domain_data/OHM_2026_02_21"
+# Anchor on the "nhm-workspace" workspace dir, then <project>/fabrics.
+# Derived from the notebook's cwd — no drive letter, no dependence on root_dir.
+cwd = pl.Path(os.getcwd())
+workspace_dir = next(p for p in [cwd, *cwd.parents] if p.name == "nhm-workspace")
+
+# project dir is the path element directly under nhm-workspace
+project_dir = next(p for p in [cwd, *cwd.parents] if p.parent == workspace_dir)
+
+fabrics_dir = project_dir / "fabrics"
+fabrics_dir.mkdir(parents=True, exist_ok=True)
+print("fabrics_dir:", fabrics_dir)
+
+# List only subdirectories
+subdirs = [p for p in fabrics_dir.iterdir() if p.is_dir()]
+for d in subdirs:
+    print(d.name)
+
+# %%
+parent_dir = fabrics_dir / "OHM_2026_02_21"
 
 # %% [markdown]
 # The directory for all the paramerter .csv files:
@@ -529,15 +549,14 @@ for kk in file_it:
     gf_files.append(kk)
 gf_files.sort()
 
-# %%
-root_dir
-
 # %% [markdown]
 # ### Read in the pywatershed control file.
 # The control file used for the parent pywatershed model is somewhat universal and not model dependent
 
 # %%
-default_ctl_filename = root_dir / f"data_dependencies/control.default.bandit"
+default_ctl_filename = (
+    root_dir / f"data_dependencies/hydrofabric_dependencies/control.default.bandit"
+)
 prms_meta = MetaData(verbose=False).metadata
 ctl = ControlFile(default_ctl_filename, metadata=prms_meta, verbose=True)
 
@@ -605,21 +624,69 @@ for cfile in gf_files:
 # %%
 parent_pdb.check()
 
+# %%
+# Print observed value range vs. valid range for every parameter.
+for pk in sorted(parent_pdb.parameters.keys()):
+    pp = parent_pdb.get(pk)
+    valid_min = pp.meta.get("minimum")
+    valid_max = pp.meta.get("maximum")
+    if pp.is_scalar:
+        con.print(f"{pk}: scalar value = {pp.data}  (valid: {valid_min}, {valid_max})")
+    else:
+        s = pp.stats()
+        con.print(
+            f"{pk}: observed [{s.min}, {s.max}]  valid [{valid_min}, {valid_max}]"
+        )
+
+# %%
+# Param value fixes
+# Clamp selected parent parameters to physical/calibration bounds *in memory*,
+# after the parent params are loaded above and before the child models are
+# subset from parent_pdb further down. Because the child subsetting reads
+# parent_pdb[cname].data, these bounds propagate into every child model this
+# workflow builds.
+#
+# Set a lower and/or upper bound per parameter; use None to skip a bound.
+param_bounds = {
+    # smidx_coef must be strictly positive; a zero coefficient is invalid, so
+    # floor it at a small value.
+    "smidx_coef": (0.0001, None),
+}
+
+for pname, (lo, hi) in param_bounds.items():
+    if pname not in parent_pdb.keys():
+        con.print(f"[yellow]{pname}[/] not in parent_pdb - skipping")
+        continue
+    arr = parent_pdb[pname].data
+    before_min, before_max = float(np.min(arr)), float(np.max(arr))
+    clipped = np.clip(arr, lo, hi)  # np.clip treats None as "no bound"
+    parent_pdb.get(pname).data = clipped
+    n_changed = int(np.count_nonzero(clipped != arr))
+    con.print(
+        f"{pname}: bounds=({lo}, {hi})  "
+        f"pre[min={before_min:.4g}, max={before_max:.4g}]  "
+        f"values changed={n_changed}"
+    )
+
+
 # %% [markdown]
 # ### Create pywatershed model for specified domain in the GFv2
 #
 # Specify the root directory for all files created for the specified domain (child) pywatershed model
 
 # %%
-child_name = "Rogue_River"  # Powder_River, John_Day_River
-child_path = f"hydrofabric_domain_data/{child_name}"
-child_hf_dir = root_dir / child_path
+root_dir
+
+# %%
+child_name = "SandyRiver"  # Powder_River, John_Day_River
+
+child_hf_dir = fabrics_dir / f"{child_name}"
+
 if child_hf_dir.is_dir():
-    child_pws_dir = root_dir / f"domain_data/{child_name}"
-    child_pws_dir.mkdir(parents=True, exist_ok=True)
+    child_pws_dir = child_hf_dir
 else:
-    print(f"The child directory {child_path} does not exist.")
-    p = root_dir / "hydrofabric_domain_data/"
+    print(f"The child directory {child_name} does not exist.")
+    p = fabrics_dir / "hydrofabric_domain_data/"
     print(f"Please choose from the folowing list. ({p.resolve()}):")
     for folder in p.iterdir():
         if folder.is_dir():
@@ -756,7 +823,7 @@ child_npoi_gdf.info()
 # The metadata is referrenced directly from the parent .gpkg
 
 # %%
-gpkg_path = root_dir / "hydrofabric_domain_data/OR_v2_domain/GIS/NHM_OR_draft.gpkg"
+gpkg_path = fabrics_dir / "OR_v2_domain/GIS/NHM_OR_draft.gpkg"
 npoi_data = gpd.read_file(gpkg_path, layer="npoi_data")
 
 gage_data_df = npoi_data.loc[
@@ -1564,6 +1631,87 @@ else:
         f"All poi_gage_id are currently in the {len(npoigages_params_df)} npoigages_params_df."
     )
 
+# %% [markdown]
+# ##### Add ECY streamflow gages
+# Read in gage file (.shp) of gages used in the Oregon Statewide Recharge project's FMI gages
+
+# %%
+# ECY_gages_path = pl.Path(f"{parent_dir}/npoigages_data/ECY_gages/ECY_gages.csv")
+STREAMFLOW_URL = "https://services.arcgis.com/6lCKYNJLvwTXqrmp/arcgis/rest/services/EAP/FeatureServer/3/query?outFields=*&where=1%3D1&f=geojson"
+
+print("Downloading ECY streamflow stations...")
+ECY_gage_data_gdf = gpd.read_file(STREAMFLOW_URL)
+
+rename_map = {
+    "StationCode": "poi_gage_id",
+    "StationName": "poi_name",
+    "LatitudeDecimal": "latitude",
+    "LongitudeDecimal": "longitude",
+}
+
+ECY_gage_data_gdf = ECY_gage_data_gdf[list(rename_map.keys()) + ["geometry"]].rename(
+    columns=rename_map
+)
+
+ECY_gage_data_gdf["poi_agency"] = "ECY"
+ECY_gage_data_gdf["drainage_area"] = np.nan
+ECY_gage_data_gdf["drainage_area_contrib"] = np.nan
+
+ECY_gage_data_gdf = ECY_gage_data_gdf.astype(
+    {
+        "poi_gage_id": np.str_,
+        "poi_name": np.str_,
+        "poi_agency": np.str_,
+        "latitude": float,
+        "longitude": float,
+        "drainage_area": float,
+        "drainage_area_contrib": float,
+    }
+)
+
+print(f"Downloaded {len(ECY_gage_data_gdf)} stations")
+new_gages_gdf = ECY_gage_data_gdf.to_crs(seg_child_gdf.crs)
+
+new_gages_list = new_gages_gdf["poi_gage_id"].astype(str).tolist()
+new_gages_list = [
+    x
+    for x in list(set(new_gages_list))
+    if x not in list(npoigages_params_df.poi_gage_id)
+]
+
+
+###### Make new gages geodataframe, create needed npoigages params and concatenate to existing
+new_gages_gdf["poi_type"] = 1
+new_gages_gdf = gpd.clip(new_gages_gdf, aoi_gdb)
+
+if len(new_gages_gdf) != 0:
+    new_npoigages_params = find_nearest_endpoint(
+        new_gages_gdf, seg_child_gdf, line_id_col="nhm_seg_id"
+    )
+    npoigages_params_df_temp = pd.concat(
+        [npoigages_params_df, new_npoigages_params], ignore_index=True
+    )
+    npoigages_params_df = npoigages_params_df_temp.copy()
+
+    ######## Make npoigages_info_df and concatenate to existing
+    info_cols = [
+        "poi_gage_id",
+        "poi_agency",
+        "poi_name",
+        "latitude",
+        "longitude",
+        "drainage_area",
+        "drainage_area_contrib",
+    ]
+    new_gages_info_df = new_gages_gdf[new_gages_gdf["poi_gage_id"].isin(new_gages_list)]
+    new_gages_info_df = new_gages_info_df[info_cols]
+    npoigages_info_df_temp = pd.concat(
+        [npoigages_info_df, new_gages_info_df], ignore_index=True
+    )
+    npoigages_info_df = npoigages_info_df_temp.copy()
+else:
+    print("There are no ECY gages that intersect the child domain.")
+
 # %%
 npoigages_info_df
 
@@ -1857,7 +2005,7 @@ child_params_dir = child_hf_dir / "param_source_files"
 child_params_dir.mkdir(parents=True, exist_ok=True)
 
 # For now, move a copy of snarea_curve.csv into the param_source_files folder
-sc_file_src = root_dir / "data_dependencies" / "snarea_curve.csv"
+sc_file_src = parent_dir / "param_source_files" / "snarea_curve.csv"
 sc_file_dst = child_params_dir
 shutil.copy2(sc_file_src, sc_file_dst)
 
@@ -2164,7 +2312,12 @@ child_pdb.write_parameter_file(
 
 # %%
 # For now, move a copy of the contro file into the model folder folder
-control_file_src = root_dir / "data_dependencies" / "control.default.bandit"
+control_file_src = (
+    root_dir
+    / "data_dependencies"
+    / "hydrofabric_dependencies"
+    / "control.default.bandit"
+)
 control_file_dst = child_pws_dir
 shutil.copy2(control_file_src, control_file_dst)
 

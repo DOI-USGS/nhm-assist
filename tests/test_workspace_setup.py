@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -117,6 +119,21 @@ class WorkspaceSetupTests(unittest.TestCase):
             setup.action_open_project(state, print_func=lambda *_: None)
 
         self.assertEqual(state.current_project, "Project_B")
+
+    def test_action_open_project_backfills_missing_vscode_config(self):
+        service.create_project(self.workspace_root, "Project_A")
+        vscode_dir = self.workspace_root / "Project_A" / ".vscode"
+        shutil.rmtree(vscode_dir)
+        state = setup.SetupState(
+            repo_root=self.repo_root,
+            workspace_root=self.workspace_root,
+        )
+
+        with patch.object(setup, "prompt_menu_choice", return_value=1):
+            setup.action_open_project(state, print_func=lambda *_: None)
+
+        self.assertTrue((vscode_dir / "settings.json").is_file())
+        self.assertTrue((vscode_dir / "extensions.json").is_file())
 
     def test_action_copy_example_model_uses_numbered_example_selection(self):
         state = setup.SetupState(
@@ -539,12 +556,6 @@ class NotebookLocationActionTests(unittest.TestCase):
             workspace_root=self.workspace_root,
             current_project="Project_A",
         )
-        kernel_patcher = patch.object(
-            setup, "ensure_kernel_registered", return_value=False
-        )
-        kernel_patcher.start()
-        self.addCleanup(kernel_patcher.stop)
-
     def test_prints_the_path_and_the_command_without_spawning_anything(self):
         lines = []
         with patch("subprocess.Popen") as mock_popen:
@@ -557,7 +568,6 @@ class NotebookLocationActionTests(unittest.TestCase):
         self.assertEqual(result.name, "nhm")
         self.assertIn(str(result), output)
         self.assertIn("jupyter lab", output)
-        self.assertIn(setup.DEFAULT_KERNEL_DISPLAY_NAME, output)
 
     def test_generates_notebooks_first_when_they_are_missing(self):
         with patch.object(setup, "generate_nhm_notebooks") as mock_generate:
@@ -575,6 +585,21 @@ class NotebookLocationActionTests(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+    def test_repair_editor_settings_rewrites_the_file_and_reports_the_path(self):
+        lines = []
+
+        result = setup.action_repair_editor_settings(
+            self.state, print_func=lines.append
+        )
+
+        output = "\n".join(lines)
+        self.assertTrue(result.exists())
+        self.assertIn(str(result), output)
+        settings = json.loads(result.read_text(encoding="utf-8"))
+        self.assertTrue(
+            settings["jupytextSync.syncDocuments"]["onNotebookDocumentOpen"]
+        )
 
 
 class LauncherRemovalTests(unittest.TestCase):

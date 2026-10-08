@@ -20,15 +20,6 @@ from assist.workspace.bridge import (
     resolve_workspace_root,
 )
 from assist.workspace.examples import resolve_example_source
-from assist.workspace.kernels import (
-    DEFAULT_KERNEL_DISPLAY_NAME,
-    DEFAULT_KERNEL_NAME,
-    DEV_KERNEL_DISPLAY_NAME,
-    DEV_KERNEL_NAME,
-    PAIRING_MODE_KERNELS,
-    ensure_kernel_registered,
-    list_kernel_names,
-)
 from assist.workspace.service import (
     bootstrap_workspace,
     copy_example_model,
@@ -40,23 +31,18 @@ from assist.workspace.service import (
     get_projects,
     import_model,
     prepare_model_runtime,
+    repair_vscode_settings,
     set_active_model,
 )
 from assist.workspace.setup import run_setup
 
 __all__ = [
-    "DEFAULT_KERNEL_DISPLAY_NAME",
-    "DEFAULT_KERNEL_NAME",
-    "DEV_KERNEL_DISPLAY_NAME",
-    "DEV_KERNEL_NAME",
     "MODEL_SUBDIRS",
-    "PAIRING_MODE_KERNELS",
     "WORKFLOW_NAMES",
     "bootstrap_workspace",
     "copy_example_model",
     "create_model",
     "create_project",
-    "ensure_kernel_registered",
     "ensure_workspace_root",
     "get_active_model_name",
     "get_active_model_root",
@@ -72,10 +58,10 @@ __all__ = [
     "import_model",
     "is_model_dir",
     "is_project_dir",
-    "list_kernel_names",
     "list_models",
     "list_projects",
     "prepare_model_runtime",
+    "repair_vscode_settings",
     "resolve_example_source",
     "resolve_project_notebook_context",
     "resolve_repo_root",

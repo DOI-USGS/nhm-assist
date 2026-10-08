@@ -8,19 +8,31 @@ from typing import Literal
 import jupytext
 from jupytext.paired_paths import InconsistentPath, paired_paths
 
-from assist.workspace.bridge import get_project_workflow_notebooks_dir
-from assist.workspace.kernels import PAIRING_MODE_KERNELS, ensure_kernel_registered
+from assist.workspace.bridge import (
+    get_project_dir,
+    get_project_workflow_notebooks_dir,
+)
 
 
 TEMPLATES_ROOT = Path(__file__).resolve().parent
 
-WORKFLOW_INPUT_DIRS = {
-    "nhm": TEMPLATES_ROOT / "nhm",
-    "nhf": TEMPLATES_ROOT / "nhf",
-    "pest": TEMPLATES_ROOT / "pest",
+COMMON_DIR = TEMPLATES_ROOT / "common"
+
+# The numbered workflow notebooks live once, in common/. nhm renders only those;
+# nhf layers its own workflow-specific templates (the FMI variant and its
+# parameter-building utilities) on top; pest is still separate.
+WORKFLOW_INPUT_DIRS: dict[str, tuple[Path, ...]] = {
+    "nhm": (COMMON_DIR,),
+    "nhf": (COMMON_DIR, TEMPLATES_ROOT / "nhf"),
+    "pest": (TEMPLATES_ROOT / "pest",),
 }
 
 PairingMode = Literal["local", "dev"]
+
+# Pairing modes are about where a notebook's paired .py file lives, and nothing
+# else. Kernel and environment selection belongs to the user's IDE: this
+# package deliberately registers no kernel and writes no kernelspec.
+PAIRING_MODES: tuple[str, ...] = ("local", "dev")
 
 
 def dev_pairing_formats(template_dir: Path, notebook_dir: Path) -> str:
@@ -105,8 +117,6 @@ def _apply_pairing(
     template_dir: Path,
     notebook_dir: Path,
 ) -> None:
-    kernel_name, kernel_display = PAIRING_MODE_KERNELS[pairing_mode]
-
     jupytext_meta = notebook.metadata.setdefault("jupytext", {})
     if pairing_mode == "dev":
         jupytext_meta["formats"] = dev_pairing_formats(template_dir, notebook_dir)
@@ -114,7 +124,7 @@ def _apply_pairing(
         # formats path and local jupytext_version into the shared, committed
         # repo template, churning on every contributor's save. The .ipynb
         # (never committed to nhm-assist) keeps full metadata regardless, so
-        # pairing and the kernel selection are unaffected.
+        # pairing is unaffected.
         jupytext_meta["notebook_metadata_filter"] = "-all"
     else:
         # Pairing comes from the project's jupytext.toml, not from the file.
@@ -123,11 +133,9 @@ def _apply_pairing(
     if not jupytext_meta:
         notebook.metadata.pop("jupytext", None)
 
-    notebook.metadata["kernelspec"] = {
-        "name": kernel_name,
-        "display_name": kernel_display,
-        "language": "python",
-    }
+    # Anything a template carried over is the template author's guess at a
+    # kernel, not this project's to make. Drop it so the IDE asks.
+    notebook.metadata.pop("kernelspec", None)
 
 
 def _patch_existing_notebook(
@@ -139,7 +147,6 @@ def _patch_existing_notebook(
 ) -> str:
     """Bring an existing notebook's metadata in line without touching its cells."""
     notebook = jupytext.read(output_path)
-    kernel_name, _ = PAIRING_MODE_KERNELS[pairing_mode]
     if pairing_mode == "dev":
         wanted_formats = dev_pairing_formats(py_file.parent, output_path.parent)
         wanted_metadata_filter = "-all"
@@ -153,11 +160,10 @@ def _patch_existing_notebook(
     current_jupytext_meta = notebook.metadata.get("jupytext", {})
     current_formats = current_jupytext_meta.get("formats")
     current_metadata_filter = current_jupytext_meta.get("notebook_metadata_filter")
-    current_kernel = (notebook.metadata.get("kernelspec") or {}).get("name")
     if (
         current_formats == wanted_formats
         and current_metadata_filter == wanted_metadata_filter
-        and current_kernel == kernel_name
+        and "kernelspec" not in notebook.metadata
     ):
         return "already configured"
 
@@ -172,6 +178,33 @@ def _patch_existing_notebook(
     return "metadata updated"
 
 
+def iter_workflow_templates(name: str) -> list[tuple[Path, Path]]:
+    """Return (template_path, output-relative path) for one workflow.
+
+    A later input directory may not shadow an earlier one. If a workflow
+    directory ever reintroduces a template whose name collides with a shared
+    one, that is precisely the duplication this layout exists to remove, so it
+    raises instead of silently overriding.
+    """
+    collected: list[tuple[Path, Path]] = []
+    seen: dict[Path, Path] = {}
+
+    for input_dir in WORKFLOW_INPUT_DIRS[name]:
+        if not input_dir.exists():
+            raise FileNotFoundError(f"Missing workflow template folder: {input_dir}")
+        for py_file in sorted(input_dir.rglob("*.py")):
+            relative = py_file.relative_to(input_dir)
+            if relative in seen:
+                raise ValueError(
+                    f"{name}: {relative} exists in both {seen[relative]} and "
+                    f"{input_dir}; the copy in common/ must be the only one"
+                )
+            seen[relative] = input_dir
+            collected.append((py_file, relative))
+
+    return collected
+
+
 def convert_workflow(
     name: str,
     *,
@@ -181,14 +214,14 @@ def convert_workflow(
     pairing_mode: PairingMode = "local",
     print_func=print,
 ) -> list[Path]:
-    if pairing_mode not in PAIRING_MODE_KERNELS:
+    if pairing_mode not in PAIRING_MODES:
         raise ValueError(f"unsupported pairing mode: {pairing_mode}")
     if not project_name:
         raise ValueError("project_name is required")
 
-    input_folder = WORKFLOW_INPUT_DIRS[name]
-    if not input_folder.exists():
-        raise FileNotFoundError(f"Missing workflow template folder: {input_folder}")
+    # One shared template set plus each workflow's own extras, instead of a
+    # single input directory per workflow.
+    templates = iter_workflow_templates(name)
 
     output_folder = get_project_workflow_notebooks_dir(
         name, workspace_root, project_name
@@ -197,8 +230,7 @@ def convert_workflow(
 
     created_paths: list[Path] = []
 
-    for py_file in sorted(input_folder.rglob("*.py")):
-        relative_path = py_file.relative_to(input_folder)
+    for py_file, relative_path in templates:
         output_path = output_folder / relative_path.with_suffix(".ipynb")
         created_paths.append(output_path)
 
@@ -272,10 +304,6 @@ def main(
         print_func("Error: --workspace-root and --project-name are both required.")
         return 2
 
-    kernel_name, kernel_display = PAIRING_MODE_KERNELS[args.pairing_mode]
-    if not args.dry_run:
-        ensure_kernel_registered(kernel_name, kernel_display)
-
     workflows = list(WORKFLOW_INPUT_DIRS) if args.workflow == "all" else [args.workflow]
 
     for workflow in workflows:
@@ -293,9 +321,17 @@ def main(
         print_func("")
         print_func(f"[{workflow}] {len(created)} notebook(s) in {notebook_dir}")
         print_func(f"[{workflow}] Open them with: jupyter lab {notebook_dir}")
+        # In VS Code / Kiro, open the *project* directory rather than this
+        # notebook subfolder. Those editors read .vscode/settings.json only from
+        # the root folder they were opened on -- they do not walk up -- and that
+        # file is what points the Jupytext Sync extension at a Python that has
+        # jupytext. Open notebooks/<workflow> directly and the extension finds no
+        # interpreter and silently stops syncing on save.
+        project_dir = get_project_dir(args.workspace_root, args.project_name)
         print_func(
-            f"[{workflow}] Or open that folder in VS Code / Kiro and select the "
-            f"'{kernel_display}' kernel."
+            f"[{workflow}] Or open {project_dir} in VS Code / Kiro (the project "
+            f"folder, so its .vscode/settings.json applies), then pick a kernel "
+            f"from this project's pixi environment."
         )
 
     return 0

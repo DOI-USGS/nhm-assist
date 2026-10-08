@@ -1,45 +1,19 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: pestpp_ies_calibration/notebooks//ipynb,src/workflow_templates/pest//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
-import sys
 import os
+import sys
 import pathlib as pl
 import warnings
+import pandas as pd
+import xarray as xr
+import numpy as np
+import shutil
+import datetime
 
-warnings.filterwarnings("ignore")
-from rich.console import Console
-
-con = Console()
-from rich import pretty
-
-pretty.install()
 import jupyter_black
 
 jupyter_black.load()
+import io
 
-import pandas as pd
-import shutil
-import pywatershed as pws
-import xarray as xr
-import numpy as np
-import datetime
-
-# import pathlib as pl
-# from pyPRMS.metadata.metadata import MetaData
-# from pyPRMS import ParameterFile
 from contextlib import redirect_stdout
 import io
 
@@ -47,12 +21,22 @@ f = io.StringIO()
 with redirect_stdout(f):
     import pywatershed as pws
 
-# Find and set the "nhm-assist" root directory
-# Find the repo root via pixi's PIXI_PROJECT_ROOT (set by any `pixi run`), with a
-# fallback to the package location — works for editable and non-editable installs.
-from assist.workspace.bridge import resolve_repo_root
+from rich.console import Console
+from rich import pretty
 
-root_dir = resolve_repo_root()
+warnings.filterwarnings("ignore")
+pretty.install()
+con = Console()
+
+
+# One template set serves every workflow, so the root cannot be hardcoded the
+# way the per-workflow copies did (`resolve_repo_root() / "nhf_assist"`). The
+# workflow is inferred from where this notebook runs: nhm and pest use the repo
+# root, nhf uses <repo>/nhf_assist. Built on resolve_repo_root, so it honours
+# PIXI_PROJECT_ROOT and works for non-editable installs too.
+from assist.workspace.bridge import resolve_workflow_root
+
+root_dir = resolve_workflow_root(cwd=os.getcwd())
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
@@ -64,31 +48,37 @@ if project_context:
     )
     config_root = active_model_root / "config"
 else:
+    active_model_root = None
     config_root = root_dir
 
-from dotenv import load_dotenv
+print(root_dir)
 
-# Use home directory for Nebari, otherwise use repo root_dir
-if "NEBARI_CONDA_STORE_SERVER_SERVICE_HOST" in os.environ:
-    dotenv_path = pl.Path.home() / ".env"
-else:
-    dotenv_path = root_dir / ".env"
+from assist.common.hydrofabric import (
+    make_hf_map_elements,
+    evaluate_and_fix_nhru_geometry,
+)
+from assist.common.map_template import make_hf_map, make_geo_map, make_geo_legend
 
-load_dotenv(dotenv_path=dotenv_path)
-
-from assist.nhm.nhm_assist_utilities import load_subdomain_config
-from assist.nhm import efc
-
-from assist.pest.pest_utils import (
-    pars_to_tpl_entries,
-    pars_to_tpl_entries_2,
-    write_to_json_tpl,
-    check_par_bounds,
+from assist.common.assist_utilities import (
+    load_subdomain_config,
+    find_missing_gage_info,
+    fetch_non_ref_npoigages_info,
+    fetch_ref_npoigages_info,
 )
 
-config = load_subdomain_config(root_dir)
+from assist.pest.pest_utils import (
+    pars_to_tpl_entries_2,
+    check_par_bounds,
+    write_to_json_tpl,
+)
 
-sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
+from assist.common import efc
+
+config = load_subdomain_config(config_root)
+# con.print(config)
+
+
+# sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 
@@ -101,7 +91,10 @@ else:
 if not (config["model_dir"] / "pestpp_ies").exists():
     (config["model_dir"] / "pestpp_ies").mkdir()
 pestpp_model_dir = config["model_dir"] / "pestpp_ies"
-pestpp_dir = root_dir / "pestpp_ies_calibration"
+
+if not (root_dir / "pestpp_ies_calibration").exists():
+    (root_dir / "pestpp_ies_calibration").mkdir()
+pestpp_dep_dir = root_dir / "data_dependencies" / "pestpp_ies_dependencies"
 
 if not (pestpp_model_dir / "observation_data").exists():
     (pestpp_model_dir / "observation_data").mkdir()
@@ -124,7 +117,7 @@ file_list = [
     "zero_weighting.csv",
 ]
 for file in file_list:
-    source = pestpp_dir / f"data_dependencies/ancillary_template/{file}"
+    source = pestpp_dep_dir / f"ancillary_template/{file}"
     destination = ancillary_dir / f"{file}"
     shutil.copy2(source, destination)
 
@@ -151,13 +144,42 @@ for file in model_file_list:
 # import pathlib as pl
 
 # %% [markdown]
-# ### Read `prior_mc.pst`
+# # Add Localization Matrix for PEST++ IES
+#
+# This notebook constructs a localization matrix (`loc.mat`) that restricts which
+# parameters can be updated by which observations during the PEST++ IES ensemble
+# update step. Localization prevents spurious correlations between physically
+# unrelated parameter-observation pairs from degrading the estimation.
+#
+# **Output files:**
+# - `loc.mat` — The localization matrix in PEST++ ASCII matrix format.
+# - `prior_mc_loc.pst` — Updated control file that references the localization matrix.
+# - `localization_group_lookup.csv` — Human-readable mapping of parameter/observation
+#   group assignments for documentation.
+#
+# **How localization works in PEST++ IES:**
+# The localization matrix is a binary (0/1) matrix where rows are observation groups
+# and columns are parameter groups. A value of 1 means that observation group can
+# inform that parameter group during the ensemble update. A value of 0 blocks the
+# update pathway, preventing physically implausible correlations from influencing
+# parameter adjustments.
+#
+# **Workflow steps:**
+# 1. Load the existing control file (`prior_mc.pst`).
+# 2. Read the base localization configuration from `localization_groups.csv`.
+# 3. Identify unique parameter-observation group combinations.
+# 4. Reassign parameter group names based on their localization behavior.
+# 5. Build the localization matrix and write to `loc.mat`.
+# 6. Update the control file with the localizer reference and write `prior_mc_loc.pst`.
+
+# %% [markdown]
+# ## Load the Control File
 
 # %%
 pst = pyemu.Pst(str(pestpp_model_dir / "prior_mc.pst"))
 
 # %% [markdown]
-# ### Make parameter (pars) and observation (obs) data objects
+# ### Extract parameter and observation data from the PST object
 
 # %%
 pars = pst.parameter_data
@@ -170,7 +192,9 @@ obs = pst.observation_data
 pst.obs_groups
 
 # %% [markdown]
-# ### Read in the base localization matrix
+# ## Read the Base Localization Configuration
+# The `localization_groups.csv` defines which parameter types are informed by which
+# observation groups (1 = allowed, 0 = blocked).
 
 # %%
 base_loc = pd.read_csv(ancillary_dir / "localization_groups.csv", index_col=0)
@@ -186,8 +210,9 @@ base_loc = base_loc.loc[
 print(base_loc)
 
 # %% [markdown]
-# ### Find the unique combinations of observations
-# Get a little creative with transposes and add a row with the combos of obs
+# ## Identify Unique Parameter-Observation Combinations
+# Parameters that share the same set of informing observation groups are placed
+# into a common "super-group" for localization purposes.
 
 # %%
 base_loc = base_loc.T
@@ -204,13 +229,13 @@ for i in base_loc.par_obs_combo.values:
         all_combos.append(i)
 
 # %% [markdown]
-# ### now just make par group names according to combinations of obs
+# ### Assign group names to parameter-observation combinations
 
 # %%
 group_lookup = {f"obs_combo_{i+1}": j for i, j in enumerate(all_combos)}
 
 # %% [markdown]
-# ### assign the group names to the parameter base types according to the cols of the base localization matrix
+# ### Map parameter types to their localization group
 
 # %%
 base_loc["par_obs_group"] = [
@@ -218,7 +243,7 @@ base_loc["par_obs_group"] = [
 ]
 
 # %% [markdown]
-# ### now we have a list of groups for parameters
+# ### Build the parameter group name mapping
 
 # %%
 new_par_groups = dict(
@@ -226,7 +251,7 @@ new_par_groups = dict(
 )  # mapping a new group name for each par type.
 
 # %% [markdown]
-# ### set up mapping for localization groups
+# ### Create descriptive group labels and export lookup table
 
 # %%
 # assign meaningful descriptive names to the parameter supergroups
@@ -272,13 +297,13 @@ loc_mapping = pd.DataFrame(
 loc_mapping.to_csv(pestpp_model_dir / "localization_group_lookup.csv")
 
 # %% [markdown]
-# ### and we can cast the base_loc matrix back to original orientation and drop these names
+# ### Reset the base localization matrix orientation
 
 # %%
 base_loc = base_loc.drop(columns=["par_obs_combo", "par_obs_group"]).T
 
 # %% [markdown]
-# ### so, update the parameter groupnames
+# ### Update parameter group names in the PST object
 
 # %%
 for k, v in new_par_groups.items():
@@ -289,7 +314,7 @@ pars.pargp.unique()
 
 
 # %% [markdown]
-# ### make sure we didn't miss any parameters in the groupings
+# ### Verify no parameters were left ungrouped
 
 # %%
 assert "pargp" not in pars.pargp.unique()
@@ -298,13 +323,13 @@ assert "pargp" not in pars.pargp.unique()
 base_loc.columns
 
 # %% [markdown]
-# ### make the final localization matrix
+# ## Build the Final Localization Matrix
 
 # %%
 locmat = pd.DataFrame(0, base_loc.index, group_lookup.keys())
 
 # %% [markdown]
-# ### loop over the groups and assign 1s where obs line up with par groups
+# ### Populate the matrix (1 where obs group informs parameter group)
 
 # %%
 for k, v in group_lookup.items():
@@ -315,13 +340,15 @@ for k, v in group_lookup.items():
 locmat
 
 # %% [markdown]
-# ### finally save it out to a text format
+# ### Write `loc.mat` in PEST++ ASCII matrix format
 
 # %%
 pyemu.Matrix.from_dataframe(locmat).to_ascii(str(pestpp_model_dir / "loc.mat"))
 
 # %% [markdown]
-# ### and refer to it in the PST file (TODO: add writing out the PST file)
+# ## Write Updated Control File and Run Verification
+# Add the localizer reference to the PST and write `prior_mc_loc.pst`.
+# Run with `noptmax=0` to verify everything is consistent.
 
 # %%
 pst.pestpp_options["ies_localizer"] = "loc.mat"

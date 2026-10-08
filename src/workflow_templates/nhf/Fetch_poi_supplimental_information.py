@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import sys
 import os
@@ -33,9 +18,9 @@ jupyter_black.load()
 # fallback to the package location — works for editable and non-editable installs.
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
-from assist.nhf.nhm_hydrofabric_v2 import create_poi_df
-# from assist.nhf.map_template_v2 import make_hf_map
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.hydrofabric import create_poi_df, make_hf_map_elements
+# from assist.common.map_template import make_hf_map
+from assist.common.assist_utilities import load_subdomain_config
 import topojson
 
 config = load_subdomain_config(root_dir)
@@ -56,7 +41,7 @@ config
 (
     hru_gdf,
     hru_txt,
-    # hru_cal_level_txt,
+    hru_cal_level_txt,
     seg_gdf,
     seg_txt,
     nwis_gages_aoi,
@@ -64,20 +49,21 @@ config
     gages_df,
     gages_txt,
     gages_txt_nb2,
-    # HW_basins_gdf,
-    # HW_basins,
+    HW_basins_gdf,
+    HW_basins,
 ) = make_hf_map_elements(
     root_dir=root_dir,
     model_dir=config["model_dir"],
     GIS_format=config["GIS_format"],
     param_filename=config["param_filename"],
     control_file_name=config["control_file_name"],
-    nwis_gages_file=config["nwis_gages_file"],
+    waterdata_gages_file=config["waterdata_gages_file"],
     gages_file=config["gages_file"],
+    resource_gages_file=config["resource_gages_file"],
     default_gages_file=config["default_gages_file"],
     nhru_params=config["nhru_params"],
     nhru_nmonths_params=config["nhru_nmonths_params"],
-    nwis_gage_nobs_min=config["nwis_gage_nobs_min"],
+    waterdata_gage_nobs_min=config["waterdata_gage_nobs_min"],
 )
 con.print(
     f"{config['workspace_txt']}\n",
@@ -143,6 +129,10 @@ def find_missing_gage_info(root_dir, dest_dir, gages_list, info_file_name):
             "drainage_area_contrib": nan_list,
         }
     )  # Initialize empty datafame
+    # Same dtype pin as assist.common.assist_utilities.find_missing_gage_info:
+    # a column built from [np.nan]*n is float64, so the first gage name written
+    # into poi_name would force an upcast that pandas 3 refuses.
+    gages_df = gages_df.astype({"poi_agency": "object", "poi_name": "object"})
 
     # Check for resource (supplemental) file, if present, append information to gages_df
     if info_supplement_path.exists():

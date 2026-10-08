@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import os
 import glob
@@ -33,7 +18,7 @@ import warnings
 from assist.workspace.bridge import resolve_repo_root
 root_dir = resolve_repo_root() / "nhf_assist"
 
-from assist.nhf.nhm_assist_utilities_v2 import load_subdomain_config
+from assist.common.assist_utilities import load_subdomain_config
 config = load_subdomain_config(root_dir)
 
 # %% jupyter={"source_hidden": true}

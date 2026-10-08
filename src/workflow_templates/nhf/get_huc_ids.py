@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks///ipynb,src/workflow_templates/nhf///py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %%
 import glob
 from dataretrieval import nldi
@@ -45,7 +30,7 @@ load_dotenv(
 )  # this will load the environment variables from the .env file
 
 
-from assist.nhf.nhm_hydrofabric_v2 import (
+from assist.common.hydrofabric import (
     create_hru_gdf,
     create_segment_gdf,
     create_poi_df,
@@ -53,7 +38,7 @@ from assist.nhf.nhm_hydrofabric_v2 import (
     read_gages_file,
 )
 
-from assist.nhf.nhm_assist_utilities_v2 import (
+from assist.common.assist_utilities import (
     load_subdomain_config,
 )
 

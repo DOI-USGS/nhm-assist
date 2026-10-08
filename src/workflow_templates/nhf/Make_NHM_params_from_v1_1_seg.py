@@ -1,18 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     formats: nhf_assist/notebooks//ipynb,src/workflow_templates/nhf//py:percent
-#     text_representation:
-#       extension: .py
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.19.3
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 # %% [markdown]
 # # Extract NHM v1.1 Segment Parameters
 # This notebook extracts segment-dimensioned parameters from the NHM v1.1 parameter database
