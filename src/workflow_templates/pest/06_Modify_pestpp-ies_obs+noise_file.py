@@ -227,9 +227,7 @@ print(modifiable_groups.to_string())
 # every group present in the ensemble that has no modifiable observations.
 all_groups = set(obs_groups.reindex(obs_noise_modified.columns).dropna().unique())
 protected_groups = sorted(all_groups - set(modifiable_groups.index))
-print(
-    f"\nObservation groups NOT being modified (protected): {protected_groups}"
-)
+print(f"\nObservation groups NOT being modified (protected): {protected_groups}")
 
 # %% [markdown]
 # ### Rule 3: resample noise per subgroup from each group's standard deviation
@@ -372,21 +370,19 @@ print(f"wrote modified obs+noise ensemble: {obs_noise_jcb}")
 # supplied ensemble rather than regenerating noise internally.
 
 # %%
+pst.control_data.noptmax = 0
 pst.pestpp_options["ies_observation_ensemble"] = obs_noise_jcb.name
 pst.pestpp_options["ies_no_noise"] = False
 pst.write(
     os.path.join(pestpp_model_dir, "prior_mc_reweight_obs+noise_mod.pst"), version=2
 )
 print("wrote control file: prior_mc_reweight_obs+noise_mod.pst")
-print(
-    f"ies_observation_ensemble = {pst.pestpp_options['ies_observation_ensemble']}"
+print(f"ies_observation_ensemble = {pst.pestpp_options['ies_observation_ensemble']}")
+
+# %%
+pyemu.os_utils.run(
+    "pestpp-ies.exe prior_mc_reweight_obs+noise_mod.pst", cwd=pestpp_model_dir
 )
 
 # %%
-pst.control_data.noptmax = 0
-
-# %%
-pyemu.os_utils.run("prior_mc_reweight_obs+noise_mod.pst", cwd=pestpp_model_dir)
-
-# %%
-pst.control_data.noptmax = 3 #set to 3 so its ready for HW run
+pst.control_data.noptmax = 3  # set to 3 so its ready for HW run
