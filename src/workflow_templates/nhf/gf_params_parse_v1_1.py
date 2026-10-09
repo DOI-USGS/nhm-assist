@@ -149,8 +149,11 @@ parent_dir = root_dir / "data_dependencies" / "NHM_v1_1" / "version1_1_params"
 # The directory for all the paramerter .csv files:
 
 # %%
-pfile_name = "paramdb_v1.1_gridmet_CONUS-master"
-parent_params_dir = f"{parent_dir}/{pfile_name}"
+pfile_name = "paramdb_v1.1_gridmet_CONUS-byHWobs"
+parent_params_dir = f"{parent_dir}\{pfile_name}"
+
+# %%
+parent_params_dir
 
 # %% [markdown]
 # Get the list of parameter names from the .csv paramter files
@@ -922,7 +925,7 @@ for cname in special_list:
         child_pdb.remove(cname)
 
 # %%
-parent_pdb.parameters.keys()
+parent_pdb
 
 # %%
 # Special
