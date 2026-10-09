@@ -34,7 +34,8 @@ warnings.filterwarnings("ignore")
 # --- Workspace bridge pattern (NHM) ---
 import assist as _assist_pkg
 
-root_dir = pl.Path(_assist_pkg.__file__).resolve().parents[2] / "nhf_assist"
+from assist.workspace.bridge import resolve_repo_root
+root_dir = resolve_repo_root()
 
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root

@@ -27,8 +27,9 @@ Workspace root and project come from the pixi setup where possible:
     uses it, otherwise it lists them and asks you to pick (or pass
     ``--project-name``).
 
-Default keep-list reproduces the original task:
+Default keep-list (the nhf notebooks the training project needs):
     Create_subbasin_model_NHM_v1.ipynb
+    Create_gridmet_climate_drivers.ipynb
     gf_params_parse_v1_1.ipynb
 
 Usage:
@@ -47,6 +48,10 @@ Usage:
 
     # Keep the whole nhf set (no pruning):
     pixi run python scripts/Make_NHM_v1_1_training_notebooks.py --keep-all-nhf
+
+    # Contributor (dev) pairing: notebooks pair back to the repo templates, so
+    # editing a notebook edits src/workflow_templates/<workflow>/*.py:
+    pixi run python scripts/Make_NHM_v1_1_training_notebooks.py --pairing-mode dev
 
     # Preview without generating or deleting anything:
     pixi run python scripts/Make_NHM_v1_1_training_notebooks.py --dry-run
@@ -73,11 +78,18 @@ console = Console()
 # The project is not persisted by setup; only the keep-list has a fixed default.
 DEFAULT_KEEP_NHF = (
     "Create_subbasin_model_NHM_v1.ipynb",
+    "Create_gridmet_climate_drivers.ipynb",
     "gf_params_parse_v1_1.ipynb",
 )
 
-# The pixi task name defined in the repo's pyproject.toml.
-PIXI_TASK = "notebooks-create-project"
+# The pixi tasks defined in the repo's pyproject.toml, by pairing mode. Both
+# render the same notebooks; they differ only in how the .ipynb is paired to
+# its .py template (local = same-directory via jupytext.toml; dev = back to
+# src/workflow_templates/<workflow>/).
+PIXI_TASK_BY_MODE = {
+    "local": "notebooks-create-project",
+    "dev": "dev-mode",
+}
 
 
 def repo_root() -> Path:
@@ -174,13 +186,19 @@ def run_workflow(
     workspace_root: str | Path,
     project_name: str,
     *,
+    pairing_mode: str,
     dry_run: bool,
 ) -> None:
-    """Invoke `pixi run notebooks-create-project <workspace> <project> <workflow>`."""
+    """Invoke the pixi notebook-generation task for one workflow.
+
+    `pairing_mode` selects the task: "local" -> notebooks-create-project,
+    "dev" -> dev-mode. Both take the same positional arguments.
+    """
+    task = PIXI_TASK_BY_MODE[pairing_mode]
     cmd = [
         "pixi",
         "run",
-        PIXI_TASK,
+        task,
         str(workspace_root),
         project_name,
         workflow,
@@ -297,6 +315,17 @@ def main() -> int:
         help="Do not generate (or prune) the nhf notebooks.",
     )
     parser.add_argument(
+        "--pairing-mode",
+        choices=["local", "dev"],
+        default="local",
+        help=(
+            "How to pair the generated notebooks. local (default): same-directory "
+            ".py via the project's jupytext.toml. dev: pair back to "
+            "src/workflow_templates/<workflow>/*.py so editing a notebook edits "
+            "the repo template (contributor mode)."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would run and what would be removed, without doing it.",
@@ -310,20 +339,33 @@ def main() -> int:
 
     project_dir = workspace_root / project_name
     console.print(f"[bold]Project:[/bold] {project_dir}")
+    console.print(f"[dim]Pairing mode: {args.pairing_mode}[/dim]")
     if args.dry_run:
         console.print("[dim]DRY RUN -- no files will be generated or deleted.[/dim]")
 
     # Part 1: all nhm notebooks.
     if not args.skip_nhm:
         console.print("\n[bold]Step 1: generate all nhm notebooks[/bold]")
-        run_workflow("nhm", workspace_root, project_name, dry_run=args.dry_run)
+        run_workflow(
+            "nhm",
+            workspace_root,
+            project_name,
+            pairing_mode=args.pairing_mode,
+            dry_run=args.dry_run,
+        )
     else:
         console.print("\n[dim]Skipping nhm generation (--skip-nhm).[/dim]")
 
     # Part 2: full nhf set, then prune to the keep-list.
     if not args.skip_nhf:
         console.print("\n[bold]Step 2: generate the nhf set[/bold]")
-        run_workflow("nhf", workspace_root, project_name, dry_run=args.dry_run)
+        run_workflow(
+            "nhf",
+            workspace_root,
+            project_name,
+            pairing_mode=args.pairing_mode,
+            dry_run=args.dry_run,
+        )
 
         nhf_dir = project_dir / "notebooks" / "nhf"
         if args.keep_all_nhf:

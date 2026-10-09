@@ -293,16 +293,3 @@ for var in ["seg_outflow"]:
     out_file = f"{config['out_dir'] / var}.nc"
     data.to_netcdf(out_file)
     del data
-
-# %%
-
-# %%
-
-# %% [markdown]
-# ### Quick look at the recharge output
-
-# %%
-recharge = xr.load_dataarray(config['out_dir'] / "recharge.nc")
-recharge
-
-# %%
