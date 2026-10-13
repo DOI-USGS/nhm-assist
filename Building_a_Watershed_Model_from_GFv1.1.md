@@ -13,17 +13,13 @@ path through the class.
 
 ---
 
-## Before you start — prerequisites
+## Before you begin — Review Setup Checklist
 
-Have these ready before Step 1. If your instructor set up the training machines,
-most of this is already done — confirm with them.
 
-- **pixi installed.** The dependency and environment manager nhm-assist uses.
-  Install it per the [official instructions](https://pixi.sh/latest/#installation).
+- **pixi installed.** NHM-Assist uses pixi for dependency and environment management.
+  Install pixi per the [official instructions](https://pixi.sh/latest/#installation).
   It is the only supported environment manager — do not use `pip`, `conda`, or
-  `venv`.
-- **The nhm-assist repository cloned**, and the environment installed. From your
-  projects folder:
+  `venv`. Once the nhm-assist repository is cloned, install the environment from a `powershell terminal`:
 
   ```bash
   git clone https://code.usgs.gov/wma/hytest/nhm-assist.git
@@ -35,11 +31,14 @@ most of this is already done — confirm with them.
   `pixi run …` command in this guide uses it automatically.
 - **A shapefile of your area of interest (AOI).** This is the only data you
   supply — the watershed you want to model, as a shapefile (`.shp` + its
-  sidecar files) or other vector file. You use it in Step 2.
-- **An editor for the notebooks** — JupyterLab, VS Code, or Kiro.
-- **Awareness that one step needs the VPN off.** Step 5 (gridMET climate
+  sidecar files) or other vector file.
+- **An editor for the notebooks** — In this training we will be running the jupyter notebooks using `Jupyter Lab`. If using `VScode` or `Kiro` you MUST have the folowing extensions installed:
+  - **Python** --If you have **Python Environments** then disable it; it may cause errors.
+  - **Jupyter**
+  - **Jupyter Sync**
+- **Awareness that one step needs the VPN off.** Step 7 (gridMET climate
   drivers) must run with the VPN disconnected; every other step runs fine on the
-  VPN. See Step 5 for details.
+  VPN. See Step 7 for details.
 - **Copy the data dependencies from the SharePoint site.** The nhm-assist data
   dependencies (the GFv1.1 geodatabase, reference and non-reference gage data,
   HUC and map layers, and more — roughly 4 GB) are not in the git repository.
@@ -48,33 +47,37 @@ most of this is already done — confirm with them.
   and you copy them into the repository's `data_dependencies/` folder before
   running any notebook. The reliable way to do this is to sync the library to
   your machine with OneDrive and then copy from that local copy — see
-  [Getting the data dependencies](#appendix--getting-the-data-dependencies) at
-  the end of this guide for the full step-by-step. Do this once, before Step 1.
+  [Getting the data dependencies](#appendix--getting-the-data-dependencies).
 
 All commands in this guide are run from the **repository root** (the `nhm-assist`
 folder you cloned) unless stated otherwise.
 
----
+```bash
+PS D:\nhm-assist>
+```
 
-## At a glance — the eleven steps
+
+## Preview
 
 | # | Step | Where |
 | --- | --- | --- |
 | 1 | Create a workspace and a project | `pixi run setup` |
-| 2 | Delineate a fabric and build the model from GFv1.1 | `nhf/Create_subbasin_model_NHM_v1`, `nhf/gf_params_parse_v1_1` |
-| 3 | Import the model into your project | `pixi run setup` |
-| 4 | Configure the run | `nhm/0_workspace_setup` |
-| 5 | Create climate forcing data (**VPN off**) | `nhf/Create_gridmet_climate_drivers` |
-| 6 | Gather observed streamflow | `nhm/1_create_streamflow_observations` |
-| 7 | Verify the hydrofabric | `nhm/2_model_hydrofabric_visualization` |
-| 8 | Inspect model parameters | `nhm/3_model_parameter_visualization` |
-| 9 | Run the model with pywatershed | `nhm/4_run_model_using_pywatershed` |
-| 10 | Explore HRU output | `nhm/5_hru_output_visualization_new` |
-| 11 | Evaluate simulated streamflow | `nhm/6_streamflow_output_visualization_new` |
+| 2 | Generate the NHM training notebooks | `scripts/Make_NHM_v1_1_training_notebooks.py` |
+| 3 | Delineate your watershed fabric from GFv1.1 | `nhf/Create_subbasin_model_NHM_v1` |
+| 4 | Build the model from the v1.1 parameter geodatabase | `nhf/gf_params_parse_v1_1` |
+| 5 | Import the model into your project | `pixi run setup` |
+| 6 | Run notebook 0 to set model paths & options | `nhm/0_workspace_setup` |
+| 7 | Create climate forcing data (**VPN off**) | `nhf/Create_gridmet_climate_drivers` |
+| 8 | Gather observed streamflow | `nhm/1_create_streamflow_observations` |
+| 9 | Verify the hydrofabric | `nhm/2_model_hydrofabric_visualization` |
+| 10 | Inspect model parameters | `nhm/3_model_parameter_visualization` |
+| 11 | Run the model with pywatershed | `nhm/4_run_model_using_pywatershed` |
+| 12 | Explore HRU output | `nhm/5_hru_output_visualization_new` |
+| 13 | Evaluate simulated streamflow | `nhm/6_streamflow_output_visualization_new` |
 
-Steps 1–3 build and register your model. Step 4 configures it. Steps 5–11 are
-the `nhm` workflow: run them in order, each builds on the files the previous one
-wrote.
+Steps 1–2 set up your workspace, project, and notebooks. Steps 3–5 build and
+register your model. Step 6 configures it. Steps 7–13 are the `nhm` workflow:
+run them in order, each builds on the files the previous one wrote.
 
 ---
 
@@ -97,6 +100,13 @@ This drops you into an interactive menu. You will see guided options at the top
 (do these in order) and more options below:
 
 ```text
+NHM setup
+
+Workspace root: D:\nhm-workspace
+Current project: (not selected)
+Active model: (not set)
+USGS WaterData API key: configured
+
   -- Guided setup (do these in order) --
   1. Set workspace root
   2. Create project
@@ -107,25 +117,26 @@ This drops you into an interactive menu. You will see guided options at the top
   5. Open existing project
   6. Import model folder
   7. Set active model
-  8. Generate NHM notebooks
-  9. Show current setup
- 10. Set USGS WaterData API key
- 11. Repair editor settings for this project
-  0. Exit
+  8. Generate NHM notebooks 
+  9. Show current setup 
+  10. Set USGS WaterData API key 
+  11. Repair editor settings for this project 
+  0. Exit 
 ```
 
-For Step 1 you will use options **1** and **2**. (You will *not* use option 3,
-"Copy example model" — in this class your model comes from the construction tool
-in a later step, not from a bundled example.)
+> **Fresh setup:** the first time you run `pixi run setup` — before any
+> workspace root is saved — the tool takes you straight to this
+> `Workspace root path:` prompt. Once a workspace root has been set, later
+> `pixi run setup` sessions land on the menu above, where you choose option `1`
+> only if you want to change it.
 
-### 1a. Set the workspace root (menu option 1)
-
-Choose option `1`. The menu explains that your workspace folder holds projects,
-models, generated notebooks, and outputs, and asks for a path:
+### Set the workspace root (Fresh Setup)
 
 ```text
 Workspace root path:
 ```
+
+
 
 - **Press Enter to accept the default.** The default is a folder named
   `nhm-workspace` placed next to the cloned repository (for example, if the repo
@@ -141,7 +152,7 @@ The tool saves your choice to a `.env` file in the repo
 (`NHM_ASSIST_WORKSPACE_ROOT`), so later `pixi run setup` sessions remember it
 and you won't have to set it again.
 
-### 1b. Create a project (menu option 2)
+### Create a project (menu option 2)
 
 Choose option `2` and give your project a name when prompted. Use a short,
 descriptive name for your watershed, with no spaces — for example
@@ -152,7 +163,7 @@ This creates the project folder structure inside your workspace:
 ```text
 <workspace>/
   <project>/
-    notebooks/nhm/                     # your generated notebooks (Step 4)
+    notebooks/nhm/                     # your generated notebooks (Step 2)
     project_config/active_model.yaml   # records which model is "active"
     models/                            # your constructed model lands here
 ```
@@ -169,9 +180,8 @@ Each project also gets two things that make your work reviewable in git:
 - A workspace folder outside the repo, remembered in `.env`.
 - An empty project inside it, with its `notebooks/` and `models/` folders ready.
 
-Your project has **no model yet** — that is expected. In the next step you'll
-run the construction tool to build your pywatershed model from the GFv1.1
-fabric, and it will land in this project's `models/` folder.
+Your project has **no model yet** — that is expected. First you generate this
+project's notebooks (Step 2); then you build the model (Steps 3–4).
 
 > **Tip:** You can re-run `pixi run setup` at any time. It remembers your
 > workspace, and option **9, "Show current setup,"** prints your current
@@ -179,20 +189,50 @@ fabric, and it will land in this project's `models/` folder.
 
 ---
 
-## Step 2 — Build your model from the GFv1.1 fabric
+## Step 2 — Generate the NHM training notebooks
+
+Your project folder exists, but it has no notebooks in it yet. This step
+generates them from the shared templates in the repository, writing a fresh set
+of training notebooks into your project's `notebooks/` folder. These are the
+notebooks you work through for the rest of the class.
+
+From the repository root, run the training-notebook generator, substituting your
+own workspace root and project name:
+
+```bash
+pixi run python scripts/Make_NHM_v1_1_training_notebooks.py --workspace-root </path/to/workspace> --project-name <MyProject>
+```
+
+- `--workspace-root` — the workspace folder you set in Step 1 (for example the
+  default `nhm-workspace` next to the repo).
+- `--project-name` — the project you created in Step 1.
+
+The generator pairs each notebook to a `.py` template (via jupytext), so your
+edits show up as readable diffs in git rather than as notebook JSON.
+
+> **This replaces menu option 8.** Running this script does the same thing as
+> the `pixi run setup` menu's option **8, "Generate NHM notebooks."** Because
+> you generate the notebooks here, you do **not** need to use option 8 in the
+> setup menu.
+
+### What you have after Step 2
+
+- A complete set of training notebooks under
+  `<workspace>/<project>/notebooks/`, ready to open and run.
+
+---
+
+## Step 3 — Delineate your watershed fabric — `notebooks/nhf/Create_subbasin_model_NHM_v1.ipynb`
 
 In this class you construct your own pywatershed model directly from the NHM
-version 1.1 geospatial fabric. This is done with two notebooks (workflows) in
-the **`nhf`** subdirectory. Run them in order: the first delineates your
-watershed model fabric using you AOI shapefile; the second turns that fabric into a
-pywatershed model by building its parameters from the NHM v1.1 parameter
-geodatabase.
+version 1.1 geospatial fabric, using two notebooks (workflows) in the **`nhf`**
+subdirectory. This step runs the first of them, which delineates your watershed
+fabric from your AOI shapefile; Step 4 then turns that fabric into a pywatershed
+model.
 
 > **What you need before you start:** a shapefile (or other vector file)
 > defining your **area of interest (AOI)** — the watershed you want to model.
 > This is the only input you have to supply.
-
-### 2a. Delineate your watershed fabric — `notebooks/nhf/Create_subbasin_model_NHM_v1.ipynb`
 
 This notebook presents an interactive map of the NHM v1.1 CONUS hydrofabric
 (GFv1.1) and uses your AOI shapefile to carve out the subbasin that drains your
@@ -219,7 +259,13 @@ dependencies.
 > rebuilds it automatically (it sets `SHAPE_RESTORE_SHX=YES`), so a shapefile
 > that is only `.shp` + `.dbf` + `.prj` will still load.
 
-### 2b. Build the pywatershed model from the v1.1 parameter geodatabase — `notebooks/nhf/gf_params_parse_v1_1.ipynb`
+### What you have after Step 3
+
+- A delineated watershed fabric for your AOI, in the project's `fabrics` folder.
+
+---
+
+## Step 4 — Build the pywatershed model from the v1.1 parameter geodatabase — `notebooks/nhf/gf_params_parse_v1_1.ipynb`
 
 With your watershed fabric in hand, this notebook builds a complete pywatershed
 model for it by parsing the model's parameters out of the **NHM version 1.1
@@ -230,7 +276,7 @@ fabric, builds and validates the stream-segment routing network (checking for
 disconnected or looped graphs), and writes out the parameter file your model
 needs.
 
-**Input:** the watershed modeling fabric from Step 2a, plus the NHM v1.1
+**Input:** the watershed modeling fabric from Step 3, plus the NHM v1.1
 parameter geodatabase (from the project's data dependencies).
 **Output:** a pywatershed-ready model — the PRMS parameter file and model
 inputs — written to your **project** workspace (not back into the repository).
@@ -240,10 +286,9 @@ inputs — written to your **project** workspace (not back into the repository).
 > file. If it can't find that marker it stops with an error, so open it from
 > within your project workspace (the one you created in Step 1).
 
-### What you have after Step 2
+### What you have after Step 4
 
-- A delineated watershed fabric for your AOI, in the project's `fabrics` folder.
-- A pywatershed model built from that fabric and the NHM v1.1 parameter
+- A pywatershed model built from your fabric and the NHM v1.1 parameter
   geodatabase, in the project's `fabrics` folder.
 
 This is the model the nhm-assist notebooks (`0`–`6`) will evaluate, run, and
@@ -252,9 +297,9 @@ project with `pixi run setup`.
 
 ---
 
-## Step 3 — Import your model into the project
+## Step 5 — Import your model into the project
 
-Now bring the model you built in Step 2 into your project so the numbered
+Now bring the model you built in Step 4 into your project so the numbered
 notebooks can find it. Return to the guided setup menu from the repository root:
 
 ```bash
@@ -271,7 +316,7 @@ Type source folder path:
 - **Model name** — a short name for this model inside your project (for example
   `my_watershed_v1_1`). This becomes the folder name under the project's
   `models/`.
-- **Source folder path** — the full path to the model you built in Step 2.
+- **Source folder path** — the full path to the model you built in Step 4.
 
 The tool copies the model into your project at
 `<workspace>/<project>/models/<model-name>/` and prints where it landed:
@@ -290,7 +335,7 @@ that file.
 > maps and plots) is written alongside the model inside your project workspace,
 > keeping everything for one watershed together and out of the repository.
 
-### What you have after Step 3
+### What you have after Step 5
 
 - Your constructed model copied into `<workspace>/<project>/models/<model-name>/`.
 - That model recorded as the project's **active model**.
@@ -300,24 +345,22 @@ setup"** — it prints your workspace, project, and active model.
 
 ---
 
-## Step 4 — Run notebook 0 (`0_workspace_setup.ipynb`)
+## Step 6 — Run notebook 0 (`0_workspace_setup.ipynb`)
 
-With your model imported and active, you now run the first nhm-assist notebook.
-Notebook 0 sets up the paths and directories every other notebook uses, and is
-where you enter the options the later notebooks read. **Run it first, at the
-start of every session.**
+With your model imported and active, run notebook 0. It is the setup notebook
+every nhm-assist notebook depends on: it picks up the active model you just
+imported, resolves and records your workspace, project, and model paths, creates
+the output folders, and captures the options the evaluation notebooks (Steps
+8–13) read. **From now on, run notebook 0 first at the start of every working
+session.**
 
-### 4a. Generate and open the notebooks
+### 6a. Open the notebook
 
-If you have not generated your project's notebooks yet, do it from the setup
-menu: `pixi run setup` → option **4, "Show notebook folder and how to open
-it,"** which generates them first if needed and then prints the folder and how
-to open it. (Option **8, "Generate NHM notebooks,"** does the generation on its
-own.)
-
-Open the **project** folder in your editor (not the `notebooks/nhm`
-subfolder — opening the project folder is what lets the editor read the
-project's `.vscode/settings.json` and keep jupytext syncing):
+You generated the notebooks in Step 2. Open notebook 0 from the **project**
+folder in your editor — not the `notebooks/nhm` subfolder, since opening the
+project folder is what
+lets the editor read the project's `.vscode/settings.json` and keep jupytext
+syncing:
 
 ```bash
 jupyter lab <workspace-root>/<project-name>/notebooks/nhm
@@ -330,7 +373,7 @@ Then point the notebook at this project's pixi environment,
 first time and remembers per notebook. In VS Code or Kiro, choose
 "Python Environments…" and pick `.pixi/envs/default`.
 
-### 4b. Run the environment sanity check (first cell)
+### 6b. Run the environment sanity check (first cell)
 
 Run the **first cell and read its output.** It checks whether packages outside
 this environment are shadowing the versions pixi locked (a `pip install --user`
@@ -338,7 +381,7 @@ from any other project can do this). If it prints a warning, launch Jupyter
 through pixi or set `PYTHONNOUSERSITE=1` in your kernel environment before
 continuing. If it prints nothing, you're clear.
 
-### 4c. Review the user options
+### 6c. Review the user options
 
 Work down the cells marked **✍ Enter Information** and set each to taste. Most
 are detected or defaulted sensibly for a model you just built, so for a first
@@ -346,7 +389,7 @@ run you can often accept the defaults:
 
 - **NHM domain folder name** (`subdomain`) — **ignored in your project.** When
   the notebook runs from a workspace project it overwrites this with your
-  project's active model name (the one you imported in Step 3). You will see
+  project's active model name (the one you imported in Step 5). You will see
   `Active model:` printed. The hardcoded value only matters in the legacy
   in-repo layout.
 - **GIS file format** (`GIS_format`) — auto-detected from your model
@@ -366,7 +409,7 @@ run you can often accept the defaults:
 - **Calendar years vs. water years** (`water_years`) — default `True` (water
   years, Oct 1 – Sep 30). Set `False` for calendar years.
 
-### 4d. Run the rest and SAVE
+### 6d. Run the rest and SAVE
 
 Run the remaining cells. They resolve all paths, create the model's output
 folders (`notebook_output_files/` with `html_maps`, `html_plots`, `nc_files`,
@@ -377,7 +420,7 @@ file the other notebooks read.
 save — the notebook itself says *"NOT FINISHED YET! SAVE YOUR NOTEBOOK"* for
 exactly this reason.
 
-### What you have after Step 4
+### What you have after Step 6
 
 - Paths, directories, and output folders set up under your active model.
 - Your parameter, gage-threshold, visualization, and water-year choices recorded
@@ -387,7 +430,7 @@ You are now ready to work through notebooks 1 through 6 in order.
 
 ---
 
-## Step 5 — Create climate forcing data — `notebooks/nhf/Create_gridmet_climate_drivers.ipynb`
+## Step 7 — Create climate forcing data — `notebooks/nhf/Create_gridmet_climate_drivers.ipynb`
 
 Your model has parameters and a fabric, but it still needs **climate forcing**:
 the daily weather that drives the simulation. This notebook generates gridMET
@@ -402,7 +445,7 @@ files:
 - `tmin.nc` — daily minimum temperature
 - `tmax.nc` — daily maximum temperature
 
-These land in your model directory, ready for pywatershed in Step 6. The
+These land in your model directory, ready for pywatershed in Step 11. The
 notebook reads your model's HRUs from `GIS/model_layers.gpkg` and the
 simulation period (start and end dates) from the config that notebook 0 wrote,
 so there is little to configure — just run it top to bottom.
@@ -419,7 +462,7 @@ so there is little to configure — just run it top to bottom.
 > out to GitHub for it if that local file is missing — one less thing the
 > network has to reach.
 
-### What you have after Step 5
+### What you have after Step 7
 
 - `prcp.nc`, `tmin.nc`, and `tmax.nc` climate forcing files in your model
   directory, covering your model's simulation period.
@@ -429,7 +472,7 @@ drivers.
 
 ---
 
-## Step 6 — Gather observed streamflow — `notebooks/nhm/1_create_streamflow_observations.ipynb`
+## Step 8 — Gather observed streamflow — `notebooks/nhm/1_create_streamflow_observations.ipynb`
 
 From here on you are in the numbered `nhm` notebooks. Notebook 1 collects the
 **observed** streamflow you will later compare your simulation against. It
@@ -465,7 +508,7 @@ What it does, in order:
 > USGS WaterData API key through `pixi run setup` → option **10, "Set USGS
 > WaterData API key."** It is stored in the repo's `.env`.
 
-### What you have after Step 6
+### What you have after Step 8
 
 - `metadata/WaterDataGages.csv` and `default_gages.csv` (or your edited
   `gages.csv`).
@@ -474,9 +517,9 @@ What it does, in order:
 
 ---
 
-## Step 7 — Verify the hydrofabric — `notebooks/nhm/2_model_hydrofabric_visualization.ipynb`
+## Step 9 — Verify the hydrofabric — `notebooks/nhm/2_model_hydrofabric_visualization.ipynb`
 
-Before running the model, confirm the fabric you delineated in Step 2 is correct.
+Before running the model, confirm the fabric you delineated in Step 3 is correct.
 Notebook 2 draws your subdomain's hydrofabric on an interactive map so you can
 check that it is put together the way you expect.
 
@@ -504,7 +547,7 @@ folder so you can open it outside the notebook.
 > 2 links to it) to add the point of interest to the parameter file. After
 > adding gages, re-run notebook 1 (and this one) so the new gage flows through.
 
-### What you have after Step 7
+### What you have after Step 9
 
 - An interactive hydrofabric map confirming your subdomain's HRUs, segments,
   routing, and gage placement, saved as HTML.
@@ -513,11 +556,11 @@ folder so you can open it outside the notebook.
 
 ---
 
-## Step 8 — Inspect model parameters — `notebooks/nhm/3_model_parameter_visualization.ipynb`
+## Step 10 — Inspect model parameters — `notebooks/nhm/3_model_parameter_visualization.ipynb`
 
 Notebook 3 lets you see the parameter values your model carries, mapped across
 its HRUs. This is how you sanity-check the parameters that came from the NHM
-v1.1 database in Step 2 before you run the model on them.
+v1.1 database in Step 4 before you run the model on them.
 
 What it does:
 
@@ -539,7 +582,7 @@ the notebook.
 > inherited. To visualize a different parameter, add it to the list in notebook
 > 0, re-run notebook 0 (and save), then re-run this notebook.
 
-### What you have after Step 8
+### What you have after Step 10
 
 - Interactive maps and embedded per-catchment plots of your model's parameter
   values, saved as HTML.
@@ -548,7 +591,7 @@ the notebook.
 
 ---
 
-## Step 9 — Run the model — `notebooks/nhm/4_run_model_using_pywatershed.ipynb`
+## Step 11 — Run the model — `notebooks/nhm/4_run_model_using_pywatershed.ipynb`
 
 This is the step that **runs your watershed model**. Notebook 4 prepares the
 model inputs and parameters for pywatershed, runs the simulation, and writes an
@@ -558,7 +601,7 @@ What it does, in order:
 
 1. **Prepares the pywatershed input files.** pywatershed reads precipitation,
    tmin, and tmax as separate NetCDF files (`prcp.nc`, `tmin.nc`, `tmax.nc`).
-   You already created these in Step 5; if any are missing, the notebook
+   You already created these in Step 7; if any are missing, the notebook
    rebuilds them from the model's combined `cbh.nc`. To force a rebuild, delete
    the three files and re-run.
 2. **Checks and fixes the parameter file.** It makes the small adjustments
@@ -574,16 +617,16 @@ What it does, in order:
    variable in your `selected_output_variables` list into the model's `output/`
    folder.
 
-> **Reconnect to the VPN if you disconnected for Step 5.** This notebook runs
+> **Reconnect to the VPN if you disconnected for Step 7.** This notebook runs
 > locally against files already on disk, so it does not need the open internet
 > that the gridMET step did.
 
 > **If the run errors on a parameter:** read the yellow warnings in step 2
 > above — they usually name the culprit HRU and parameter. The guardrails handle
 > the common cases automatically; a failure past them points to a parameter in
-> your constructed model worth revisiting back in Step 2.
+> your constructed model worth revisiting back in Step 4.
 
-### What you have after Step 9
+### What you have after Step 11
 
 - pywatershed input files (`prcp.nc`, `tmin.nc`, `tmax.nc`) in place.
 - A completed simulation, with one NetCDF output file per selected variable
@@ -594,7 +637,7 @@ These output files are what notebooks 5 and 6 visualize next.
 
 ---
 
-## Step 10 — Explore HRU output — `notebooks/nhm/5_hru_output_visualization_new.ipynb`
+## Step 12 — Explore HRU output — `notebooks/nhm/5_hru_output_visualization_new.ipynb`
 
 Now look at what your model produced on the land surface. Notebook 5 maps the
 HRU-level output variables from your run — things like recharge, actual
@@ -616,7 +659,7 @@ Output honors the **calendar-year vs. water-year** choice you made in notebook
 0 (`water_years`). Maps and plots are saved as HTML under
 `notebook_output_files/html_maps` and `notebook_output_files/html_plots`.
 
-### What you have after Step 10
+### What you have after Step 12
 
 - Interactive maps and per-catchment time-series plots of your model's HRU
   output variables, saved as HTML.
@@ -625,10 +668,10 @@ Output honors the **calendar-year vs. water-year** choice you made in notebook
 
 ---
 
-## Step 11 — Evaluate simulated streamflow — `notebooks/nhm/6_streamflow_output_visualization_new.ipynb`
+## Step 13 — Evaluate simulated streamflow — `notebooks/nhm/6_streamflow_output_visualization_new.ipynb`
 
 This is where it all comes together: comparing the streamflow your model
-simulated (Step 9) against the observations you gathered (Step 6). Notebook 6
+simulated (Step 11) against the observations you gathered (Step 8). Notebook 6
 is how you judge how well your watershed model performs.
 
 What it gives you:
@@ -648,7 +691,7 @@ Output honors your water-year choice from notebook 0. Maps and plots are saved
 as HTML under `notebook_output_files/html_maps` and
 `notebook_output_files/html_plots`.
 
-### What you have after Step 11
+### What you have after Step 13
 
 - A KGE gage map and per-gage simulated-vs-observed plots, flow-exceedance
   curves, and summary statistics — saved as HTML.
@@ -662,17 +705,19 @@ as HTML under `notebook_output_files/html_maps` and
 Starting from nothing but a shapefile of your area of interest, you have:
 
 1. **Set up a workspace and project** (`pixi run setup`).
-2. **Delineated a watershed fabric** from GFv1.1 and **built a pywatershed
-   model** from the NHM v1.1 parameter geodatabase (`nhf` notebooks).
-3. **Imported the model** into your project and set it active.
-4. **Configured the run** (notebook 0).
-5. **Generated climate forcing** (gridMET).
-6. **Gathered observed streamflow** (notebook 1).
-7. **Verified the hydrofabric** (notebook 2).
-8. **Inspected the parameters** (notebook 3).
-9. **Ran the model** with pywatershed (notebook 4).
-10. **Explored HRU output** (notebook 5).
-11. **Evaluated simulated streamflow** against observations (notebook 6).
+2. **Generated the training notebooks** for your project.
+3. **Delineated a watershed fabric** from GFv1.1 (`nhf/Create_subbasin_model_NHM_v1`).
+4. **Built a pywatershed model** from the NHM v1.1 parameter geodatabase
+   (`nhf/gf_params_parse_v1_1`).
+5. **Imported the model** into your project and set it active.
+6. **Ran notebook 0** to set the model paths and configure the run.
+7. **Generated climate forcing** (gridMET).
+8. **Gathered observed streamflow** (notebook 1).
+9. **Verified the hydrofabric** (notebook 2).
+10. **Inspected the parameters** (notebook 3).
+11. **Ran the model** with pywatershed (notebook 4).
+12. **Explored HRU output** (notebook 5).
+13. **Evaluated simulated streamflow** against observations (notebook 6).
 
 All of your maps, plots, and output live under your active model's
 `notebook_output_files/` and `output/` folders, inside your project — never in
@@ -691,6 +736,10 @@ reuse them in presentations or reports.
 
 See the repository [README.md](./README.md) for deeper reference on the
 workspace layout, plot and map interaction, and troubleshooting.
+
+---
+
+# Appendices
 
 ---
 
@@ -798,7 +847,7 @@ data_dependencies/
 A couple of spot checks that the important files arrived:
 
 - `data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb` exists (this is the
-  GFv1.1 geodatabase Step 2 reads).
+  GFv1.1 geodatabase Steps 3 and 4 read).
 - `data_dependencies\Examples\Malheur_Lake.shp` exists **together with** its
   sidecar files (`.dbf`, `.shx`, `.prj`, `.cpg`, `.qmd`). Shapefiles only load
   when the whole set is present, so make sure the sidecars came along with every
@@ -807,7 +856,28 @@ A couple of spot checks that the important files arrived:
 Once the folder looks like the layout above, you have everything the notebooks
 need and can start at Step 1.
 
-> **One optional file:** `climateR_catalog.parquet` is used by Step 5 only. If
+> **One optional file:** `climateR_catalog.parquet` is used by Step 7 only. If
 > it is not in the library, that's fine — the gridMET notebook downloads the
-> catalog from the internet when the local copy is absent (remember Step 5 runs
+> catalog from the internet when the local copy is absent (remember Step 7 runs
 > with the VPN off).
+
+---
+
+## Appendix — Setup menu options
+
+Where each `pixi run setup` menu option is used in this guide:
+
+| Option | Used in |
+| --- | --- |
+| 1. Set workspace root | **Step 1a** |
+| 2. Create project | **Step 1b** |
+| 3. Copy example model | Not used — your model comes from the construction tool (Steps 3–4), not a bundled example. |
+| 4. Show notebook folder and how to open it | Optional. You generate the notebooks in Step 2; use this any time you need to find the folder again. |
+| 5. Open existing project | Not used in this guide. Use it to return to a project in a later session. |
+| 6. Import model folder | **Step 5** |
+| 7. Set active model | Not needed — importing (Step 5) sets the active model automatically. |
+| 8. Generate NHM notebooks | Replaced by **Step 2**, which runs the training-notebook generator instead. |
+| 9. Show current setup | Used to confirm your setup in **Step 1** (tip) and **Step 5**. |
+| 10. Set USGS WaterData API key | Optional, in **Step 8**, if streamflow retrieval is slow or rate-limited. |
+| 11. Repair editor settings for this project | Not used in this guide. Use it if jupytext syncing stops working in your editor. |
+| 0. Exit | Leaves the menu. |
