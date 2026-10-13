@@ -81,7 +81,7 @@ run them in order, each builds on the files the previous one wrote.
 
 ---
 
-## Step 1 — Create a workspace and a project
+## Step 1 — Create a `workspace` (workspace root) and a `project`
 
 Everything you make in this class — your project, your model, the generated
 notebooks, and all output — lives in a **workspace** folder that sits *outside*
@@ -196,7 +196,7 @@ generates them from the shared templates in the repository, writing a fresh set
 of training notebooks into your project's `notebooks/` folder. These are the
 notebooks you work through for the rest of the class.
 
-From the repository root, run the training-notebook generator, substituting your
+IN a new terminal, from the nhm-assist repository root, run the training-notebook generator, substituting your
 own workspace root and project name:
 
 ```bash
@@ -224,9 +224,15 @@ edits show up as readable diffs in git rather than as notebook JSON.
 
 ## Step 3 — Delineate your watershed fabric — `notebooks/nhf/Create_subbasin_model_NHM_v1.ipynb`
 
+> **First-time running this notebook from Kiro?** If yes, then you need to set the kernal:
+>1. click on the `Select Kernal` in the upper right-hand corner of the window in the file tabs bar.
+>2. a dropdown menu will appear below center screen, and choose `python environments`
+>3. this wil expand the dropdown and show several options, select `default`
+> This will need to be done the first time running any notbook.
+
 In this class you construct your own pywatershed model directly from the NHM
-version 1.1 geospatial fabric, using two notebooks (workflows) in the **`nhf`**
-subdirectory. This step runs the first of them, which delineates your watershed
+version 1.1 geospatial fabric and parameter database, using two notebooks (workflows) in the **`nhf`**
+subdirectory. This step runs the first of them, which helps delineates your watershed
 fabric from your AOI shapefile; Step 4 then turns that fabric into a pywatershed
 model.
 
@@ -281,10 +287,7 @@ parameter geodatabase (from the project's data dependencies).
 **Output:** a pywatershed-ready model — the PRMS parameter file and model
 inputs — written to your **project** workspace (not back into the repository).
 
-> **Run it from inside your project.** This notebook finds your project by
-> walking up from where it runs until it sees the `.nhm-assist-project` marker
-> file. If it can't find that marker it stops with an error, so open it from
-> within your project workspace (the one you created in Step 1).
+
 
 ### What you have after Step 4
 
@@ -297,28 +300,31 @@ project with `pixi run setup`.
 
 ---
 
-## Step 5 — Import your model into the project
+## Step 5 — Import your fabric and parameter files
 
-Now bring the model you built in Step 4 into your project so the numbered
-notebooks can find it. Return to the guided setup menu from the repository root:
+Now bring the fabric and parameter files you built in Step 4 into your project so nhm-assist
+notebooks can find them.
 
 ```bash
 pixi run setup
 ```
+First, Choose option **5, "Open existing project."** And select your project.
 
-Choose option **6, "Import model folder."** The tool asks two questions:
+Then, Choose option **6, "Import model folder."** The tool asks two questions:
 
 ```text
 Type model name:
 Type source folder path:
 ```
 
-- **Model name** — a short name for this model inside your project (for example
-  `my_watershed_v1_1`). This becomes the folder name under the project's
+- **Model name** — a short name for this model inside your project (we suggest using the 
+  name of the fabric folder (named from the aoi.shp file).
+   This becomes the folder name under the project's
   `models/`.
-- **Source folder path** — the full path to the model you built in Step 4.
+- **Source folder path** — the full path to the fabric folder you built in Step 4. 
+  (for example `<workspace>/<project>/fabrics/<your fabric name>/`)
 
-The tool copies the model into your project at
+The tool copies all files from the fabric folder into your project's model folder at
 `<workspace>/<project>/models/<model-name>/` and prints where it landed:
 
 ```text
@@ -327,18 +333,17 @@ Imported model to <workspace>/<project>/models/<model-name>
 
 **Importing also sets this model active automatically** — it writes the model
 name into `project_config/active_model.yaml`, so you do not need a separate
-"set active model" step. The numbered notebooks resolve the active model from
-that file.
+"set active model" step. The nhm-assist notebooks resolve the active model from
+that `active_model.yaml`.
 
-> **Why import instead of pointing at it in place?** Importing copies the model
-> under the project, so all notebook output (gage files, model runs, exported
-> maps and plots) is written alongside the model inside your project workspace,
-> keeping everything for one watershed together and out of the repository.
+> **Why import instead of pointing at it in place?** Importing creates multiple copies fabric and parameter
+> files to the model folder (source and runtime copies). The nhm-assist notebooks with modify the parameter files (runtimes folder),
+> but preserve original imported values (source folder). 
 
 ### What you have after Step 5
 
-- Your constructed model copied into `<workspace>/<project>/models/<model-name>/`.
-- That model recorded as the project's **active model**.
+- Your model fabric, parameter file and control file copied into `<workspace>/<project>/models/<model-name>/`.
+- Imported model is recorded as the project's **active model**.
 
 To confirm, re-run `pixi run setup` and choose option **9, "Show current
 setup"** — it prints your workspace, project, and active model.
