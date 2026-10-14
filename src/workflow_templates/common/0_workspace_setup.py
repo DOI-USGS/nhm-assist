@@ -178,7 +178,7 @@ print(root_dir)
 # <font size = '3'>The default is set to the example NHM subdomain model name, "Walla_Walla". **When these notebooks run from a workspace project this value is ignored:** `subdomain` is overwritten with the project's active model name (set it with `pixi run project-set-active-model`, or option 7 of `pixi run setup`). It takes effect only in the legacy in-repo layout, where it names the model folder under "nhm-assist/domain_data". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
 
 # %%
-subdomain = "CrookedRiver"
+subdomain = "example_here"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
