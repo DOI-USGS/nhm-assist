@@ -763,6 +763,12 @@ def create_nhru_par_map(
 
         hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
 
+        # Round the parameter value shown in the HRU popup to 4 decimals, matching
+        # the par_value rounding used for the color bins (localize=False means the
+        # raw float would otherwise print with full precision).
+        if par_sel in hru_gdf_copy.columns:
+            hru_gdf_copy[par_sel] = np.round(hru_gdf_copy[par_sel].astype(float), 4)
+
         par_subset_df = hru_gdf.loc[:, ["hru_id", par_sel]]
         par_subset_df["hru_id"] = par_subset_df["hru_id"].astype(str)
         par_subset_df.rename(columns={f"{par_sel}": "par_value"}, inplace=True)
@@ -925,6 +931,12 @@ def create_nhru_par_map(
         hru_gdf_copy["hru_segment"] = hru_gdf_copy["hru_segment"].astype(str)
 
         hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
+
+        # Round the parameter value shown in the HRU popup to 4 decimals, matching
+        # the par_value rounding used for the color bins (localize=False means the
+        # raw float would otherwise print with full precision).
+        if par_mo_sel in hru_gdf_copy.columns:
+            hru_gdf_copy[par_mo_sel] = np.round(hru_gdf_copy[par_mo_sel].astype(float), 4)
 
         par_subset_df = hru_gdf.loc[:, ["hru_id", par_mo_sel]]
         par_subset_df["hru_id"] = par_subset_df["hru_id"].astype(str)
@@ -2895,7 +2907,7 @@ def create_poi_obs_marker_cluster(
             iframe,
             parse_html=True,
         ),
-        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["nhm_seg"]}<br>{row["poi_name"]}<br></font>',
     ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
