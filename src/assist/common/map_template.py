@@ -90,8 +90,10 @@ hw_basin_style = lambda x: {
 }
 
 popup_hru = folium.GeoJsonPopup(
-    fields=["hru_id", "hru_segment"],
-    aliases=["hru_id", " flows to segment"],
+    # Show national NHM ids, not the local model indexes: nhm_id for the HRU
+    # and hru_segment_nhm for the segment it flows to.
+    fields=["nhm_id", "hru_segment_nhm"],
+    aliases=["nhm_id", " flows to segment"],
     labels=True,
     localize=False,
     style=(
@@ -101,9 +103,10 @@ popup_hru = folium.GeoJsonPopup(
 )
 
 tooltip_hru = folium.GeoJsonTooltip(
-    fields=["hru_id", "hru_segment"],
-    aliases=["hru_id", " flows to segment"],
+    fields=["nhm_id", "hru_segment_nhm"],
+    aliases=["nhm_id", " flows to segment"],
     labels=True,
+    localize=False,  # no thousands separators in the ids
     # style=("background-color: #F0EFEF;border: 2px solid black;font-family: arial; font-size: 16px; padding: 10px;"),# Note that this tooltip style sets the style for all tool_tips.
 )
 
@@ -120,7 +123,9 @@ highlight_function_seg_map = lambda x: {
 }
 
 popup_seg = folium.GeoJsonPopup(
-    fields=["segment_id", "tosegment", #"huc12_pp"
+    # Show national NHM segment ids, not the local model indexes: nhm_seg for
+    # the segment and tosegment_nhm for the segment it flows to.
+    fields=["nhm_seg", "tosegment_nhm", #"huc12_pp"
            ],
     aliases=["segment", "flows to segment", #"huc12_pp"
             ],
@@ -129,9 +134,10 @@ popup_seg = folium.GeoJsonPopup(
 )
 
 tooltip_seg = folium.GeoJsonTooltip(
-    fields=["segment_id", "tosegment"],
+    fields=["nhm_seg", "tosegment_nhm"],
     aliases=["segment", "flows to segment"],
     labels=True,
+    localize=False,  # no thousands separators in the ids
 )
 
 def is_wsl():
@@ -580,7 +586,9 @@ def create_poi_marker_cluster(
             ),
         ).add_to(poi_marker_cluster_label)
 
-        marker = folium.CircleMarker(
+        # Black triangle to match the streamflow-gage icon on the other maps
+        # (make_polygon_icon with num_sides=3).
+        marker = folium.map.Marker(
             location=[row["latitude"], row["longitude"]],
             name=row["poi_gage_id"],
             popup=folium.Popup(
@@ -588,12 +596,9 @@ def create_poi_marker_cluster(
                 max_width=280,
                 max_height=2000,
             ),
-            radius=3,
-            weight=2,
-            color=None,
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
+            icon=make_polygon_icon(
+                num_sides=3, radius=6, color="black", fill_opacity=1.0
+            ),
         ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
@@ -890,10 +895,10 @@ def create_nhru_par_map(
             del val_bar_file
             
         popup_hru = folium.GeoJsonPopup(
-            fields=["hru_id", "hru_segment", par_sel],
+            fields=["nhm_id", "hru_segment_nhm", par_sel],
             aliases=["hru", " flows to segment", f"{par_sel}"],
             labels=True,
-            localize=True,
+            localize=False,  # no thousands separators in the nhm_id
             style=(
                 "font-size: 16px;"
             ),  # Note that this tooltip style sets the style for all tool_tips.
@@ -1048,7 +1053,7 @@ def create_nhru_par_map(
             del val_bar_file
         
         popup_hru = folium.GeoJsonPopup(
-            fields=["hru_id", "hru_segment", par_mo_sel],
+            fields=["nhm_id", "hru_segment_nhm", par_mo_sel],
             aliases=["hru", " flows to segment", f"{par_sel} for {mo_name}"],
             labels=True,
             localize=False,
@@ -1245,6 +1250,16 @@ def create_annual_output_var_map(
     hru_gdf_copy["hru_id"] = hru_gdf_copy["hru_id"].astype(str)
     hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
 
+    # Round the displayed output value to 4 decimals, matching the var_value
+    # rounding used for the color bins so the popup stays consistent with the
+    # rest of the map displays. This is the column the popup shows (keyed by
+    # sel_year); localize=False means the raw float would otherwise print with
+    # full precision.
+    if str(sel_year) in hru_gdf_copy.columns:
+        hru_gdf_copy[str(sel_year)] = np.round(
+            hru_gdf_copy[str(sel_year)].astype(float), 4
+        )
+
     var_subset_df = gdf_output_var_annual.loc[:, ["hru_id", str(sel_year)]]
     var_subset_df["hru_id"] = var_subset_df["hru_id"].astype(str)
     var_subset_df.rename(columns={f"{sel_year}": "var_value"}, inplace=True)
@@ -1381,10 +1396,10 @@ def create_annual_output_var_map(
         # tick_labels= ('0.01', '0.02', '0.03', '0.04')
     )
     popup_hru = folium.GeoJsonPopup(
-        fields=["hru_id", str(sel_year)],
-        aliases=["hru_id", f"{output_var_sel}, {var_units}"],
+        fields=["nhm_id", str(sel_year)],
+        aliases=["nhm_id", f"{output_var_sel}, {var_units}"],
         labels=True,
-        localize=True,
+        localize=False,  # no thousands separators in the nhm_id
         style=(
             "font-size: 16px;"
         ),  # Note that this tooltip style sets the style for all tool_tips.
