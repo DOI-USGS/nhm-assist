@@ -201,7 +201,8 @@ def add_nhm_map_widgets(fmap):
 gdb_path = pl.Path(root_dir / r"data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb")
 
 # User-supplied area of interest (shapefile, gpkg, geojson, etc.)
-aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\Malheur_Lake.shp")
+path_to_shape_file ="<put your path here>" #root_dir / r"data_dependencies\Examples\Malheur_Lake.shp"
+aoi_path = pl.Path(path_to_shape_file)
 aoi_layer = None  # set to None for shapefiles
 
 # %% [markdown]
