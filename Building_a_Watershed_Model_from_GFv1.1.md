@@ -39,6 +39,9 @@ path through the class.
 - **Awareness that one step needs the VPN off.** Step 7 (gridMET climate
   drivers) must run with the VPN disconnected; every other step runs fine on the
   VPN. See Step 7 for details.
+-  **[Request a USGS WaterData Access Token](https://api.waterdata.usgs.gov/signup/)** Step 8 (Gather observed streamflow)
+  Requests streamflow data from the USGS WaterData service. If the request includes
+  a large amount of gages or observations, a token may be needed.
 - **Copy the data dependencies from the SharePoint site.** The nhm-assist data
   dependencies (the GFv1.1 geodatabase, reference and non-reference gage data,
   HUC and map layers, and more — roughly 4 GB) are not in the git repository.
@@ -224,11 +227,11 @@ edits show up as readable diffs in git rather than as notebook JSON.
 
 ## Step 3 — Delineate your watershed fabric — `notebooks/nhf/Create_subbasin_model_NHM_v1.ipynb`
 
-> **First-time running this notebook from Kiro?** If yes, then you need to set the kernal:
->1. click on the `Select Kernal` in the upper right-hand corner of the window in the file tabs bar.
->2. a dropdown menu will appear below center screen, and choose `python environments`
->3. this wil expand the dropdown and show several options, select `default`
-> This will need to be done the first time running any notbook.
+> **Opening this notebook?** How you open it and set its kernel depends on your
+> editor (Kiro, VS Code, or Jupyter Lab). See
+> [Opening the notebooks](#appendix--opening-the-notebooks-kiro-vs-code-or-jupyter-lab)
+> in the appendix. You do this once per notebook, at the start of every notebook
+> step.
 
 In this class you construct your own pywatershed model directly from the NHM
 version 1.1 geospatial fabric and parameter database, using two notebooks (workflows) in the **`nhf`**
@@ -352,31 +355,21 @@ setup"** — it prints your workspace, project, and active model.
 
 ## Step 6 — Run notebook 0 (`0_workspace_setup.ipynb`)
 
-With your model imported and active, run notebook 0. It is the setup notebook
-every nhm-assist notebook depends on: it picks up the active model you just
-imported, resolves and records your workspace, project, and model paths, creates
-the output folders, and captures the options the evaluation notebooks (Steps
-8–13) read. **From now on, run notebook 0 first at the start of every working
-session.**
+> **Note:** Using `pixi run setup`, you must set your workspace, project, and
+> active model before running notebook 0 (and any notebook).
 
-### 6a. Open the notebook
+Notebook 0 is the setup notebook every nhm-assist notebook depends on: it picks
+up the active model you imported in Step 5, resolves and records your workspace,
+project, and model paths, creates the output folders, and captures the options
+the evaluation notebooks (Steps 8–13) read. **From now on, run notebook 0 first
+at the start of every working session.**
 
-You generated the notebooks in Step 2. Open notebook 0 from the **project**
-folder in your editor — not the `notebooks/nhm` subfolder, since opening the
-project folder is what
-lets the editor read the project's `.vscode/settings.json` and keep jupytext
-syncing:
+### 6a. Open `0_workspace_setup.ipynb`
 
-```bash
-jupyter lab <workspace-root>/<project-name>/notebooks/nhm
-# or
-code <workspace-root>/<project-name>
-```
-
-Then point the notebook at this project's pixi environment,
-`.pixi/envs/default`. nhm-assist registers no kernel, so your editor asks the
-first time and remembers per notebook. In VS Code or Kiro, choose
-"Python Environments…" and pick `.pixi/envs/default`.
+Open notebook 0 and point it at this project's pixi environment (`.pixi/envs/default`).
+ The exact steps depend on your editor (Kiro, VS Code, or Jupyter Lab) — see
+[Opening the notebooks](#appendix--opening-the-notebooks-kiro-vs-code-or-jupyter-lab)
+in the appendix.
 
 ### 6b. Run the environment sanity check (first cell)
 
@@ -886,3 +879,67 @@ Where each `pixi run setup` menu option is used in this guide:
 | 10. Set USGS WaterData API key | Optional, in **Step 8**, if streamflow retrieval is slow or rate-limited. |
 | 11. Repair editor settings for this project | Not used in this guide. Use it if jupytext syncing stops working in your editor. |
 | 0. Exit | Leaves the menu. |
+
+---
+
+## Appendix — Opening the notebooks (Kiro, VS Code, or Jupyter Lab)
+
+Every step in this guide that uses a notebook needs you to open that notebook
+and point it at this project's pixi environment, `.pixi/envs/default`. How you
+do that depends on your editor. Do this once per notebook; your editor remembers
+the choice after that.
+
+> **Always open the _project_ folder, not the `notebooks/nhm` subfolder.**
+> Opening the project folder is what lets VS Code and Kiro read the project's
+> `.vscode/settings.json` and keep jupytext syncing. Opening the subfolder
+> directly makes syncing fail silently.
+
+### Jupyter Lab (used in this training)
+
+Launch Jupyter Lab through pixi so it uses this project's environment, pointing
+it at the project's notebook folder:
+
+```bash
+pixi run jupyter lab <workspace-root>/<project-name>/notebooks/nhm
+```
+
+Jupyter Lab syncs jupytext-paired notebooks automatically on open, so there is
+nothing extra to enable. Launching through `pixi run` also avoids the
+user-site-packages shadowing that the Step 6 sanity-check cell warns about.
+
+### VS Code or Kiro
+
+First confirm you have the required extensions (listed in the prerequisites):
+**Python**, **Jupyter**, and **Jupyter Sync**. If a separate **Python
+Environments** extension is installed, disable it — it can cause errors.
+
+Open the project folder:
+
+```bash
+code <workspace-root>/<project-name>
+```
+
+Then set the kernel for the notebook. **The first time you run any notebook from
+Kiro:**
+
+1. Click **Select Kernel** in the upper-right corner of the window, in the file
+   tabs bar.
+2. In the dropdown that appears near the center of the screen, choose **Python
+   Environments**.
+3. The dropdown expands to show several options — select **default** (this is
+   `.pixi/envs/default`).
+
+You repeat this the first time you open each notebook; the editor remembers it
+afterward. VS Code works the same way; choose **Python Environments…** and pick
+`.pixi/envs/default`.
+
+> **Kernel choice is yours by design.** nhm-assist registers no Jupyter kernel
+> and writes none into notebook metadata, so your editor prompts the first time
+> and remembers per notebook.
+
+### More detail
+
+For the full reference on opening notebooks, choosing the kernel, and fixing
+jupytext syncing when it stops working, see the nhm-assist
+[README.md](./README.md) — specifically its "Opening the notebooks" and "When
+syncing silently stops working" sections.
