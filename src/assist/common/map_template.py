@@ -592,7 +592,7 @@ def create_poi_marker_cluster(
             location=[row["latitude"], row["longitude"]],
             name=row["poi_gage_id"],
             popup=folium.Popup(
-                f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
+                f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}</font>',
                 max_width=280,
                 max_height=2000,
             ),
@@ -1468,6 +1468,11 @@ def create_streamflow_poi_markers(
     for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
 
+        # Gages used in the NHM v1.1 CONUS calibration (nhm_calib == "Y") get a
+        # hollow dark circle circumscribing the triangle; other gages get just
+        # the triangle. This restores the original calibration indicator.
+        is_calib = str(row.get("nhm_calib", "N")) == "Y"
+
         # if row["nhm_calib"] == "Y":  # Do this for all the gages used in calibration
         #     if row["kge"] >= 0.7:
 
@@ -1582,7 +1587,9 @@ def create_streamflow_poi_markers(
         # if row["nhm_calib"] == "N":
         if row["kge"] >= 0.7:
 
-            marker = folium.CircleMarker(
+            # Triangle to match the streamflow-gage icon on the other maps,
+            # colored by KGE (green = good).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1590,14 +1597,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Green",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Green", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1618,7 +1621,8 @@ def create_streamflow_poi_markers(
             ).add_to(marker_cluster_label_poi)
         if (row["kge"] < 0.7) & (row["kge"] >= 0.5):
 
-            marker = folium.CircleMarker(
+            # Triangle colored by KGE (yellow = moderate).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1626,14 +1630,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Yellow",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Yellow", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1654,7 +1654,8 @@ def create_streamflow_poi_markers(
             ).add_to(marker_cluster_label_poi)
         if row["kge"] < 0.5:
 
-            marker = folium.CircleMarker(
+            # Triangle colored by KGE (red = poor).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1662,14 +1663,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Red",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Red", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1691,7 +1688,9 @@ def create_streamflow_poi_markers(
             
             if np.isnan(row["kge"]):
 
-                marker = folium.CircleMarker(
+                # Triangle for gages with insufficient observations (no KGE):
+                # black, drawn smaller to read as "diminished".
+                marker = folium.map.Marker(
                     location=[row["latitude"], row["longitude"]],
                     name=row["poi_gage_id"],
                     popup=folium.Popup(
@@ -1699,14 +1698,10 @@ def create_streamflow_poi_markers(
                         max_width=150,
                         max_height=70,
                     ),
-                    radius=2,
-                    weight=2,
-                    color="Black",
-                    fill=True,
-                    fill_color="Black",
-                    fill_opacity=1.0,
-                    draggable=True,
-                    lazy=True,
+                    icon=make_polygon_icon(
+                        num_sides=3, radius=4, color="Black", fill_opacity=1.0,
+                        circumscribe=is_calib,
+                    ),
                     z_index_offset=4006,
                 ).add_to(marker_cluster)
 
@@ -2472,6 +2467,18 @@ def make_var_map(
     m3.add_child(minimap)
     m3.add_child(MeasureControl(position="bottomright"))
 
+    # Add geology layer and legend, exactly as on the notebook 2 hydrofabric map.
+    geo_map, geo_style, unit_colors = make_geo_map(hru_gdf)
+    folium.GeoJson(
+        geo_map.to_json(),
+        name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
+        style_function=geo_style,
+        popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
+    ).add_to(m3)
+    legend = make_geo_legend(unit_colors)
+    m3.get_root().html.add_child(legend)
+
     # Create/Add scale bar and hru map object
     hru_map, val_bar_image, value_min, value_max, same_value, color_bar = (
         create_annual_output_var_map(
@@ -2569,6 +2576,7 @@ def make_streamflow_map(
     HW_basins_gdf=None,
     HW_basins=None,
     output_netcdf_filename,
+    fabric_version="1.1",
 ):
     """
     Creates a map of the NHM subdomain model hydrofabric elements and displays monthly Kling-Gupta efficiency (KGE) values for parameter file gages.
@@ -2672,6 +2680,18 @@ def make_streamflow_map(
     m.add_child(minimap)
     m.add_child(MeasureControl(position="bottomright"))
 
+    # Add geology layer and legend, exactly as on the notebook 2 hydrofabric map.
+    geo_map, geo_style, unit_colors = make_geo_map(hru_gdf)
+    folium.GeoJson(
+        geo_map.to_json(),
+        name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
+        style_function=geo_style,
+        popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
+    ).add_to(m)
+    legend = make_geo_legend(unit_colors)
+    m.get_root().html.add_child(legend)
+
     # Create and add hru calibration levels (colors)
     if HW_basins_gdf is not None:
         hru_cal_map = folium.GeoJson(
@@ -2719,16 +2739,28 @@ def make_streamflow_map(
 
 
     #add custom legend
-    legend_file = pl.Path(root_dir/"data_dependencies/map_custom_explanations/nb_6.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend (KGE gages,
+    # calibration ring, cal levels, HW basin); GFv2 fabrics use the v2 legend
+    # (KGE gages, segments, HRUs only).
+    legend_png = (
+        "nb_6_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_6_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
         del lf
+    # height:auto preserves the legend's aspect ratio so every row shows,
+    # whichever version is embedded (v1.1 is taller than v2).
     legend_image = FloatImage(
         image="data:image/png;base64,{}".format(b64_content),
         bottom=10,
         left=1,
-        style="position:fixed; width:3.042in; height:2in;",
+        style="position:fixed; width:3.042in; height:auto;",
     )
     m.add_child(legend_image)
     
@@ -3631,8 +3663,16 @@ def create_geology_map():
 
 import math
 
-def make_polygon_icon(num_sides, radius, color, fill_opacity):
-    size = radius * 2 + 4
+def make_polygon_icon(num_sides, radius, color, fill_opacity, circumscribe=False):
+    # circumscribe draws a hollow dark circle around the polygon. The streamflow
+    # map uses it to flag gages that were part of the NHM v1.1 CONUS calibration.
+    # The triangle's vertices lie exactly `radius` from the center (the
+    # circumradius), so the circle touches the vertices at r = radius. A hair of
+    # margin keeps the stroke from clipping through the points.
+    circle_r = radius + 0.5
+    # Size the canvas to the circle when present, otherwise to the polygon.
+    outer = circle_r if circumscribe else radius
+    size = outer * 2 + 4
     center = size / 2
     points = []
     for i in range(num_sides):
@@ -3641,10 +3681,17 @@ def make_polygon_icon(num_sides, radius, color, fill_opacity):
         y = center + radius * math.sin(angle)
         points.append(f"{x},{y}")
     points_str = " ".join(points)
+    circle_svg = (
+        f'<circle cx="{center}" cy="{center}" r="{circle_r}" '
+        f'fill="none" stroke="#222222" stroke-width="1.5"/>'
+        if circumscribe
+        else ""
+    )
     svg = (
         f'<svg width="{size}" height="{size}" xmlns="http://www.w3.org/2000/svg">'
         f'<polygon points="{points_str}" fill="{color}" fill-opacity="{fill_opacity}" '
-        f'stroke="black" stroke-width="1"/></svg>'
+        f'stroke="black" stroke-width="1"/>'
+        f'{circle_svg}</svg>'
     )
     return folium.DivIcon(
         html=svg,

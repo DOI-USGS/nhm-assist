@@ -118,6 +118,7 @@ map_file = make_streamflow_map(
     HW_basins_gdf=HW_basins_gdf,
     HW_basins=HW_basins,
     output_netcdf_filename=config["output_netcdf_filename"],
+    fabric_version=config["fabric_version"],
 )
 
 # %% [markdown]
@@ -127,7 +128,7 @@ map_file = make_streamflow_map(
 # %% [markdown]
 # ## Select a gage to evaluate simulated and observed streamflow time-series and streamflow statistics
 # <font size=4> &#x270D;<font color='green'>**Enter Information:**</font> **Run the cell below. In the resulting drop-down box, select a gage. A plot will be created to evaluate observed and simulated streamflow at the selected gage.** </font><br>
-# <font size=3> If no gage is selected (default), the first gage listed in the parameter file will be used. The drop-down box selection can be changed and additional plots will be displayed and exported (html files) to<br> `notebook_output_files/html_plots` under the active model's runtime folder.
+# <font size=3> If no gage is selected (default), the first gage listed in the parameter file will be used. The drop-down box selection can be changed and additional plots will be displayed and exported (html files) to<br> `<NHM subdomain model folder>/notebook_output_files/html_plots`.
 
 # %%
 # %matplotlib inline
