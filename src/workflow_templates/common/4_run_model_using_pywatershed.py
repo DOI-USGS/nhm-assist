@@ -229,7 +229,7 @@ if "dprst_frac" in params.parameters and "hru_percent_imperv" in params.paramete
 
 # %% [markdown]
 # ## Custom Run for NHM subdomain model
-# The custom run loop will output the `pywatershed` standard output variables only and outputs each variable as a .nc file. The standard output variables, `selected_output_variables`, were selected in [notebook 0](.\0_Workspace_setup.ipynb).
+# The custom run loop will output the `pywatershed` standard output variables only and outputs each variable as a .nc file. The standard output variables, `selected_output_variables`, were selected in [notebook 0](./0_workspace_setup.ipynb).
 
 # %%
 control = pws.Control.load_prms(

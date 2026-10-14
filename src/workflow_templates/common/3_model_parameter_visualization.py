@@ -92,7 +92,7 @@ con.print(
 
 # %% [markdown]
 # ## Build HRU parameter plots
-# The following cell creates HTML plots for all parameters listed in notebook [0_workspace_setup.ipynb](./0_workspace_setup.ipynb) for all HRUs in gage catchments. Plots are saved as .txt files in `.\"subdomain folder"\notebook_output\Folium_maps`. These files (plots) are embedded in the interactive parameter map created below for each gage, see "Make interactive map of selected parameter values in the NHM subdomain".
+# The following cell creates HTML plots for all parameters listed in notebook [0_workspace_setup.ipynb](./0_workspace_setup.ipynb) for all HRUs in gage catchments. Plots are saved as .txt files in `notebook_output_files/Folium_maps` under the active model's runtime folder. These files (plots) are embedded in the interactive parameter map created below for each gage, see "Make interactive map of selected parameter values in the NHM subdomain".
 
 # %%
 make_plots_par_vals(
