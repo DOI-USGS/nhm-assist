@@ -325,8 +325,21 @@ def create_minimap():
     
     """
 
+    # Give the minimap its own keyless basemap. OpenStreetMap's volunteer tiles
+    # block automated/standalone clients (osm.wiki/Blocked), which renders fine
+    # in Kiro's webview but errors in the saved standalone HTML with "App is
+    # blocked — not following the tile usage policy". Esri NatGeo World Map is a
+    # keyless locator with state/country boundaries baked into the tiles, matching
+    # the nhf notebooks' fix.
+    #
+    # The MiniMap must own a standalone TileLayer that is NOT also added to the
+    # main map: it syncs pan/zoom to the parent view only when it owns its tiles.
+    # A bare URL string instead raises "Custom tiles must have an attribution".
     minimap = plugins.MiniMap(
-        tile_layer="OpenStreetMap",
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri, National Geographic",
+        ),
         # attr = 'USGS_topo',
         position="topleft",
         # zoom_level_offset=- 4,
