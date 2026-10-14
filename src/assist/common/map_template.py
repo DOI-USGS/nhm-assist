@@ -38,10 +38,6 @@ warnings.filterwarnings("ignore")
 
 crs = 4326
 
-import pathlib as pl
-import os
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-
 from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
@@ -1851,11 +1847,17 @@ def make_geo_legend(unit_colors):
         "max-height:130px;"
         "overflow-y:auto;"
         '">'
-        '<div onclick="var c=document.getElementById(\'geo-legend-content\');'
-        "c.style.display=c.style.display==='none'?'block':'none';"
+        # Start collapsed (rolled up) on render: content hidden and the arrow
+        # pointing right. The click handler toggles the content and swaps the
+        # arrow glyph (&#9654; right = collapsed, &#9660; down = expanded).
+        "<div onclick=\"var c=document.getElementById('geo-legend-content');"
+        "var a=document.getElementById('geo-legend-arrow');"
+        "var hidden=c.style.display==='none';"
+        "c.style.display=hidden?'block':'none';"
+        "a.innerHTML=hidden?'&#9660;':'&#9654;';"
         '" style="cursor:pointer;font-weight:bold;margin-bottom:4px;">'
-        "&#9660; Geology (UNIT_NAME)</div>"
-        f'<div id="geo-legend-content">{items_html}</div>'
+        '<span id="geo-legend-arrow">&#9654;</span> Geology (UNIT_NAME)</div>'
+        f'<div id="geo-legend-content" style="display:none;">{items_html}</div>'
         "</div>"
     )
 
@@ -1878,6 +1880,7 @@ def make_hf_map(
     param_filename,
     subdomain,
     model_dir=None,
+    fabric_version="1.1",
 ):
     """
     Creates interactive folium.map of all hydrofabric folium.map objects.
@@ -1977,6 +1980,7 @@ def make_hf_map(
                     "weight": 2,
                     },
                 name="HUC-10 basins",
+                show=False,  # Off on open; toggle on from the layer control.
                 # tooltip=tooltip_hru,
                 popup=folium.GeoJsonPopup(
                     fields=["huc10"],
@@ -2069,6 +2073,7 @@ def make_hf_map(
     folium.GeoJson(
         geo_map.to_json(),
         name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
         style_function=geo_style,
         popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
     ).add_to(m2)
@@ -2130,7 +2135,17 @@ def make_hf_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2_v2.png").resolve()
+    # GFv2 gatekeeper: GFv2 fabrics have no headwater calibration levels, so
+    # they use the v2 legend; GFv1.1 fabrics use the v1.1 legend, which shows
+    # the byHRU/byHW/byHWobs cal-level polygons and the HW basin boundary.
+    legend_png = (
+        "nb_2_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_2_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -3287,6 +3302,7 @@ def create_FMI_poi_markers(
         name="FMI gages",
         overlay=True,
         control=True,
+        show=False,  # Off on open; toggle on from the layer control.
         icon_create_function=None,
         z_index_offset=5000,
     )
