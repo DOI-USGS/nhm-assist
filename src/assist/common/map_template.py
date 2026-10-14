@@ -1156,7 +1156,9 @@ def create_poi_paramplot_marker_cluster(
         )
         # popup = folium.Popup(iframe, max_width=3250,parse_html=True)
 
-        marker = folium.CircleMarker(
+        # Black triangle to match the streamflow-gage icon on the notebook 2
+        # hydrofabric map (make_polygon_icon with num_sides=3).
+        marker = folium.map.Marker(
             location=[row["latitude"], row["longitude"]],
             name=row["poi_gage_id"],
             popup=folium.Popup(
@@ -1165,13 +1167,9 @@ def create_poi_paramplot_marker_cluster(
                 # max_height=300,
                 parse_html=True,
             ),
-            radius=3,
-            weight=2,
-            color="black",
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
-            draggable=True,
+            icon=make_polygon_icon(
+                num_sides=3, radius=6, color="black", fill_opacity=1.0
+            ),
             z_index_offset=4006,
         ).add_to(marker_cluster)
 
@@ -2200,6 +2198,7 @@ def make_par_map(
     html_maps_dir,
     param_filename,
     subdomain,
+    fabric_version="1.1",
 ):
 
     """
@@ -2319,7 +2318,16 @@ def make_par_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {mo_txt}{par_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {pdb.get(par_sel).meta['help']}. {scale_bar_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir/"data_dependencies/map_custom_explanations/nb_5.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend; GFv2 fabrics use the
+    # v2 legend. The nb_5 legend is shared with the HRU-output map (make_var_map).
+    legend_png = (
+        "nb_5_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_5_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -2361,6 +2369,7 @@ def make_var_map(
     Folium_maps_dir,
     HW_basins=None,
     subdomain,
+    fabric_version="1.1",
 ):
 
     """
@@ -2494,7 +2503,16 @@ def make_var_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {sel_year} {output_var_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {var_desc}. {scale_bar_txt}</h1>"
     
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_5.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend; GFv2 fabrics use the
+    # v2 legend. The nb_5 legend is shared with the parameter map (make_par_map).
+    legend_png = (
+        "nb_5_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_5_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
