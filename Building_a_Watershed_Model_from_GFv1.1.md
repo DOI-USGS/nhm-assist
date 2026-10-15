@@ -900,7 +900,7 @@ Launch Jupyter Lab through pixi so it uses this project's environment, pointing
 it at the project's notebook folder:
 
 ```bash
-pixi run jupyter lab <workspace-root>/<project-name>/notebooks/nhm
+pixi run jupyter lab <workspace-root>/<project-name>
 ```
 
 Jupyter Lab syncs jupytext-paired notebooks automatically on open, so there is
