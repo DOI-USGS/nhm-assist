@@ -749,9 +749,9 @@ reference data, HUC and map layers, and more) from the repository's
 git. It is hosted on a USGS SharePoint site, and you copy it into
 `data_dependencies/` once before you run anything.
 
-Because the files are large and the SharePoint site is behind DOI sign-in, the
-dependable way to get them is to **sync the library to your computer with
-OneDrive and then copy from that local copy** into the repo. You do this once
+Because the files are large and the SharePoint site is behind DOI sign-in,
+**sync the library to your computer with OneDrive and 
+then copy from that local copy** into the repo. You do this once
 per machine.
 
 ### Step A — Open the SharePoint library
