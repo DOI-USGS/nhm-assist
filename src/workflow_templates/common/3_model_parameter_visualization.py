@@ -105,108 +105,73 @@ make_plots_par_vals(
 )
 
 # %% [markdown]
-# ## Select a parameter to display
-# <font size=4>&#x270D;<font color='green'>**Enter Information:**</font> **Run the cell below. In the resulting drop-down box, select a parameter**.
+# ## Make interactive map for the selected parameter
+# <font size=4>&#x270D;<font color='green'>**Enter Information:**</font> **Run the cell below. Select a parameter (and a month, if the parameter is dimensioned by month), then click Generate Map.**</font><br>
+# <font size=3>The month drop-down box is only active for parameters dimensioned by month; the default month is July. The map displays the selected parameter's values for HRUs in the NHM subdomain model. Plots of HRU values for gage catchments are embedded in the map, and are viewed by left-clicking on a gage icon. Discrete parameter values for each HRU and additional HRU information can be viewed by left-clicking on HRUs. The selections can be changed and additional maps created. Maps are saved for use outside of notebooks as .html files in `./"subdomain model"/notebook_output/html_maps`.
 
 # %%
-cal_hru_params = config["nhru_params"] + config["nhru_nmonths_params"]
-par_sel = cal_hru_params[4]
-# sel_flag = False
+import calendar
+import assist.common.display_controls as dc
 
-v = widgets.Dropdown(
-    options=cal_hru_params,
-    value=par_sel,
-    description="Select a parameter to view in plots:",
-)
-
-
-def on_change(change):
-    global par_sel, sel_flag
-    if change["type"] == "change" and change["name"] == "value":
-        par_sel = v.value
-        # sel_flag = True
-
-
-v.observe(on_change)
-display(v)
-
-# %% [markdown]
-# &#x1F6D1;Once a parameter is selected above, <font color='green'>**select this cell**</font>, then go to the Jupyter toolbar and select <font color='green'>**Run > Run Selected Cell and All Below**</font>.
-
-# %% [markdown]
-# <!-- &#x270D;<font color='green'>**Enter Information:**</font> **Run the cell below.** <br> If a dropdown box is displayed, the selected parameter (above) is dimensioned by month. Select a month from the dropdown box to display. Default selection is "July". -->
-
-# %%
 prms_meta = MetaData().metadata
 pdb = ParameterFile(config["param_filename"], metadata=prms_meta, verbose=False)
 
-mo_num_dict = {
-    "January": 1,
-    "February": 2,
-    "March": 3,
-    "April": 4,
-    "May": 5,
-    "June": 6,
-    "July": 7,
-    "August": 8,
-    "September": 9,
-    "October": 10,
-    "November": 11,
-    "December": 12,
-}
+cal_hru_params = config["nhru_params"] + config["nhru_nmonths_params"]
+style = {"description_width": "initial"}
 
-mo_names = list(mo_num_dict.keys())
-
-mo_name = "July"  # set default value
-mo_sel = mo_num_dict[mo_name]
-
-try:
-    pdb.get(par_sel).dimensions["nmonths"].size
-
-except KeyError:
-    con.print(f"{par_sel} dimensioned by HRU only.", style="bold green")
-    mo_sel = None
-
-else:
-    con.print(
-        f"The selected parameter {par_sel} (above) is dimensioned by month. Select a month to display from the dropdown box (below). Once a selection is made, select the cell below. Then go to the Jupyter toolbar and select [bold][green]Run > Run Selected Cell and All Below[/bold][/green]. Default month is July.",
-    )
-
-    m = widgets.Dropdown(
-        options=mo_names,
-        value=mo_names[6],  # set default value
-        description="Select a month to display on the map:",
-    )
-
-    def on_change(change):
-        global mo_sel, mo_name, mo_num_dict
-        if change["type"] == "change" and change["name"] == "value":
-            mo_name = m.value
-            mo_sel = mo_num_dict[mo_name]
-
-    m.observe(on_change)
-
-    display(m)
-
-# %% [markdown]
-# ## Make interactive map for the selected parameter
-# The following cell creates a map that displays the selected parameter's values for HRUs in the NHM subdomain model. Additionally, plots of HRU values for gage catchments are embedded in the map, and are viewed by left-clicking on a gage icon. Discrete parameter values for each HRU and additional HRU information can be viewed by left-clicking on HRUs. Maps produced are saved for use outside of notebooks as .html files in `./"subdomain model"/notebook_output/html_maps`.
-
-# %%
-map_file = make_par_map(
-    root_dir=root_dir,
-    hru_gdf=hru_gdf,
-    HW_basins=HW_basins,
-    poi_df=poi_df,
-    par_sel=par_sel,
-    mo_sel=mo_sel,
-    mo_name=mo_name,
-    nhru_params=config["nhru_params"],
-    Folium_maps_dir=config["Folium_maps_dir"],
-    seg_gdf=seg_gdf,
-    html_maps_dir=config["html_maps_dir"],
-    param_filename=config["param_filename"],
-    subdomain=config["subdomain"],
+par_dd = widgets.Dropdown(
+    options=cal_hru_params,
+    value=cal_hru_params[4],
+    description="Select a parameter:",
+    style=style,
+    layout=widgets.Layout(width="400px"),
 )
+
+mo_dd = widgets.Dropdown(
+    options=list(calendar.month_name[1:]),
+    value="July",
+    description="Select a month (monthly parameters only):",
+    style=style,
+    layout=widgets.Layout(width="400px"),
+)
+
+
+def is_monthly(par):
+    try:
+        pdb.get(par).dimensions["nmonths"].size
+    except KeyError:
+        return False
+    return True
+
+
+def update_month_dd(change=None):
+    mo_dd.disabled = not is_monthly(par_dd.value)
+
+
+par_dd.observe(update_month_dd, names="value")
+update_month_dd()
+
+btn_map = widgets.Button(
+    description="Generate Map",
+    button_style="primary",
+)
+
+dc.root_dir = root_dir
+dc.hru_gdf = hru_gdf
+dc.HW_basins = HW_basins
+dc.poi_df = poi_df
+dc.seg_gdf = seg_gdf
+dc.nhru_params = config["nhru_params"]
+dc.Folium_maps_dir = config["Folium_maps_dir"]
+dc.html_maps_dir = config["html_maps_dir"]
+dc.param_filename = config["param_filename"]
+dc.subdomain = config["subdomain"]
+dc.par_dd = par_dd
+dc.mo_dd = mo_dd
+
+par_map_out = widgets.Output()
+dc.par_map_out = par_map_out
+btn_map.on_click(dc.on_par_map_clicked)
+display(widgets.VBox([par_dd, mo_dd, btn_map, par_map_out]))
 
 # %%

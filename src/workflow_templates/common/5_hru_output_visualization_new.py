@@ -145,7 +145,7 @@ from IPython.display import display, IFrame, clear_output
 import assist.common.display_controls as dc
 
 style_var = {"description_width": "initial"}
-layout = widgets.Layout(width="25%")
+layout = widgets.Layout(width="300px")
 
 
 v = widgets.Dropdown(
@@ -184,8 +184,20 @@ cb_summary = widgets.Checkbox(value=False, description="Include Summary TS")
 cb_flux = widgets.Checkbox(value=False, description="Include Flux TS")
 plot_checks = HBox([cb_map, cb_summary, cb_flux])
 
-# Generate button
-btn_generate = Button(description="Show Plots", button_style="primary")
+# Generate button, disabled until at least one plot type is checked
+btn_generate = Button(description="Generate Plots", button_style="primary")
+
+
+def update_btn_generate(change=None):
+    btn_generate.disabled = not (cb_map.value or cb_summary.value or cb_flux.value)
+    btn_generate.tooltip = (
+        "Select at least one plot type" if btn_generate.disabled else ""
+    )
+
+
+for cb in (cb_map, cb_summary, cb_flux):
+    cb.observe(update_btn_generate, names="value")
+update_btn_generate()
 
 # Output areas
 out_map = widgets.Output()

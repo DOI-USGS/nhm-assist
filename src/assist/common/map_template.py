@@ -326,7 +326,10 @@ def create_minimap():
     """
 
     minimap = plugins.MiniMap(
-        tile_layer="OpenStreetMap",
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri",
+        ),
         # attr = 'USGS_topo',
         position="topleft",
         # zoom_level_offset=- 4,
@@ -2117,7 +2120,7 @@ def make_hf_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2_v2.png").resolve()
+    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2.png").resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -2489,7 +2492,7 @@ def make_var_map(
 
     make_webbrowser_map(map_file)
 
-    return #map_file
+    return map_file
 
 
 def make_streamflow_map(
@@ -2677,8 +2680,8 @@ def make_streamflow_map(
     m.save(map_file)
 
     make_webbrowser_map(map_file)
-    
-    return #map_file
+
+    return map_file
 
 def create_poi_obs_marker_cluster(
     poi_df,

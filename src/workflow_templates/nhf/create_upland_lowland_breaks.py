@@ -884,7 +884,10 @@ def create_minimap():
     """
 
     minimap = plugins.MiniMap(
-        tile_layer="OpenStreetMap",
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri",
+        ),
         # attr = 'USGS_topo',
         position="topleft",
         # zoom_level_offset=- 4,
