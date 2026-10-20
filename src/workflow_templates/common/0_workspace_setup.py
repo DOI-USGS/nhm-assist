@@ -173,7 +173,7 @@ print(root_dir)
 # **In the workspace workflow you do not need to edit this.** When this notebook runs inside a workspace project, `subdomain` is automatically overwritten with the project's **active model** name — the model you selected with `pixi run project-set-active-model` (or option 7 of `pixi run setup`). The notebook prints `Active model:` and `Runtime output:` below so you can confirm which model it resolved. The value typed in the next cell is used **only** in the legacy in-repo layout (no workspace project), where it names the model folder under `nhm-assist/domain_data/`.
 
 # %%
-subdomain = "example_here"
+subdomain = "Walla_Walla"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
