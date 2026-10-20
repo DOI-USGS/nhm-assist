@@ -109,36 +109,31 @@ print(root_dir)
 
 # %% [markdown]
 # ### A National Hydrologic Model (NHM) subdomain model
-# A NHM subdomain model is extracted from NHM domain (CONUS) using an automated workflow that generates a complete set of Preciptation Runoff Modeling System (PRMS) input files that contain the data and parameters required for a NHM-PRMS model [Regan and others, 2018](https://pubs.usgs.gov/publication/tm6B9). This tool is written in the [Python language](https://www.python.org) and is designed to be run from the command line on [USGS high-performance computing resources](https://www.usgs.gov/advanced-research-computing). At this time, users do not need to download this software and instead can request a subdomain model following these steps:
-#
-# 1. Go to the web page [https://www.sciencebase.gov/catalog/item/5e29b87fe4b0a79317cf7df5](https://www.sciencebase.gov/catalog/item/5e29b87fe4b0a79317cf7df5)
-# 2. Click the child item titled, [“GIS Features of the Geospatial Fabric for the National Hydrologic Model, version 1.1.”](https://www.sciencebase.gov/catalog/item/5e29d1a0e4b0a79317cf7f63)
-# 3. Download attached files "GFv1.1.gdb.zip" and compare NHM segments to your area-of-interest.
-# 4. Send an email to pnorton@usgs.gov that includes the following:
-#    * Name, Email address, Organization, and optionally, Phone;
-#    * Using GFv1.1.gdb, include one or more national model segments (nhm_seg) associated with watershed outlet points in your area-of-interest.
-#    * Include a short descriptive summary of your modeling application and **specify using `pywatershed`** with the NHM subdomain model.
-# 5. **Once you have received an NHM subdomain model, unzip and place the model folder in the nhm-assist `domain_data` folder.**
+# A NHM subdomain model is extracted from the NHM domain (CONUS) using an automated workflow that generates a complete set of Precipitation Runoff Modeling System (PRMS) input files containing the data and parameters required for a NHM-PRMS model [Regan and others, 2018](https://pubs.usgs.gov/publication/tm6B9). A subdomain model includes everything the nhm-assist notebooks need — the geospatial fabric, GIS layers, parameter file, and control file — ready to run.
 
 # %% [markdown]
-# ### USGS NHM training (USGS personnel only)
-# If you have been provided a NHM subdomain model, such as the example subdomain "willamette_river", it can be downloaded from the USGS [HyTEST](https://hytest-org.github.io/hytest/doc/About.html) OSN storage pod by following these steps.
-# 1. Open up a miniforge prompt.
-# 2. `cd` to the location of the cloned **nhm-assist** repository folder
-# 3. type `python pull_domain.py --name=willamette_river`
+# ### How to get a watershed model
+# You need one complete NHM subdomain model to run these notebooks. There are three ways to acquire one:
+#
+# 1. **Use a ready-to-run example.** Two complete models are available and need no edits to their fabric or parameter files:
+#    - **Walla_Walla** — bundled in the repository's `domain_data` folder; it is the default example these notebooks point at, with nothing to download.
+#    - **willamette_river** — a larger example on the USGS [HyTEST](https://hytest-org.github.io/hytest/doc/About.html) OSN storage pod. From a miniforge prompt, `cd` to the cloned **nhm-assist** repository folder and run `python pull_domain.py --name=willamette_river`. This downloads the complete model into `domain_data/willamette_river`.
+#
+# 2. **Build your own from a shapefile.** To model your own area of interest, construct a complete model from the Geospatial Fabric v1.1: delineate the watershed fabric and GIS layers from your AOI shapefile with `nhf/Create_subbasin_model_NHM_v1`, build the parameter file from the v1.1 parameter geodatabase with `nhf/gf_params_parse_v1_1`, and generate the `prcp.nc`/`tmin.nc`/`tmax.nc` climate drivers with `nhf/Create_gridmet_climate_drivers`. The full step-by-step guide, `Building_a_Watershed_Model_from_GFv1.1.md`, is in the root of the nhm-assist repository.
+#
+# 3. **Request a new subdomain.** If you need a model for an area that is not one of the examples and you do not want to build it yourself, email pnorton@usgs.gov with one or more national model segments (nhm_seg) at your watershed outlet(s) — identified using GFv1.1.gdb — your name/email/organization, and a short summary of your application that **specifies using `pywatershed`**. Once received, unzip and place the model folder in the nhm-assist `domain_data` folder.
 
 # %% [markdown]
 # ## Workspace Setup
-# The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable `model_dir`) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the `model_dir` path must be modified manually by the user to reflect that location. **Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.**
+# These notebooks run from a **workspace project**. A workspace is a folder outside the cloned repository, created with `pixi run setup`, that holds one or more projects; each project holds its generated notebooks and one or more models, with one marked **active**. This notebook resolves its paths from the active model automatically — you do not set `model_dir` by hand. **All nhm-assist output files, maps, and plots are written under the active model's runtime folder** (`<workspace>/<project>/models/<model>/`), not back into the repository.
 #
-# ### The nhm-assist repository is designed to access critical supporting documents placed in 2 repository subfolders:
+# ### Two locations supply the inputs these notebooks read:
 #
-# 1. The **data_dependencies** folder with needed supporting files 
+# 1. The repository's **data_dependencies** folder — shared supporting files used by all projects:
 #     - **[HUC2](https://www.sciencebase.gov/catalog/item/6407a507d34e76f5f75e39ec)**
 #     - **NHM-V1_1*** not included in the NHM v1.1 data release [(Markstrom and others, 2024).](https://www.sciencebase.gov/catalog/item/626c0d67d34e76103cd2ce4a)
 #
-# 2. The **domain_data** folder contains the NHM subdomain model folder(s).
-#     Any **NHM subdomain model folder** should contain:
+# 2. The active **model** folder in your project (`<workspace>/<project>/models/<model>/`), which holds the subdomain model:
 #     - **control.default.bandit** (a control file)
 #     - **myparam.param** (a parameter file)
 #     - **sf_data.nc** (an optional streamflow observations file not used by nhm-assist)
@@ -149,24 +144,24 @@ print(root_dir)
 #         - **model_npoigages.shp**
 #         - and/or **model_layers.gpkg**
 #
-# >Note: If these file names have been changed, then the path names must be changes as well in this notebook (below)
+# >Note: These file names are detected or defaulted below; override the matching **Enter Information** cell only if your model uses different names.
 
 # %% [markdown]
-# ### The nhm-assist will create additional files and folders in NHM subdomain folder. These include:
+# ### nhm-assist creates additional files and folders under the active model folder. These include:
 #
 # - **default_gages.csv**
 # - **NWISgages.csv**
 #  - **tmin.nc**
 # - **tmax.nc**
 # - **prcp.nc**
-# - **model_output** folder
+# - **output** folder (model output)
 # - **notebook_output_files** folder containing:
 #     - **Folium_maps** folder
 #     - **html_maps** folder
 #     - **html_plots** folder
 #     - **nc_files** folder
 #
-# **Note:** If subfolders do no exist, they will be created when needed.
+# **Note:** If subfolders do not exist, they will be created when needed.
 #
 
 # %% [markdown]
@@ -174,11 +169,11 @@ print(root_dir)
 # <font size=4>The user must provide and/or review information in the cells following <font color='green'>&#x270D;**Enter Information:**</font> prompts. 
 
 # %% [markdown]
-# <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **selected NHM domain folder name**.</font><br>
-# <font size = '3'>The default is set to the example NHM subdomain model name, "Walla_Walla". **When these notebooks run from a workspace project this value is ignored:** `subdomain` is overwritten with the project's active model name (set it with `pixi run project-set-active-model`, or option 7 of `pixi run setup`). It takes effect only in the legacy in-repo layout, where it names the model folder under "nhm-assist/domain_data". Note: The default paths to subdomain model files are relative to the provided or requested NHM subdomain model folder (variable model_dir) placed, specifically, in the "nhm-assist/domain_data" folder. If the subdomain model folder is placed in a different location, then the model_dir path must be modified manually by the user to reflect that location. Note: all nhm-assist output files, maps, and plots are saved to the subdomain model folder.</font>
+# ### &#x270D; Enter Information: NHM model name (`subdomain`)
+# **In the workspace workflow you do not need to edit this.** When this notebook runs inside a workspace project, `subdomain` is automatically overwritten with the project's **active model** name — the model you selected with `pixi run project-set-active-model` (or option 7 of `pixi run setup`). The notebook prints `Active model:` and `Runtime output:` below so you can confirm which model it resolved. The value typed in the next cell is used **only** in the legacy in-repo layout (no workspace project), where it names the model folder under `nhm-assist/domain_data/`.
 
 # %%
-subdomain = "CrookedRiver"
+subdomain = "Walla_Walla"
 
 from assist.workspace.service import resolve_nhm_runtime_paths
 
@@ -208,10 +203,19 @@ else:
     project_dir = None
     model_root = None
     model_dir = root_dir / "domain_data" / subdomain
-if project_dir and active_model_name:
-    print(f"Active project: {project_dir.name}")
-    print(f"Active model: {active_model_name}")
-    print(f"Runtime output: {model_dir}")
+# Report the resolved workspace setup so you can confirm you are working in the
+# project/model you intend (mirrors `pixi run setup` -> option 9).
+con.print("")
+con.print("[bold]Current setup[/bold]")
+if project_context:
+    con.print(f"  Workspace root: {workspace_root}")
+    con.print(f"  Project:        {project_dir.name}")
+    con.print(f"  Active model:   {active_model_name}")
+    con.print(f"  Runtime output: {model_dir}")
+else:
+    con.print("  [yellow]Legacy in-repo mode (no workspace project detected).[/yellow]")
+    con.print(f"  subdomain:      {subdomain}")
+    con.print(f"  model_dir:      {model_dir}")
 
 # %% [markdown]
 # <font size= '4'> &#x270D;<font color='green'>**Enter Information:** </font> **GIS file format**. </font><br>

@@ -38,10 +38,6 @@ warnings.filterwarnings("ignore")
 
 crs = 4326
 
-import pathlib as pl
-import os
-root_dir = pl.Path(os.getcwd().rsplit("nhf_assist", 1)[0] + "nhf_assist")
-
 from shapely import count_coordinates  # shapely >= 2
 from shapely import coverage_simplify
 
@@ -94,8 +90,10 @@ hw_basin_style = lambda x: {
 }
 
 popup_hru = folium.GeoJsonPopup(
-    fields=["hru_id", "hru_segment"],
-    aliases=["hru_id", " flows to segment"],
+    # Show national NHM ids, not the local model indexes: nhm_id for the HRU
+    # and hru_segment_nhm for the segment it flows to.
+    fields=["nhm_id", "hru_segment_nhm"],
+    aliases=["nhm_id", " flows to segment"],
     labels=True,
     localize=False,
     style=(
@@ -105,9 +103,10 @@ popup_hru = folium.GeoJsonPopup(
 )
 
 tooltip_hru = folium.GeoJsonTooltip(
-    fields=["hru_id", "hru_segment"],
-    aliases=["hru_id", " flows to segment"],
+    fields=["nhm_id", "hru_segment_nhm"],
+    aliases=["nhm_id", " flows to segment"],
     labels=True,
+    localize=False,  # no thousands separators in the ids
     # style=("background-color: #F0EFEF;border: 2px solid black;font-family: arial; font-size: 16px; padding: 10px;"),# Note that this tooltip style sets the style for all tool_tips.
 )
 
@@ -124,7 +123,9 @@ highlight_function_seg_map = lambda x: {
 }
 
 popup_seg = folium.GeoJsonPopup(
-    fields=["segment_id", "tosegment", #"huc12_pp"
+    # Show national NHM segment ids, not the local model indexes: nhm_seg for
+    # the segment and tosegment_nhm for the segment it flows to.
+    fields=["nhm_seg", "tosegment_nhm", #"huc12_pp"
            ],
     aliases=["segment", "flows to segment", #"huc12_pp"
             ],
@@ -133,9 +134,10 @@ popup_seg = folium.GeoJsonPopup(
 )
 
 tooltip_seg = folium.GeoJsonTooltip(
-    fields=["segment_id", "tosegment"],
+    fields=["nhm_seg", "tosegment_nhm"],
     aliases=["segment", "flows to segment"],
     labels=True,
+    localize=False,  # no thousands separators in the ids
 )
 
 def is_wsl():
@@ -325,8 +327,21 @@ def create_minimap():
     
     """
 
+    # Give the minimap its own keyless basemap. OpenStreetMap's volunteer tiles
+    # block automated/standalone clients (osm.wiki/Blocked), which renders fine
+    # in Kiro's webview but errors in the saved standalone HTML with "App is
+    # blocked — not following the tile usage policy". Esri NatGeo World Map is a
+    # keyless locator with state/country boundaries baked into the tiles, matching
+    # the nhf notebooks' fix.
+    #
+    # The MiniMap must own a standalone TileLayer that is NOT also added to the
+    # main map: it syncs pan/zoom to the parent view only when it owns its tiles.
+    # A bare URL string instead raises "Custom tiles must have an attribution".
     minimap = plugins.MiniMap(
-        tile_layer="OpenStreetMap",
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri, National Geographic",
+        ),
         # attr = 'USGS_topo',
         position="topleft",
         # zoom_level_offset=- 4,
@@ -571,20 +586,19 @@ def create_poi_marker_cluster(
             ),
         ).add_to(poi_marker_cluster_label)
 
-        marker = folium.CircleMarker(
+        # Black triangle to match the streamflow-gage icon on the other maps
+        # (make_polygon_icon with num_sides=3).
+        marker = folium.map.Marker(
             location=[row["latitude"], row["longitude"]],
             name=row["poi_gage_id"],
             popup=folium.Popup(
-                f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}<br> on <b>segment </b>{row["poi_gage_segment"]}</font>',
+                f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]})<br>{row["poi_name"]}</font>',
                 max_width=280,
                 max_height=2000,
             ),
-            radius=3,
-            weight=2,
-            color=None,
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
+            icon=make_polygon_icon(
+                num_sides=3, radius=6, color="black", fill_opacity=1.0
+            ),
         ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
@@ -749,6 +763,12 @@ def create_nhru_par_map(
 
         hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
 
+        # Round the parameter value shown in the HRU popup to 4 decimals, matching
+        # the par_value rounding used for the color bins (localize=False means the
+        # raw float would otherwise print with full precision).
+        if par_sel in hru_gdf_copy.columns:
+            hru_gdf_copy[par_sel] = np.round(hru_gdf_copy[par_sel].astype(float), 4)
+
         par_subset_df = hru_gdf.loc[:, ["hru_id", par_sel]]
         par_subset_df["hru_id"] = par_subset_df["hru_id"].astype(str)
         par_subset_df.rename(columns={f"{par_sel}": "par_value"}, inplace=True)
@@ -881,10 +901,10 @@ def create_nhru_par_map(
             del val_bar_file
             
         popup_hru = folium.GeoJsonPopup(
-            fields=["hru_id", "hru_segment", par_sel],
+            fields=["nhm_id", "hru_segment_nhm", par_sel],
             aliases=["hru", " flows to segment", f"{par_sel}"],
             labels=True,
-            localize=True,
+            localize=False,  # no thousands separators in the nhm_id
             style=(
                 "font-size: 16px;"
             ),  # Note that this tooltip style sets the style for all tool_tips.
@@ -911,6 +931,12 @@ def create_nhru_par_map(
         hru_gdf_copy["hru_segment"] = hru_gdf_copy["hru_segment"].astype(str)
 
         hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
+
+        # Round the parameter value shown in the HRU popup to 4 decimals, matching
+        # the par_value rounding used for the color bins (localize=False means the
+        # raw float would otherwise print with full precision).
+        if par_mo_sel in hru_gdf_copy.columns:
+            hru_gdf_copy[par_mo_sel] = np.round(hru_gdf_copy[par_mo_sel].astype(float), 4)
 
         par_subset_df = hru_gdf.loc[:, ["hru_id", par_mo_sel]]
         par_subset_df["hru_id"] = par_subset_df["hru_id"].astype(str)
@@ -1039,7 +1065,7 @@ def create_nhru_par_map(
             del val_bar_file
         
         popup_hru = folium.GeoJsonPopup(
-            fields=["hru_id", "hru_segment", par_mo_sel],
+            fields=["nhm_id", "hru_segment_nhm", par_mo_sel],
             aliases=["hru", " flows to segment", f"{par_sel} for {mo_name}"],
             labels=True,
             localize=False,
@@ -1147,7 +1173,9 @@ def create_poi_paramplot_marker_cluster(
         )
         # popup = folium.Popup(iframe, max_width=3250,parse_html=True)
 
-        marker = folium.CircleMarker(
+        # Black triangle to match the streamflow-gage icon on the notebook 2
+        # hydrofabric map (make_polygon_icon with num_sides=3).
+        marker = folium.map.Marker(
             location=[row["latitude"], row["longitude"]],
             name=row["poi_gage_id"],
             popup=folium.Popup(
@@ -1156,13 +1184,9 @@ def create_poi_paramplot_marker_cluster(
                 # max_height=300,
                 parse_html=True,
             ),
-            radius=3,
-            weight=2,
-            color="black",
-            fill=True,
-            fill_color="Black",
-            fill_opacity=1.0,
-            draggable=True,
+            icon=make_polygon_icon(
+                num_sides=3, radius=6, color="black", fill_opacity=1.0
+            ),
             z_index_offset=4006,
         ).add_to(marker_cluster)
 
@@ -1237,6 +1261,16 @@ def create_annual_output_var_map(
     hru_gdf_copy = gdf_output_var_annual.copy().reset_index(drop=True).to_crs(crs)
     hru_gdf_copy["hru_id"] = hru_gdf_copy["hru_id"].astype(str)
     hru_gdf_copy.set_index("hru_id", inplace=True, drop=False)
+
+    # Round the displayed output value to 4 decimals, matching the var_value
+    # rounding used for the color bins so the popup stays consistent with the
+    # rest of the map displays. This is the column the popup shows (keyed by
+    # sel_year); localize=False means the raw float would otherwise print with
+    # full precision.
+    if str(sel_year) in hru_gdf_copy.columns:
+        hru_gdf_copy[str(sel_year)] = np.round(
+            hru_gdf_copy[str(sel_year)].astype(float), 4
+        )
 
     var_subset_df = gdf_output_var_annual.loc[:, ["hru_id", str(sel_year)]]
     var_subset_df["hru_id"] = var_subset_df["hru_id"].astype(str)
@@ -1374,10 +1408,10 @@ def create_annual_output_var_map(
         # tick_labels= ('0.01', '0.02', '0.03', '0.04')
     )
     popup_hru = folium.GeoJsonPopup(
-        fields=["hru_id", str(sel_year)],
-        aliases=["hru_id", f"{output_var_sel}, {var_units}"],
+        fields=["nhm_id", str(sel_year)],
+        aliases=["nhm_id", f"{output_var_sel}, {var_units}"],
         labels=True,
-        localize=True,
+        localize=False,  # no thousands separators in the nhm_id
         style=(
             "font-size: 16px;"
         ),  # Note that this tooltip style sets the style for all tool_tips.
@@ -1445,6 +1479,11 @@ def create_streamflow_poi_markers(
 
     for idx, row in poi_df.iterrows():
         poi_gage_id = row["poi_gage_id"]
+
+        # Gages used in the NHM v1.1 CONUS calibration (nhm_calib == "Y") get a
+        # hollow dark circle circumscribing the triangle; other gages get just
+        # the triangle. This restores the original calibration indicator.
+        is_calib = str(row.get("nhm_calib", "N")) == "Y"
 
         # if row["nhm_calib"] == "Y":  # Do this for all the gages used in calibration
         #     if row["kge"] >= 0.7:
@@ -1560,7 +1599,9 @@ def create_streamflow_poi_markers(
         # if row["nhm_calib"] == "N":
         if row["kge"] >= 0.7:
 
-            marker = folium.CircleMarker(
+            # Triangle to match the streamflow-gage icon on the other maps,
+            # colored by KGE (green = good).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1568,14 +1609,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Green",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Green", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1596,7 +1633,8 @@ def create_streamflow_poi_markers(
             ).add_to(marker_cluster_label_poi)
         if (row["kge"] < 0.7) & (row["kge"] >= 0.5):
 
-            marker = folium.CircleMarker(
+            # Triangle colored by KGE (yellow = moderate).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1604,14 +1642,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Yellow",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Yellow", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1632,7 +1666,8 @@ def create_streamflow_poi_markers(
             ).add_to(marker_cluster_label_poi)
         if row["kge"] < 0.5:
 
-            marker = folium.CircleMarker(
+            # Triangle colored by KGE (red = poor).
+            marker = folium.map.Marker(
                 location=[row["latitude"], row["longitude"]],
                 name=row["poi_gage_id"],
                 popup=folium.Popup(
@@ -1640,14 +1675,10 @@ def create_streamflow_poi_markers(
                     max_width=150,
                     max_height=70,
                 ),
-                radius=5,
-                weight=2,
-                color=None,
-                fill=True,
-                fill_color="Red",
-                fill_opacity=1.0,
-                draggable=True,
-                lazy=True,
+                icon=make_polygon_icon(
+                    num_sides=3, radius=6, color="Red", fill_opacity=1.0,
+                    circumscribe=is_calib,
+                ),
                 z_index_offset=4006,
             ).add_to(marker_cluster)
 
@@ -1669,7 +1700,9 @@ def create_streamflow_poi_markers(
             
             if np.isnan(row["kge"]):
 
-                marker = folium.CircleMarker(
+                # Triangle for gages with insufficient observations (no KGE):
+                # black, drawn smaller to read as "diminished".
+                marker = folium.map.Marker(
                     location=[row["latitude"], row["longitude"]],
                     name=row["poi_gage_id"],
                     popup=folium.Popup(
@@ -1677,14 +1710,10 @@ def create_streamflow_poi_markers(
                         max_width=150,
                         max_height=70,
                     ),
-                    radius=2,
-                    weight=2,
-                    color="Black",
-                    fill=True,
-                    fill_color="Black",
-                    fill_opacity=1.0,
-                    draggable=True,
-                    lazy=True,
+                    icon=make_polygon_icon(
+                        num_sides=3, radius=4, color="Black", fill_opacity=1.0,
+                        circumscribe=is_calib,
+                    ),
                     z_index_offset=4006,
                 ).add_to(marker_cluster)
 
@@ -1838,11 +1867,17 @@ def make_geo_legend(unit_colors):
         "max-height:130px;"
         "overflow-y:auto;"
         '">'
-        '<div onclick="var c=document.getElementById(\'geo-legend-content\');'
-        "c.style.display=c.style.display==='none'?'block':'none';"
+        # Start collapsed (rolled up) on render: content hidden and the arrow
+        # pointing right. The click handler toggles the content and swaps the
+        # arrow glyph (&#9654; right = collapsed, &#9660; down = expanded).
+        "<div onclick=\"var c=document.getElementById('geo-legend-content');"
+        "var a=document.getElementById('geo-legend-arrow');"
+        "var hidden=c.style.display==='none';"
+        "c.style.display=hidden?'block':'none';"
+        "a.innerHTML=hidden?'&#9660;':'&#9654;';"
         '" style="cursor:pointer;font-weight:bold;margin-bottom:4px;">'
-        "&#9660; Geology (UNIT_NAME)</div>"
-        f'<div id="geo-legend-content">{items_html}</div>'
+        '<span id="geo-legend-arrow">&#9654;</span> Geology (UNIT_NAME)</div>'
+        f'<div id="geo-legend-content" style="display:none;">{items_html}</div>'
         "</div>"
     )
 
@@ -1865,6 +1900,7 @@ def make_hf_map(
     param_filename,
     subdomain,
     model_dir=None,
+    fabric_version="1.1",
 ):
     """
     Creates interactive folium.map of all hydrofabric folium.map objects.
@@ -1964,6 +2000,7 @@ def make_hf_map(
                     "weight": 2,
                     },
                 name="HUC-10 basins",
+                show=False,  # Off on open; toggle on from the layer control.
                 # tooltip=tooltip_hru,
                 popup=folium.GeoJsonPopup(
                     fields=["huc10"],
@@ -2056,6 +2093,7 @@ def make_hf_map(
     folium.GeoJson(
         geo_map.to_json(),
         name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
         style_function=geo_style,
         popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
     ).add_to(m2)
@@ -2117,7 +2155,17 @@ def make_hf_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: hydrofabric elements</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {explan_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_2_v2.png").resolve()
+    # GFv2 gatekeeper: GFv2 fabrics have no headwater calibration levels, so
+    # they use the v2 legend; GFv1.1 fabrics use the v1.1 legend, which shows
+    # the byHRU/byHW/byHWobs cal-level polygons and the HW basin boundary.
+    legend_png = (
+        "nb_2_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_2_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -2172,6 +2220,7 @@ def make_par_map(
     html_maps_dir,
     param_filename,
     subdomain,
+    fabric_version="1.1",
 ):
 
     """
@@ -2291,7 +2340,16 @@ def make_par_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {mo_txt}{par_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {pdb.get(par_sel).meta['help']}. {scale_bar_txt}</h1>"
 
     #add custom legend
-    legend_file = pl.Path(root_dir/"data_dependencies/map_custom_explanations/nb_5.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend; GFv2 fabrics use the
+    # v2 legend. The nb_5 legend is shared with the HRU-output map (make_var_map).
+    legend_png = (
+        "nb_5_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_5_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -2333,6 +2391,7 @@ def make_var_map(
     Folium_maps_dir,
     HW_basins=None,
     subdomain,
+    fabric_version="1.1",
 ):
 
     """
@@ -2420,6 +2479,18 @@ def make_var_map(
     m3.add_child(minimap)
     m3.add_child(MeasureControl(position="bottomright"))
 
+    # Add geology layer and legend, exactly as on the notebook 2 hydrofabric map.
+    geo_map, geo_style, unit_colors = make_geo_map(hru_gdf)
+    folium.GeoJson(
+        geo_map.to_json(),
+        name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
+        style_function=geo_style,
+        popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
+    ).add_to(m3)
+    legend = make_geo_legend(unit_colors)
+    m3.get_root().html.add_child(legend)
+
     # Create/Add scale bar and hru map object
     hru_map, val_bar_image, value_min, value_max, same_value, color_bar = (
         create_annual_output_var_map(
@@ -2466,7 +2537,16 @@ def make_var_map(
     title_html = f"<h1 style='position:absolute;z-index:100000;font-size: 28px;left:26vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '><strong>The {subdomain} model: {sel_year} {output_var_sel}</strong><br><h1 style='position:absolute;z-index:100000;font-size: 20px;left:31vw;right:5vw; top:4vw;text-shadow: 3px  3px  3px white,-3px -3px  3px white,3px -3px  3px white,-3px  3px  3px white; '> {var_desc}. {scale_bar_txt}</h1>"
     
     #add custom legend
-    legend_file = pl.Path(root_dir / "data_dependencies/map_custom_explanations/nb_5.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend; GFv2 fabrics use the
+    # v2 legend. The nb_5 legend is shared with the parameter map (make_par_map).
+    legend_png = (
+        "nb_5_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_5_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
@@ -2508,6 +2588,7 @@ def make_streamflow_map(
     HW_basins_gdf=None,
     HW_basins=None,
     output_netcdf_filename,
+    fabric_version="1.1",
 ):
     """
     Creates a map of the NHM subdomain model hydrofabric elements and displays monthly Kling-Gupta efficiency (KGE) values for parameter file gages.
@@ -2611,6 +2692,18 @@ def make_streamflow_map(
     m.add_child(minimap)
     m.add_child(MeasureControl(position="bottomright"))
 
+    # Add geology layer and legend, exactly as on the notebook 2 hydrofabric map.
+    geo_map, geo_style, unit_colors = make_geo_map(hru_gdf)
+    folium.GeoJson(
+        geo_map.to_json(),
+        name="SGMC Geology",
+        show=False,  # Off on open; toggle on from the layer control.
+        style_function=geo_style,
+        popup=folium.GeoJsonPopup(fields=["UNIT_NAME", "GENERALIZE", "AGE_MIN", "AGE_MAX"]),
+    ).add_to(m)
+    legend = make_geo_legend(unit_colors)
+    m.get_root().html.add_child(legend)
+
     # Create and add hru calibration levels (colors)
     if HW_basins_gdf is not None:
         hru_cal_map = folium.GeoJson(
@@ -2658,16 +2751,28 @@ def make_streamflow_map(
 
 
     #add custom legend
-    legend_file = pl.Path(root_dir/"data_dependencies/map_custom_explanations/nb_6.png").resolve()
+    # GFv2 gatekeeper: GFv1.1 fabrics use the v1.1 legend (KGE gages,
+    # calibration ring, cal levels, HW basin); GFv2 fabrics use the v2 legend
+    # (KGE gages, segments, HRUs only).
+    legend_png = (
+        "nb_6_v2.png"
+        if str(fabric_version).startswith("2")
+        else "nb_6_v1_1.png"
+    )
+    legend_file = pl.Path(
+        root_dir / "data_dependencies/map_custom_explanations" / legend_png
+    ).resolve()
     with open(legend_file, "rb") as lf:
         # open in binary mode, read bytes, encode, decode obtained bytes as utf-8 string
         b64_content = base64.b64encode(lf.read()).decode("utf-8")
         del lf
+    # height:auto preserves the legend's aspect ratio so every row shows,
+    # whichever version is embedded (v1.1 is taller than v2).
     legend_image = FloatImage(
         image="data:image/png;base64,{}".format(b64_content),
         bottom=10,
         left=1,
-        style="position:fixed; width:3.042in; height:2in;",
+        style="position:fixed; width:3.042in; height:auto;",
     )
     m.add_child(legend_image)
     
@@ -2802,7 +2907,7 @@ def create_poi_obs_marker_cluster(
             iframe,
             parse_html=True,
         ),
-        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["poi_gage_segment"]}<br>{row["poi_name"]}<br></font>',
+        tooltip=f'<font size="3px">{row["poi_gage_id"]} ({row["poi_agency"]}) on segment: {row["nhm_seg"]}<br>{row["poi_name"]}<br></font>',
     ).add_to(poi_marker_cluster)
 
     return poi_marker_cluster, poi_marker_cluster_label
@@ -3274,6 +3379,7 @@ def create_FMI_poi_markers(
         name="FMI gages",
         overlay=True,
         control=True,
+        show=False,  # Off on open; toggle on from the layer control.
         icon_create_function=None,
         z_index_offset=5000,
     )
@@ -3569,8 +3675,16 @@ def create_geology_map():
 
 import math
 
-def make_polygon_icon(num_sides, radius, color, fill_opacity):
-    size = radius * 2 + 4
+def make_polygon_icon(num_sides, radius, color, fill_opacity, circumscribe=False):
+    # circumscribe draws a hollow dark circle around the polygon. The streamflow
+    # map uses it to flag gages that were part of the NHM v1.1 CONUS calibration.
+    # The triangle's vertices lie exactly `radius` from the center (the
+    # circumradius), so the circle touches the vertices at r = radius. A hair of
+    # margin keeps the stroke from clipping through the points.
+    circle_r = radius + 0.5
+    # Size the canvas to the circle when present, otherwise to the polygon.
+    outer = circle_r if circumscribe else radius
+    size = outer * 2 + 4
     center = size / 2
     points = []
     for i in range(num_sides):
@@ -3579,10 +3693,17 @@ def make_polygon_icon(num_sides, radius, color, fill_opacity):
         y = center + radius * math.sin(angle)
         points.append(f"{x},{y}")
     points_str = " ".join(points)
+    circle_svg = (
+        f'<circle cx="{center}" cy="{center}" r="{circle_r}" '
+        f'fill="none" stroke="#222222" stroke-width="1.5"/>'
+        if circumscribe
+        else ""
+    )
     svg = (
         f'<svg width="{size}" height="{size}" xmlns="http://www.w3.org/2000/svg">'
         f'<polygon points="{points_str}" fill="{color}" fill-opacity="{fill_opacity}" '
-        f'stroke="black" stroke-width="1"/></svg>'
+        f'stroke="black" stroke-width="1"/>'
+        f'{circle_svg}</svg>'
     )
     return folium.DivIcon(
         html=svg,

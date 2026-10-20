@@ -29,6 +29,10 @@ triangles carry a halo -- make_polygon_icon draws the polygon with
 `stroke="black" stroke-width="1"`, which is what makes the white non-POI
 triangles legible against the map.
 
+The Fall 2026 training restyle (MR !63) then went past nhf: triangles for every
+POI gage, a ring around calibration gages on the streamflow map, and nhm_seg in
+the POI tooltip. Those functions are pinned by behaviour, not against nhf.
+
 create_FMI_poi_markers was never in question: its polygon side count is not
 styling at all, it *encodes* the Flow Management Index
 (`color, num_sides = fmi_style.get(fmi_val, ("Gray", 4))`).
@@ -191,10 +195,18 @@ TRIANGLE_MARKER_CLUSTERS = [
 
 # every marker function that must match nhf byte for byte
 NHF_MARKER_FUNCTIONS = [
-    "create_poi_marker_cluster",
     "create_non_poi_marker_cluster",
-    "create_poi_obs_marker_cluster",
     "create_non_poi_obs_marker_cluster",
+]
+
+# Deliberately restyled past nhf for the Fall 2026 training (MR !63): every POI
+# gage is a triangle, KGE-colored on the streamflow map with a ring around
+# NHM v1.1 calibration gages (make_polygon_icon's `circumscribe`), and the POI
+# tooltip names the national nhm_seg rather than the local poi_gage_segment.
+# These no longer match nhf verbatim; the tests further down pin the new look.
+RESTYLED_MARKER_FUNCTIONS = [
+    "create_poi_marker_cluster",
+    "create_poi_obs_marker_cluster",
     "create_streamflow_poi_markers",
     "make_polygon_icon",
 ]
@@ -384,3 +396,63 @@ def test_make_hf_map_model_dir_defaults_to_the_param_file_folder(common):
     assert signature.parameters["model_dir"].default is None
     source = inspect.getsource(common.make_hf_map)
     assert "pl.Path(param_filename).parent" in source
+
+
+def _live_source(func) -> str:
+    return "\n".join(
+        line
+        for line in inspect.getsource(func).splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+
+
+@pytest.mark.parametrize(
+    "name", ["create_poi_marker_cluster", "create_streamflow_poi_markers"]
+)
+def test_restyled_poi_markers_are_triangles(name, common):
+    """The restyle extended nhf's triangles to the remaining POI markers."""
+    live = _live_source(getattr(common, name))
+    assert "make_polygon_icon(" in live, f"{name} no longer draws triangles"
+    assert "folium.CircleMarker(" not in live, f"{name} draws circles again"
+    assert "num_sides=3" in live
+
+
+def test_streamflow_markers_ring_only_calibration_gages(common):
+    """Every KGE class passes the calibration flag through, and the flag comes
+    from nhm_calib, so GFv1.1 calibration gages stay distinguishable."""
+    live = _live_source(common.create_streamflow_poi_markers)
+    assert 'row.get("nhm_calib", "N")) == "Y"' in live
+    # one per KGE class: good, moderate, poor, and no-KGE
+    assert live.count("circumscribe=is_calib") == 4
+
+
+def test_poi_obs_tooltip_names_the_national_segment(common):
+    live = _live_source(common.create_poi_obs_marker_cluster)
+    assert 'row["nhm_seg"]' in live
+    assert 'row["poi_gage_segment"]' not in live
+
+
+def test_make_polygon_icon_without_ring_matches_nhf(common):
+    """`circumscribe` defaults off, and off must reproduce nhf's icon exactly,
+    so the FMI and model-gage maps that never pass it look unchanged."""
+    import math
+
+    import folium
+
+    namespace = {"math": math, "folium": folium}
+    exec(
+        _function_source(_nhf_baseline_source_for(), "make_polygon_icon"),
+        namespace,
+    )
+    nhf_icon = namespace["make_polygon_icon"]
+    for args in [(3, 6, "black", 1.0), (3, 4, "Red", 0.5), (5, 8, "Gray", 1.0)]:
+        assert common.make_polygon_icon(*args).options == nhf_icon(*args).options
+
+
+def test_make_polygon_icon_ring_encloses_the_polygon(common):
+    plain = common.make_polygon_icon(3, 6, "Green", 1.0).options
+    ringed = common.make_polygon_icon(3, 6, "Green", 1.0, circumscribe=True).options
+    assert "<circle" not in plain["html"]
+    assert '<circle' in ringed["html"] and 'fill="none"' in ringed["html"]
+    # the canvas grows to fit the ring rather than clipping it
+    assert ringed["icon_size"][0] > plain["icon_size"][0]

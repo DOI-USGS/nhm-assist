@@ -201,7 +201,8 @@ def add_nhm_map_widgets(fmap):
 gdb_path = pl.Path(root_dir / r"data_dependencies\NHM_v1_1\version1_1_params\GFv1.1.gdb")
 
 # User-supplied area of interest (shapefile, gpkg, geojson, etc.)
-aoi_path = pl.Path(root_dir / r"data_dependencies\Examples\Malheur_Lake.shp")
+path_to_shape_file ="<put your path here>" #root_dir / r"data_dependencies\Examples\Malheur_Lake.shp"
+aoi_path = pl.Path(path_to_shape_file)
 aoi_layer = None  # set to None for shapefiles
 
 # %% [markdown]
@@ -468,8 +469,8 @@ m_preview
 
 # %%
 # Edit these lists based on the preview map
-add_to_selected_segments = [47550]  # e.g. [49990, 50001]
-remove_from_selected_segments = [47650]  # e.g. [12345] (it seems to be chasing up the network when removing. Fix that)
+add_to_selected_segments = []  # e.g. [49990, 50001]
+remove_from_selected_segments = []  # e.g. [12345] (it seems to be chasing up the network when removing. Fix that)
 
 # Apply modifications — trace full upstream network for any added/removed segments
 if add_to_selected_segments:
@@ -791,7 +792,7 @@ else:
     all_orphan_hru_ids = []
 
 # DEFAULT: all orphans included. Move IDs to orphan_hrus_excluded to drop them.
-orphan_hrus_excluded = [97949]  # e.g. [97949, 97994]
+orphan_hrus_excluded = []  # e.g. [97949, 97994]
 orphan_hrus_included = [hid for hid in all_orphan_hru_ids if hid not in orphan_hrus_excluded]
 
 print(f"Orphan HRUs included: {len(orphan_hrus_included)} — {orphan_hrus_included}")

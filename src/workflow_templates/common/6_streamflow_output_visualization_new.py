@@ -118,6 +118,7 @@ map_file = make_streamflow_map(
     HW_basins_gdf=HW_basins_gdf,
     HW_basins=HW_basins,
     output_netcdf_filename=config["output_netcdf_filename"],
+    fabric_version=config["fabric_version"],
 )
 
 # %% [markdown]

@@ -207,6 +207,7 @@ map_file = make_par_map(
     html_maps_dir=config["html_maps_dir"],
     param_filename=config["param_filename"],
     subdomain=config["subdomain"],
+    fabric_version=config["fabric_version"],
 )
 
 # %%

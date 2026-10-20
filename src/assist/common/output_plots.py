@@ -139,6 +139,24 @@ plot_colors = [
 random.Random(4).shuffle(plot_colors)
 # plot_colors
 
+
+def _hru_palette(n):
+    """Return a list of at least ``n`` plot colors, one per HRU.
+
+    For basins with up to ``len(plot_colors)`` HRUs this returns the curated
+    named-color palette unchanged, preserving the existing look. For larger
+    basins (which would overrun the fixed palette and raise IndexError), it
+    samples a continuous colormap to ``n`` evenly spaced, distinct colors so
+    every HRU still gets its own discernible color instead of recycling.
+    """
+    if n <= len(plot_colors):
+        return plot_colors
+    import plotly.express as px
+
+    return px.colors.sample_colorscale(
+        "turbo", [i / (n - 1) for i in range(n)]
+    )
+
 # Dictionaries for plots
 var_colors_dict = {
     "hru_actet": "red",
@@ -319,6 +337,11 @@ def make_plot_var_for_hrus_in_poi_basin(
                 poi_gage_id_sel
             ]  # returns a list of all upstream contributing hrus
 
+            # One color per HRU, sized to this basin so large catchments
+            # (more HRUs than the fixed palette) get distinct colors instead
+            # of an IndexError. Small basins keep the original palette.
+            hru_colors = _hru_palette(len(hru_list))
+
             fig = plotly.subplots.make_subplots(
                 rows=3,
                 cols=1,
@@ -452,7 +475,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                         legendgroup=hru_id_sel,
                         # marker=dict(color=plot_colors[color_sel]),
                         line=dict(
-                            color=plot_colors[color_sel],
+                            color=hru_colors[color_sel],
                             width=2,
                             # dash='dot'
                         ),
@@ -522,7 +545,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                         legendgroup=hru_id_sel,
                         # marker=dict(color=plot_colors[color_sel]),
                         line=dict(
-                            color=plot_colors[color_sel],
+                            color=hru_colors[color_sel],
                             width=2,
                             # dash='dot'
                         ),
@@ -589,7 +612,7 @@ def make_plot_var_for_hrus_in_poi_basin(
                         legendgroup=hru_id_sel,
                         # marker=dict(color=plot_colors[color_sel]),
                         line=dict(
-                            color=plot_colors[color_sel],
+                            color=hru_colors[color_sel],
                             width=2,
                             # dash='dot'
                         ),

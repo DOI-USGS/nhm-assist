@@ -102,6 +102,7 @@ map_file = make_hf_map(
     param_filename=config["param_filename"],
     subdomain=config["subdomain"],
     model_dir=config["model_dir"],
+    fabric_version=config["fabric_version"],
 )
 
 # %% [markdown]

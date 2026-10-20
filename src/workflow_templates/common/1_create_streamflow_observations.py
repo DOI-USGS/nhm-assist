@@ -139,7 +139,7 @@ poi_df = create_poi_df(
 
 # %% [markdown]
 # # Retrieve all WaterData gage information and streamflow observations.
-# This function pulls time series data for all WaterData gages in the domain, then filters data to the simulation period (`waterdata_cache.nc`), and creates `metadata/WaterDataGages.csv`. Both the time series data file and `metadata/WaterDataGages.csv` contain all site information for gages with a period of record greater than the user specified threshold (`waterdata_gage_nobs_min`, set in [notebook 0](./0_Workspace_setup.ipynb)) within the simulation period **AND** all gages in the parameter file regardless of a period of record less than the specified threshold.
+# This function pulls time series data for all WaterData gages in the domain, then filters data to the simulation period (`waterdata_cache.nc`), and creates `metadata/WaterDataGages.csv`. Both the time series data file and `metadata/WaterDataGages.csv` contain all site information for gages with a period of record greater than the user specified threshold (`waterdata_gage_nobs_min`, set in [notebook 0](./0_workspace_setup.ipynb)) within the simulation period **AND** all gages in the parameter file regardless of a period of record less than the specified threshold.
 
 # %%
 waterdata_df = create_waterdata_sf_df(
