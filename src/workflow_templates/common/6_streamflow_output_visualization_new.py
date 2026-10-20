@@ -146,7 +146,7 @@ import assist.common.display_controls as dc
 
 gage_txt = widgets.Combobox(
     options=poi_df.poi_gage_id.tolist(),
-    description="Streamgage ID:",
+    description="Zoom to gage:",
     placeholder="(optional) Enter gage id",
     ensure_option=True,
     layout=widgets.Layout(width="40%"),

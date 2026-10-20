@@ -179,12 +179,13 @@ def generate_map() -> None:
         "Folium_maps_dir",
         "subdomain",
         "v",
+        "v2",
     ):
         return
     _ensure_output_dirs()
-    poi_gage_id = _get_valid_poi()
-    if poi_gage_id is None:
-        return
+    # With no gage selected, pass None so the map opens at the full model
+    # extent instead of zooming to a fallback gage.
+    poi_gage_id = v2.value if v2.value in poi_df.poi_gage_id.values else None
     map_file = make_var_map(
         **_supported(
             make_var_map,
@@ -349,9 +350,11 @@ def _get_valid_poi1() -> str:
     """
     if not _require_state("poi_df", "gage_txt"):
         return None
-    ids = set(poi_df.poi_gage_id.values)
-    raw = gage_txt.value.strip() or next(iter(ids))
-    return raw if raw in ids else next(iter(ids))
+    # Keep parameter-file order; a set has no stable order, so its "first"
+    # gage could change between kernel sessions.
+    ids = list(poi_df.poi_gage_id.values)
+    raw = gage_txt.value.strip()
+    return raw if raw in ids else ids[0]
 
 def on_map_clicked(b: widgets.Button) -> None:
     """
@@ -381,9 +384,10 @@ def on_map_clicked(b: widgets.Button) -> None:
         plot_out.clear_output()
     with map_out:
         clear_output()
-        poi_gage_id_sel = _get_valid_poi1()
-        if poi_gage_id_sel is None:
-            return
+        # With no gage selected, pass None so the map opens at the full model
+        # extent instead of zooming to a fallback gage.
+        raw = gage_txt.value.strip()
+        poi_gage_id_sel = raw if raw in set(poi_df.poi_gage_id.values) else None
 
         _show_loading("streamflow map")
         try:
