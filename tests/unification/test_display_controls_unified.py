@@ -13,6 +13,7 @@ tests exercise them directly; a notebook passing proves nothing about them.
 import ast
 import inspect
 import pathlib
+import types
 
 import pytest
 
@@ -100,10 +101,14 @@ def _prime(dc, backend, **overrides):
         "Folium_maps_dir", "subdomain", "HW_basins",
     ):
         setattr(dc, name, overrides.get(name, f"<{name}>"))
+    if "poi_df" not in overrides:
+        dc.poi_df = types.SimpleNamespace(
+            poi_gage_id=types.SimpleNamespace(values=["12345678"])
+        )
     dc.v = _Val("recharge")
     dc.yr = _Val(1980)
+    dc.v2 = _Val("")
     dc._ensure_output_dirs = lambda: None
-    dc._get_valid_poi = lambda: "12345678"
     dc._report_external_artifact = lambda kind, artifact: None
 
 
@@ -193,6 +198,8 @@ def test_templates_set_every_literally_required_state():
 
     assigned = set()
     for name in (
+        "2_model_hydrofabric_visualization",
+        "3_model_parameter_visualization",
         "5_hru_output_visualization_new",
         "6_streamflow_output_visualization_new",
     ):

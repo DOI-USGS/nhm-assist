@@ -87,23 +87,34 @@ con.print(
 )
 
 # %%
-map_file = make_hf_map(
-    root_dir=root_dir,
-    hru_gdf=hru_gdf,
-    HW_basins_gdf=HW_basins_gdf,
-    HW_basins=HW_basins,
-    poi_df=poi_df,
-    poi_gage_id_sel="",
-    seg_gdf=seg_gdf,
-    waterdata_gages_aoi=waterdata_gages_aoi,
-    gages_df=gages_df,
-    html_maps_dir=config["html_maps_dir"],
-    Folium_maps_dir=config["Folium_maps_dir"],
-    param_filename=config["param_filename"],
-    subdomain=config["subdomain"],
-    model_dir=config["model_dir"],
-    fabric_version=config["fabric_version"],
+import ipywidgets as widgets
+from IPython.display import display
+import assist.common.display_controls as dc
+
+btn_map = widgets.Button(
+    description="Generate Map",
+    button_style="primary",
 )
+
+dc.root_dir = root_dir
+dc.hru_gdf = hru_gdf
+dc.HW_basins_gdf = HW_basins_gdf
+dc.HW_basins = HW_basins
+dc.poi_df = poi_df
+dc.seg_gdf = seg_gdf
+dc.waterdata_gages_aoi = waterdata_gages_aoi
+dc.gages_df = gages_df
+dc.html_maps_dir = config["html_maps_dir"]
+dc.Folium_maps_dir = config["Folium_maps_dir"]
+dc.param_filename = config["param_filename"]
+dc.subdomain = config["subdomain"]
+dc.model_dir = config["model_dir"]
+dc.fabric_version = config["fabric_version"]
+
+hf_map_out = widgets.Output()
+dc.hf_map_out = hf_map_out
+btn_map.on_click(dc.on_hf_map_clicked)
+display(widgets.VBox([btn_map, hf_map_out]))
 
 # %% [markdown]
 # # Want to Add a potential gage to the parameter file? [Click here!](./add_pois_to_parameters.ipynb)
