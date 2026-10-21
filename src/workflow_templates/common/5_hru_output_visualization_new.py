@@ -232,6 +232,7 @@ dc.subdomain = config["subdomain"]
 dc.param_filename = config["param_filename"]
 dc.output_var_list = output_var_list
 dc.html_plots_dir = config["html_plots_dir"]
+dc.fabric_version = config["fabric_version"]
 btn_generate.on_click(dc.on_generate_clicked)
 
 display(VBox([v, yr, v2, plot_checks, btn_generate, out_map, out_summary, out_flux]))

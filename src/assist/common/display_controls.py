@@ -72,6 +72,8 @@ par_dd = None
 mo_dd = None
 par_map_out = None
 overview_map_out = None
+# Selects the GFv1.1 vs GFv2 map legends; matches the map builders' default.
+fabric_version = "1.1"
 
 # import pathlib as pl
 # import os
@@ -205,6 +207,7 @@ def generate_map() -> None:
             Folium_maps_dir=Folium_maps_dir,
             HW_basins=HW_basins,
             subdomain=subdomain,
+            fabric_version=fabric_version,
         )
     )
     _report_external_artifact("map", map_file)
@@ -408,6 +411,7 @@ def on_map_clicked(b: widgets.Button) -> None:
                     HW_basins_gdf=HW_basins_gdf,
                     HW_basins=HW_basins,
                     output_netcdf_filename=output_netcdf_filename,
+                    fabric_version=fabric_version,
                 )
             )
             _report_external_artifact("map", map_file)
@@ -513,6 +517,7 @@ def on_hf_map_clicked(b: widgets.Button) -> None:
                 param_filename=param_filename,
                 subdomain=subdomain,
                 model_dir=model_dir,
+                fabric_version=fabric_version,
             )
             _report_external_artifact("map", map_file)
 
@@ -562,6 +567,7 @@ def on_par_map_clicked(b: widgets.Button) -> None:
                 html_maps_dir=html_maps_dir,
                 param_filename=param_filename,
                 subdomain=subdomain,
+                fabric_version=fabric_version,
             )
             _report_external_artifact("map", map_file)
 
@@ -612,6 +618,7 @@ def on_overview_map_clicked(b: widgets.Button) -> None:
                     HW_basins_gdf=HW_basins_gdf,
                     HW_basins=HW_basins,
                     output_netcdf_filename=output_netcdf_filename,
+                    fabric_version=fabric_version,
                 )
             )
             _report_external_artifact("map", map_file)
