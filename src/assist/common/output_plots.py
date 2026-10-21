@@ -1052,11 +1052,11 @@ def create_streamflow_plot(
 
     Returns
     -------
-    plot_file_path : pathlib Path class
-        Path to the plot.
+    plot_file_path : pathlib Path class or None
+        Path to the plot, or None if the gage has no observation data to plot.
 
     """
-    
+
     plot_file_path = pl.Path(
         html_plots_dir / f"streamflow_eval_for_{poi_gage_id_sel}_plot.html"
     ).resolve()
@@ -1096,7 +1096,8 @@ def create_streamflow_plot(
             con.print(
                 f"The gage {poi_gage_id_sel} has no observation data in the streamflow obs file."
             )
-            pass
+            # No plot was written, so do not hand back a path to a missing file.
+            return None
         else:
             df_sf_data_sel = (obs.sel(poi_gage_id=poi_gage_id_sel)).to_dataframe()
 
@@ -1267,6 +1268,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Observed",
                     showlegend=False,
+                    legendgroup="observed",
                     # marker=dict(color='brown'),
                     # xaxis =
                     line=dict(
@@ -1281,6 +1283,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Simulated",
                     showlegend=False,
+                    legendgroup="simulated",
                     # marker=dict(color='brown'),
                     line=dict(
                         color="black",
@@ -1300,6 +1303,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Observed",
                     showlegend=False,
+                    legendgroup="observed",
                     # marker=dict(color='brown'),
                     # xaxis =
                     line=dict(
@@ -1314,6 +1318,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Simulated",
                     showlegend=False,
+                    legendgroup="simulated",
                     # marker=dict(color='brown'),
                     line=dict(
                         color="black",
@@ -1346,6 +1351,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Observed flow",
                     showlegend=True,
+                    legendgroup="observed",
                     connectgaps=False,
                     # marker=dict(color='deepskyblue', size = 5),
                     # xaxis =
@@ -1361,6 +1367,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Observed flow, (Low)",
                     showlegend=True,
+                    legendgroup="observed_low",
                     connectgaps=False,
                     # marker=dict(color='deepskyblue', size = 5),
                     # xaxis =
@@ -1376,6 +1383,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="Simulated flow",
                     showlegend=True,
+                    legendgroup="simulated",
                     # marker=dict(color='black', size = 3),
                     line=dict(
                         color="black",
@@ -1494,6 +1502,7 @@ def create_streamflow_plot(
                     name="Observed flow",
                     marker=dict(color=custom_marker_color, size=3),
                     showlegend=False,
+                    legendgroup="observed",
                     # line = dict(color='deepskyblue',
                     #    width=3,
                     # dash='dot'
@@ -1505,6 +1514,7 @@ def create_streamflow_plot(
                     mode="lines",
                     name="NHM simulated flow",
                     showlegend=False,
+                    legendgroup="simulated",
                     # marker=dict(#color='brown',
                     #            size=1),
                     line=dict(

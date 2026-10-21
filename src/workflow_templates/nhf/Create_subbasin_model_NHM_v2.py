@@ -125,7 +125,10 @@ def add_nhm_map_widgets(fmap):
     """Add the inset minimap, measure tool, and fullscreen button used on the
     other NHM maps."""
     minimap = plugins.MiniMap(
-        tile_layer="OpenStreetMap",
+        tile_layer=folium.TileLayer(
+            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+            attr="Esri",
+        ),
         position="topleft",
         height=200,
         width=200,

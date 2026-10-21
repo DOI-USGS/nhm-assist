@@ -24,7 +24,12 @@ from assist.common.output_plots import create_streamflow_plot
 # `TypeError: 'NoneType' object is not callable` the moment the button was
 # clicked. Importing it directly makes that unrepresentable. Tests that
 # exercise an alternate backend still override these names on the module.
-from assist.common.map_template import make_streamflow_map, make_var_map
+from assist.common.map_template import (
+    make_hf_map,
+    make_par_map,
+    make_streamflow_map,
+    make_var_map,
+)
 
 root_dir = None
 out_dir = None
@@ -58,6 +63,15 @@ out_flux = None
 gage_txt = None
 map_out = None
 plot_out = None
+waterdata_gages_aoi = None
+gages_df = None
+model_dir = None
+hf_map_out = None
+nhru_params = None
+par_dd = None
+mo_dd = None
+par_map_out = None
+overview_map_out = None
 
 # import pathlib as pl
 # import os
@@ -66,6 +80,16 @@ plot_out = None
 def warn(msg: str):
     """Display a bold red warning in the notebook."""
     display(HTML(f"<div style='color:#b00020; font-weight:600'>{msg}</div>"))
+
+
+def _show_loading(kind: str) -> None:
+    """Display a note that the `kind` is being generated."""
+    display(
+        HTML(
+            f"<div style='color:#6b7280; font-style:italic'>"
+            f"Generating the {kind}… this can take a minute.</div>"
+        )
+    )
 
 
 def _report_external_artifact(kind: str, artifact) -> None:
@@ -155,12 +179,13 @@ def generate_map() -> None:
         "Folium_maps_dir",
         "subdomain",
         "v",
+        "v2",
     ):
         return
     _ensure_output_dirs()
-    poi_gage_id = _get_valid_poi()
-    if poi_gage_id is None:
-        return
+    # With no gage selected, pass None so the map opens at the full model
+    # extent instead of zooming to a fallback gage.
+    poi_gage_id = v2.value if v2.value in poi_df.poi_gage_id.values else None
     map_file = make_var_map(
         **_supported(
             make_var_map,
@@ -286,28 +311,36 @@ def on_generate_clicked(b: widgets.Button) -> None:
         "cb_flux",
     ):
         return
-    clear_output(wait=True)
-    display(
-        VBox([v, yr, v2, plot_checks, btn_generate, out_map, out_summary, out_flux])
-    )
+    # Clear every output area, not just the selected ones, so results from a
+    # plot type that is now unchecked do not linger from a previous click.
+    for out in (out_map, out_summary, out_flux):
+        out.clear_output()
 
-    # Map
-    if cb_map.value:
-        with out_map:
-            clear_output(wait=True)
-            generate_map()
+    # Plots can take a while to build, so show the user that work is underway.
+    btn_description = btn_generate.description
+    btn_generate.disabled = True
+    btn_generate.description = "Generating…"
+    try:
+        # Map
+        if cb_map.value:
+            with out_map:
+                _show_loading("map")
+                generate_map()
 
-    # Summary TS
-    if cb_summary.value:
-        with out_summary:
-            clear_output(wait=True)
-            generate_summary()
+        # Summary TS
+        if cb_summary.value:
+            with out_summary:
+                _show_loading("summary time-series plot")
+                generate_summary()
 
-    # Flux TS
-    if cb_flux.value:
-        with out_flux:
-            clear_output(wait=True)
-            generate_flux()
+        # Flux TS
+        if cb_flux.value:
+            with out_flux:
+                _show_loading("flux time-series plot")
+                generate_flux()
+    finally:
+        btn_generate.description = btn_description
+        btn_generate.disabled = not (cb_map.value or cb_summary.value or cb_flux.value)
 
 
 def _get_valid_poi1() -> str:
@@ -317,9 +350,11 @@ def _get_valid_poi1() -> str:
     """
     if not _require_state("poi_df", "gage_txt"):
         return None
-    ids = set(poi_df.poi_gage_id.values)
-    raw = gage_txt.value.strip() or next(iter(ids))
-    return raw if raw in ids else next(iter(ids))
+    # Keep parameter-file order; a set has no stable order, so its "first"
+    # gage could change between kernel sessions.
+    ids = list(poi_df.poi_gage_id.values)
+    raw = gage_txt.value.strip()
+    return raw if raw in ids else ids[0]
 
 def on_map_clicked(b: widgets.Button) -> None:
     """
@@ -343,12 +378,18 @@ def on_map_clicked(b: widgets.Button) -> None:
     ):
         return
     _ensure_output_dirs()
+    # The plot and map share one set of controls, so clear the plot's output
+    # too; otherwise a stale plot message lingers above the new map.
+    if plot_out is not None:
+        plot_out.clear_output()
     with map_out:
         clear_output()
-        poi_gage_id_sel = _get_valid_poi1()
-        if poi_gage_id_sel is None:
-            return
+        # With no gage selected, pass None so the map opens at the full model
+        # extent instead of zooming to a fallback gage.
+        raw = gage_txt.value.strip()
+        poi_gage_id_sel = raw if raw in set(poi_df.poi_gage_id.values) else None
 
+        _show_loading("streamflow map")
         try:
             map_file = make_streamflow_map(
                 **_supported(
@@ -398,12 +439,17 @@ def on_plot_clicked(b: widgets.Button) -> None:
     ):
         return
     _ensure_output_dirs()
+    # The plot and map share one set of controls, so clear the map's output
+    # too; otherwise a stale map message lingers below the new plot.
+    if map_out is not None:
+        map_out.clear_output()
     with plot_out:
         clear_output()
         poi_gage_id_sel = _get_valid_poi1()
         if poi_gage_id_sel is None:
             return
 
+        _show_loading("streamflow plot")
         try:
             fplot = create_streamflow_plot(
                 poi_gage_id_sel=poi_gage_id_sel,
@@ -415,7 +461,10 @@ def on_plot_clicked(b: widgets.Button) -> None:
                 out_dir=out_dir,
                 subdomain=subdomain,
             )
-            _report_external_artifact("plot", fplot)
+            # None means the gage had no observations to plot; the reason was
+            # already printed, so there is nothing to report.
+            if fplot is not None:
+                _report_external_artifact("plot", fplot)
 
         except (KeyError, IndexError):
             warn(
@@ -424,3 +473,148 @@ def on_plot_clicked(b: widgets.Button) -> None:
             )
         except Exception as e:
             warn(f"Unexpected error while generating the plot: {e}")
+
+
+def on_hf_map_clicked(b: widgets.Button) -> None:
+    """
+    When clicked, clear the previous message, then generate the hydrofabric
+    map and open it in a browser.
+    """
+    if not _require_state(
+        "hf_map_out",
+        "root_dir",
+        "hru_gdf",
+        "poi_df",
+        "seg_gdf",
+        "waterdata_gages_aoi",
+        "gages_df",
+        "html_maps_dir",
+        "Folium_maps_dir",
+        "param_filename",
+        "subdomain",
+    ):
+        return
+    _ensure_output_dirs()
+    with hf_map_out:
+        clear_output()
+        try:
+            map_file = make_hf_map(
+                root_dir=root_dir,
+                hru_gdf=hru_gdf,
+                HW_basins_gdf=HW_basins_gdf,
+                HW_basins=HW_basins,
+                poi_df=poi_df,
+                poi_gage_id_sel="",
+                seg_gdf=seg_gdf,
+                waterdata_gages_aoi=waterdata_gages_aoi,
+                gages_df=gages_df,
+                html_maps_dir=html_maps_dir,
+                Folium_maps_dir=Folium_maps_dir,
+                param_filename=param_filename,
+                subdomain=subdomain,
+                model_dir=model_dir,
+            )
+            _report_external_artifact("map", map_file)
+
+        except Exception as e:
+            warn(f"Unexpected error while generating the map: {e}")
+
+
+def on_par_map_clicked(b: widgets.Button) -> None:
+    """
+    When clicked, clear the previous message, then generate the parameter map
+    for the selected parameter (and month, if the parameter is monthly) and
+    open it in a browser.
+    """
+    if not _require_state(
+        "par_map_out",
+        "par_dd",
+        "mo_dd",
+        "root_dir",
+        "hru_gdf",
+        "poi_df",
+        "nhru_params",
+        "Folium_maps_dir",
+        "seg_gdf",
+        "html_maps_dir",
+        "param_filename",
+        "subdomain",
+    ):
+        return
+    _ensure_output_dirs()
+    with par_map_out:
+        clear_output()
+        # The notebook disables the month dropdown for parameters that are
+        # dimensioned by HRU only; make_par_map expects mo_sel=None for those.
+        mo_sel = None if mo_dd.disabled else mo_dd.index + 1
+        try:
+            map_file = make_par_map(
+                root_dir=root_dir,
+                hru_gdf=hru_gdf,
+                HW_basins=HW_basins,
+                poi_df=poi_df,
+                par_sel=par_dd.value,
+                mo_sel=mo_sel,
+                mo_name=mo_dd.value,
+                nhru_params=nhru_params,
+                Folium_maps_dir=Folium_maps_dir,
+                seg_gdf=seg_gdf,
+                html_maps_dir=html_maps_dir,
+                param_filename=param_filename,
+                subdomain=subdomain,
+            )
+            _report_external_artifact("map", map_file)
+
+        except Exception as e:
+            warn(f"Unexpected error while generating the map: {e}")
+
+
+def on_overview_map_clicked(b: widgets.Button) -> None:
+    """
+    When clicked, clear the previous message, then generate the streamflow
+    map for the whole subdomain (not zoomed to a gage) and open it in a
+    browser.
+    """
+    if not _require_state(
+        "overview_map_out",
+        "root_dir",
+        "out_dir",
+        "plot_start_date",
+        "plot_end_date",
+        "water_years",
+        "hru_gdf",
+        "poi_df",
+        "seg_gdf",
+        "html_maps_dir",
+        "subdomain",
+        "output_netcdf_filename",
+    ):
+        return
+    _ensure_output_dirs()
+    with overview_map_out:
+        clear_output()
+        _show_loading("streamflow map")
+        try:
+            map_file = make_streamflow_map(
+                **_supported(
+                    make_streamflow_map,
+                    root_dir=root_dir,
+                    out_dir=out_dir,
+                    plot_start_date=plot_start_date,
+                    plot_end_date=plot_end_date,
+                    water_years=water_years,
+                    hru_gdf=hru_gdf,
+                    poi_df=poi_df,
+                    poi_gage_id_sel=None,
+                    seg_gdf=seg_gdf,
+                    html_maps_dir=html_maps_dir,
+                    subdomain=subdomain,
+                    HW_basins_gdf=HW_basins_gdf,
+                    HW_basins=HW_basins,
+                    output_netcdf_filename=output_netcdf_filename,
+                )
+            )
+            _report_external_artifact("map", map_file)
+
+        except Exception as e:
+            warn(f"Unexpected error while generating the map: {e}")

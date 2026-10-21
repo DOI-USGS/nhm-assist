@@ -103,23 +103,32 @@ plot_start_date, plot_end_date, year_list, output_var_list = retrieve_hru_output
 # The following cell creates a map of the NHM subdomain model hydrofabric elements and displays monthly Kling-Gupta efficiency (KGE) values for parameter file gages as red (KGE<0.5), yellow (0.5<=KGE<0.7), and green (KGE>=0.7). The map is interactive, made with [folium](https://python-visualization.github.io/folium/v0.18.0/index.html) (see [README](./README.md) for basic map interactive functionality). Use the mouse to left-click on gage icons and display the gage id and gage name. Use the mouse to left-click on HRUs to display the headwater basin (HW) id. HW groupings of HRUs are important when interpreting parameter values and output variables. HRU parameters were grouped by HW and adjusted using a scaling factor during the byHW and byHWobs parts of NHM calibration ([Hay and others, 2023](https://pubs.usgs.gov/tm/06/b10/tm6b10.pdf)). During the byHW calibration part, statistical flow targets at HW outlets were used, and during the subsequent byHWobs part, streamflow obervations were used for selected HWs.
 
 # %%
-map_file = make_streamflow_map(
-    root_dir=root_dir,
-    out_dir=config["out_dir"],
-    plot_start_date=plot_start_date,
-    plot_end_date=plot_end_date,
-    water_years=config["water_years"],
-    hru_gdf=hru_gdf,
-    poi_df=poi_df,
-    poi_gage_id_sel=poi_id_sel,
-    seg_gdf=seg_gdf,
-    html_maps_dir=config["html_maps_dir"],
-    subdomain=config["subdomain"],
-    HW_basins_gdf=HW_basins_gdf,
-    HW_basins=HW_basins,
-    output_netcdf_filename=config["output_netcdf_filename"],
-    fabric_version=config["fabric_version"],
+import assist.common.display_controls as dc
+
+btn_overview_map = widgets.Button(
+    description="Generate Map",
+    button_style="primary",
 )
+
+dc.root_dir = root_dir
+dc.out_dir = config["out_dir"]
+dc.plot_start_date = plot_start_date
+dc.plot_end_date = plot_end_date
+dc.water_years = config["water_years"]
+dc.hru_gdf = hru_gdf
+dc.poi_df = poi_df
+dc.seg_gdf = seg_gdf
+dc.html_maps_dir = config["html_maps_dir"]
+dc.subdomain = config["subdomain"]
+dc.HW_basins_gdf = HW_basins_gdf
+dc.HW_basins = HW_basins
+dc.output_netcdf_filename = config["output_netcdf_filename"]
+dc.fabric_version = config["fabric_version"]
+
+overview_map_out = widgets.Output()
+dc.overview_map_out = overview_map_out
+btn_overview_map.on_click(dc.on_overview_map_clicked)
+display(widgets.VBox([btn_overview_map, overview_map_out]))
 
 # %% [markdown]
 # ## Make an interactive plot of simulated and observed streamflow and table of streamflow statistics for selected gage
@@ -136,9 +145,11 @@ import ipywidgets as widgets
 from IPython.display import display, clear_output, IFrame
 import assist.common.display_controls as dc
 
-gage_txt = widgets.Text(
-    description="Streamgage ID:",
+gage_txt = widgets.Combobox(
+    options=poi_df.poi_gage_id.tolist(),
+    description="Zoom to gage:",
     placeholder="(optional) Enter gage id",
+    ensure_option=True,
     layout=widgets.Layout(width="40%"),
     style={"description_width": "initial"},
 )
