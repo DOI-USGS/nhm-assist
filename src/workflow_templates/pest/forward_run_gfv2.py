@@ -632,7 +632,7 @@ runoff_start = '2008-10-01'
 runoff_end = '2020-09-30'
 soil_rechr_start = '2012-10-01'
 soil_rechr_end = '2024-09-30'
-swe_start = '2018-10-01'
+swe_start = '2009-10-01'
 swe_end = '2021-09-30'
 
 # set in "pestpp_ies_calibration/notebooks/01_Prepare_observations_gfv2.ipynb"
