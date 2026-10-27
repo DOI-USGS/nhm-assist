@@ -139,6 +139,14 @@ dev-future = { features = ["test", "dev", "dev-future"], solve-group = "future" 
 [tool.pixi.activation.env]
 PYTHONNOUSERSITE = "1"
 
+# Registers Graphviz's plugins, which conda-forge's macOS builds leave to a
+# post-link script pixi does not run. See "Graphviz on macOS" in AGENTS.md.
+[tool.pixi.target.osx-64.activation]
+scripts = ["scripts/register-graphviz-plugins.sh"]
+
+[tool.pixi.target.osx-arm64.activation]
+scripts = ["scripts/register-graphviz-plugins.sh"]
+
 # ==========================================================================
 # PIXI -- DEPENDENCIES
 #

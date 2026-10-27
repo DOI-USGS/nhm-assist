@@ -121,6 +121,29 @@ instead and names the affected packages.
 When a version looks wrong, `python -c "import X; print(X.__file__)"` settles in
 one line what `pixi list` structurally cannot answer.
 
+## Graphviz on macOS
+
+`graphviz` arrives transitively, through `pydot`. Its `dot` needs a plugin
+registry, `lib/graphviz/config8`, or every render fails with `Format: "pdf"
+not recognized. No formats found.` — which pydot surfaces only as an
+`AssertionError` saying `dot` returned code 1.
+
+conda-forge's Linux and Windows packages ship that registry. The macOS
+packages are cross-compiled, cannot run `dot` at build time, and leave it to a
+post-link script that runs `dot -c`. Pixi does not run post-link scripts by
+default, so on macOS the registry is never written.
+
+`scripts/register-graphviz-plugins.sh` is a pixi activation script, set on the
+`osx-64` and `osx-arm64` targets only, that runs `dot -c` when the registry is
+missing. It writes into the environment, so one `pixi run` after install is
+enough. Notebook kernels skip pixi activation (see above), but every user's
+first step is `pixi run setup`, which writes it. If a notebook still hits the
+error, any `pixi run` fixes it. `tests/test_graphviz.py` checks that `dot`
+renders.
+
+Setting pixi's `run-post-link-scripts` config would also work, but it is a
+per-machine setting, not one the manifest can carry.
+
 ## Temporary dependency pins
 
 `hdf5` and `pandas` are pinned on the `prod` feature, so the pins apply to
