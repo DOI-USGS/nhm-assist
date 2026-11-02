@@ -629,7 +629,104 @@ seg_type_out = pd.DataFrame({
 seg_type_out.to_csv(created_params_dir / "segment_type.csv", index=False)
 print(f"Wrote segment_type.csv: {len(seg_type_out)} rows, values: {sorted(seg_type_out['segment_type'].unique().tolist())}")
 
+# tosegment_nhm: the NHM-global-index version of tosegment. OHM is a stand-alone
+# derived fabric with no separate national indexing, so the NHM index equals the
+# local index and tosegment_nhm == tosegment. We do NOT duplicate tosegment.csv
+# here, but we first confirm the routing read from the geopackage matches any
+# existing tosegment.csv and warn if it does not.
+toseg_sorted = toseg_df.sort_values("model_seg_idx").reset_index(drop=True)
+
+existing_toseg_path = pl.Path(
+    r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\param_source_files\tosegment.csv"
+)
+if existing_toseg_path.exists():
+    existing_toseg = pd.read_csv(existing_toseg_path).sort_values("$id").reset_index(drop=True)
+    gpkg_vals = toseg_sorted["tosegment"].astype(int).to_numpy()
+    existing_vals = existing_toseg["tosegment"].astype(int).to_numpy()
+    if len(gpkg_vals) != len(existing_vals):
+        print(
+            f"WARNING: tosegment length mismatch — geopackage has {len(gpkg_vals)} "
+            f"segments, existing tosegment.csv has {len(existing_vals)}. "
+            "tosegment_nhm is written from the geopackage values."
+        )
+    else:
+        n_diff = int((gpkg_vals != existing_vals).sum())
+        if n_diff:
+            print(
+                f"WARNING: tosegment differs from existing tosegment.csv in "
+                f"{n_diff} of {len(gpkg_vals)} segments. tosegment_nhm is written "
+                "from the geopackage values; check which routing is authoritative."
+            )
+        else:
+            print("tosegment check: geopackage routing matches existing tosegment.csv.")
+else:
+    print(
+        f"Note: no existing tosegment.csv at {existing_toseg_path} to cross-check; "
+        "tosegment_nhm written from geopackage values."
+    )
+
+tosegment_nhm_out = pd.DataFrame({
+    "$id": toseg_sorted["model_seg_idx"].astype(int),
+    "tosegment_nhm": toseg_sorted["tosegment"].astype(int),
+})
+tosegment_nhm_out.to_csv(created_params_dir / "tosegment_nhm.csv", index=False)
+print(f"Wrote tosegment_nhm.csv: {len(tosegment_nhm_out)} rows (copy of tosegment, NHM index == local index)")
+
 print(f"\nAll files written to {created_params_dir}")
+
+# %% [markdown]
+# ## Segment geometry parameters: `seg_length`, `seg_lat`, `seg_lon`
+#
+# These three are read directly from the geometry of the `nsegment` layer, not
+# computed from the reference flowlines, so they live with the segment workflow.
+#
+# | Parameter | Derivation | Units |
+# |-----------|-----------|-------|
+# | `seg_length` | Length of each segment's line geometry in the projected CRS (EPSG:5070, meters). Equivalent to the layer's `lengthkm` field times 1000. | meters |
+# | `seg_lat` | Latitude of each segment's **midpoint** — the point at 50% of the line's length (`interpolate(0.5, normalized=True)`), reprojected to geographic coordinates (EPSG:4326). | degrees North |
+# | `seg_lon` | Longitude of the same midpoint, in EPSG:4326. | degrees East |
+#
+# The midpoint (not the centroid) is used for `seg_lat`/`seg_lon`: for a curved
+# or multi-part flowline the centroid can fall off the line, while the midpoint
+# is always on it. Against the existing reference `seg_lat`/`seg_lon` the
+# midpoint reproduces the values to within ~0.001 degrees on average, whereas
+# the centroid is off by an order of magnitude more.
+#
+# All three are written in paramdb `$id,<param>` format, sorted ascending by
+# `model_seg_idx` (1..N), so rows align with the other segment parameters.
+
+# %%
+# Work in the projected CRS (EPSG:5070, meters) for length and the planar
+# midpoint, then reproject the midpoint to EPSG:4326 for lat/lon.
+seg_geom_src = seg_v2_proj.sort_values("model_seg_idx").reset_index(drop=True)
+
+seg_length_m = seg_geom_src.geometry.length
+
+seg_midpoints = seg_geom_src.geometry.interpolate(0.5, normalized=True)
+seg_mid_4326 = gpd.GeoSeries(seg_midpoints, crs=crs_proj).to_crs(epsg=4326)
+
+seg_ids = seg_geom_src["model_seg_idx"].astype(int)
+
+seg_length_out = pd.DataFrame({"$id": seg_ids, "seg_length": seg_length_m.values})
+seg_length_out.to_csv(created_params_dir / "seg_length.csv", index=False)
+print(
+    f"Wrote seg_length.csv: {len(seg_length_out)} rows, "
+    f"range: {seg_length_out['seg_length'].min():.2f} - {seg_length_out['seg_length'].max():.2f} m"
+)
+
+seg_lat_out = pd.DataFrame({"$id": seg_ids, "seg_lat": seg_mid_4326.y.values})
+seg_lat_out.to_csv(created_params_dir / "seg_lat.csv", index=False)
+print(
+    f"Wrote seg_lat.csv: {len(seg_lat_out)} rows, "
+    f"range: {seg_lat_out['seg_lat'].min():.4f} - {seg_lat_out['seg_lat'].max():.4f} N"
+)
+
+seg_lon_out = pd.DataFrame({"$id": seg_ids, "seg_lon": seg_mid_4326.x.values})
+seg_lon_out.to_csv(created_params_dir / "seg_lon.csv", index=False)
+print(
+    f"Wrote seg_lon.csv: {len(seg_lon_out)} rows, "
+    f"range: {seg_lon_out['seg_lon'].min():.4f} - {seg_lon_out['seg_lon'].max():.4f} E"
+)
 
 # %% [markdown]
 # ## Map: all computed segment parameters
@@ -829,6 +926,14 @@ param_sources = {
     + " (layer=nsegment routing + waterbody polygons; default 0.2, 0.0 for waterbody/outlet segments)",
     "segment_type": str(v2_gpkg_path)
     + " (layer=nsegment routing + waterbody polygons; 0=segment,1=headwater,2=lake,5=outbound)",
+    "tosegment_nhm": str(v2_gpkg_path)
+    + " (layer=nsegment to_segment; copy of tosegment, NHM index == local index for OHM)",
+    "seg_length": str(v2_gpkg_path)
+    + " (layer=nsegment line length in EPSG:5070, meters)",
+    "seg_lat": str(v2_gpkg_path)
+    + " (layer=nsegment line midpoint latitude, EPSG:4326)",
+    "seg_lon": str(v2_gpkg_path)
+    + " (layer=nsegment line midpoint longitude, EPSG:4326)",
 }
 
 log_path = created_params_dir / "segment_params_log.csv"

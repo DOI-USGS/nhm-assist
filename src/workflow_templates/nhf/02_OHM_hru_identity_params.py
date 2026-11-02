@@ -110,6 +110,17 @@ con.print(
 )
 
 # %% [markdown]
+# ## `hru_segment_nhm` — NHM-global-index copy of `hru_segment`
+#
+# `hru_segment_nhm` is the NHM-wide-index version of `hru_segment`. OHM is a
+# stand-alone derived fabric with no separate national indexing, so the NHM
+# index equals the local index and this is a direct copy of `hru_segment`.
+
+# %%
+write_param_csv(hru_segment, "hru_segment_nhm", ids)
+con.print("[green]wrote[/] hru_segment_nhm.csv  (copy of hru_segment)")
+
+# %% [markdown]
 # ## `hru_area` — HRU area in acres
 #
 # The geopackage value is in km^2; PRMS wants acres.
@@ -206,7 +217,7 @@ con.print(f"[green]wrote[/] hru_type.csv  (all = 1)")
 # %%
 con.print("\n[bold]HRU identity/geometry parameters written to:[/]")
 con.print(f"  [cyan]{out_dir}[/]")
-con.print(["nhm_id", "hru_segment", "hru_area", "hru_lat", "hru_lon", "hru_type"])
+con.print(["nhm_id", "hru_segment", "hru_segment_nhm", "hru_area", "hru_lat", "hru_lon", "hru_type"])
 
 # %% [markdown]
 # ## Write a provenance log
@@ -223,6 +234,7 @@ import datetime as _dt
 param_sources = {
     "nhm_id": str(source_gpkg) + " (layer=nhru, column=hru_id)",
     "hru_segment": str(source_gpkg) + " (layer=nhru, column=hru_segment)",
+    "hru_segment_nhm": "copy of hru_segment (NHM index == local index for OHM)",
     "hru_area": str(rich_area_path) + " (column=hru_area, m^2 -> acres)",
     "hru_lat": str(source_gpkg) + " (layer=nhru, polygon centroid -> EPSG:4326)",
     "hru_lon": str(source_gpkg) + " (layer=nhru, polygon centroid -> EPSG:4326)",

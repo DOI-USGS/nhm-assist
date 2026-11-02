@@ -357,8 +357,9 @@ radadj_intcp = 1.0
 radadj_slope_val = 0.02
 
 # Load tmax_allsnow and tmax_allrain_offset
-tmax_allsnow_df = pd.read_csv(output_dir / "tmax_allsnow.csv")
-tmax_allrain_offset_df = pd.read_csv(output_dir / "tmax_allrain_offset.csv")
+tmax_allstar_dir = "D:/nhm-workspace/Oregon_Recharge/fabrics/OHM_2026_02_21/param_source_files_2026_10_23/tmax_allstar_params"
+tmax_allsnow_df = pd.read_csv(f"{tmax_allstar_dir}/tmax_allsnow.csv")
+tmax_allrain_offset_df = pd.read_csv(f"{tmax_allstar_dir}/tmax_allrain_offset.csv")
 
 # Reshape (nhru x 12)
 tmax_allsnow_vals = tmax_allsnow_df["tmax_allsnow"].values.reshape((nhru, 12))
