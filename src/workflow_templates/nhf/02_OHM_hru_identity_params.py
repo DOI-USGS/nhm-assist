@@ -1,17 +1,19 @@
 # %% [markdown]
-# # GFv2r2 CONUS — HRU identity & geometry parameters to standalone CSVs
+# # OHM derived modelling fabric — HRU identity & geometry parameters to standalone CSVs
 #
 # This workflow derives the HRU identity and geometry PRMS parameters directly
-# from the gfv2r2 geopackage `nhru` layer and writes one standalone
-# `$id,<param>` CSV per parameter into the fabric `param_source_files` folder.
+# from the OHM derived modelling fabric geopackage `nhru` layer and writes one
+# standalone `$id,<param>` CSV per parameter into the fabric
+# `param_source_files` folder.
 #
 # These are not model-fit values — they come straight from the fabric geometry
-# and its national indexing:
+# and its indexing:
 #
 # | Parameter | Source | Notes |
 # |-----------|--------|-------|
 # | `nhm_id` | `nat_hru_id` | The national HRU id; the fabric-wide HRU index |
 # | `hru_segment` | `hru_segment` column | Downstream segment (0 = drains to ocean) |
+# | `hru_segment_nhm` | copy of `hru_segment` | NHM-global-index version; equals `hru_segment` for this stand-alone derived fabric |
 # | `hru_area` | `hru_area` column | Geopackage is km^2; PRMS wants acres (x 247.105) |
 # | `hru_lat` | polygon centroid | Latitude, degrees North (EPSG:4326) |
 # | `hru_lon` | polygon centroid | Longitude, degrees East (EPSG:4326) |
@@ -21,8 +23,8 @@
 # the layer / geometry is in km^2 and centroids must be reprojected to
 # geographic coordinates for `hru_lat`/`hru_lon`.
 #
-# Like the other gfv2r2 parameter workflows, this only fills gaps: any output
-# CSV that already exists is left untouched.
+# Like the other OHM derived modelling fabric parameter workflows, this only
+# fills gaps: any output CSV that already exists is left untouched.
 
 # %%
 import pathlib as pl
