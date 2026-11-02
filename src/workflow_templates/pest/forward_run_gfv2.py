@@ -1013,6 +1013,15 @@ _bins_5day = pd.to_datetime(
 seg_outflow_5day = seg_outflow_5day.sel(time=_bins_5day)
 seg_outflow_5day = seg_outflow_5day.fillna(-9999)
 
+# Put the array in (poi_gages, time) order so the C-order ravel below iterates
+# gage-outer/time-inner -- the SAME layout the obs side uses in notebook 01,
+# whose source (cdat_5day_cal["discharge"]) is already (poi_gage_id, time). The
+# daily seg_outflow arrives (time, poi_gages); without this transpose the
+# C-ravel runs time-outer/gage-inner and mis-assigns every 5-day value to the
+# wrong gage/date name (modelobs.dat then desyncs from allobs.dat positionally).
+seg_outflow_5day = seg_outflow_5day.transpose('poi_gages', 'time')
+assert seg_outflow_5day.dims == ('poi_gages', 'time'), seg_outflow_5day.dims
+
 # outer loop gage, inner loop time; C-order ravel -- matching notebook 01.
 inds = [f'{i.year}_{i.month}_{i.day}:{j}' for j in seg_outflow_5day['poi_gages'].values for i in seg_outflow_5day.indexes['time']]
 varvals = np.ravel(seg_outflow_5day, order = 'C')# flattens the 2D array to a 1D array

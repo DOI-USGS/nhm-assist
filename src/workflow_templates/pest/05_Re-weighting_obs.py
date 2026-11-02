@@ -175,16 +175,16 @@ num_reals = pst.pestpp_options["ies_num_reals"]
 
 # %%
 phi_new_comps = {
-    "actet_mean_mon": 0.08,
-    "recharge_ann": 0.08,
-    "runoff_mon": 0.08,
-    "swe_monthly": 0.12,
-    "soil_moist_ann": 0.08,
-    "soil_moist_mean_mon": 0.08,
+    "actet_mean_mon": 0.04,
+    "recharge_ann": 0.04,
+    "runoff_mon": 0.04,
+    "swe_monthly": 0.08,
+    "soil_moist_ann": 0.04,
+    "soil_moist_mean_mon": 0.04,
     "streamflow_mon": 0.12,
     "streamflow_mean_mon": 0.12,
-    "scnd": 0.12,
-    "_low": 0.12,
+    "scnd": 0.22,
+    "_low": 0.26,
 }
 
 # %%

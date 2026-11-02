@@ -917,7 +917,9 @@ RCH_all = xr.open_dataset(baselines_dir / "recharge_targets.nc", chunks="auto")
 # calendar year label 2003, so both sides select the same recharge years.
 c_da = (
     RCH_all.sel(
-        time=np.isin(_year_labels(RCH_all["time"], water_years=False), recharge_cal_years)
+        time=np.isin(
+            _year_labels(RCH_all["time"], water_years=False), recharge_cal_years
+        )
     )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
@@ -1019,7 +1021,9 @@ SOM_ann_all
 # %%
 c_da = (
     SOM_ann_all.sel(
-        time=np.isin(_year_labels(SOM_ann_all["time"], water_years), soil_rechr_cal_years)
+        time=np.isin(
+            _year_labels(SOM_ann_all["time"], water_years), soil_rechr_cal_years
+        )
     )
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
@@ -1168,6 +1172,12 @@ SM_plot.close()
 # %% [markdown]
 # ## Subset and pre-process Daily Snow Water Equivalent (SWE)
 #
+# > **2026-10-27 — SWE ensemble now excludes `margulis_wus_sr`.** The ensemble
+# > mean, bounds, and `n_sources` are rebuilt from `snodas`, `era5_land`, and
+# > `ua_swe` only, because the Margulis layer was mis-sampled for this domain
+# > (impossible low-elevation summer snow). See the dated note and
+# > `_rebuild_swe_ensemble(...)` just below for details.
+#
 # Three SWE products are written from the daily `swe_targets.nc` baseline, all
 # restricted to the **calibration years** (odd years; even years are held out
 # for validation):
@@ -1197,11 +1207,79 @@ SM_plot.close()
 #   After resampling we still mask to the calibration years to drop the empty
 #   validation-year bins that resample creates across the year gaps.
 
+# %% [markdown]
+# #### 2026-10-27 — drop the `margulis_wus_sr` source from the SWE ensemble
+#
+# **Change (2026-10-27):** the SWE ensemble is now rebuilt from three of the
+# four source grids — `snodas`, `era5_land`, `ua_swe` — **excluding
+# `margulis_wus_sr`**, before any subset/resample/write below.
+#
+# **Why.** Prior-data-conflict triage on the Sandy River calibration traced the
+# dominant SWE conflict to physically impossible snow in `swe_targets.nc`:
+# a subset of HRUs (e.g. nhm_id 7305 @261 m, 7346 @85 m, 7306 @349 m,
+# 11845 @395 m) carried tens of inches of **summer** SWE at low elevation. Per
+# source, `snodas`, `era5_land`, and `ua_swe` all correctly read ~0 in summer at
+# those HRUs, while `margulis_wus_sr` alone read 30-140 in — including at a
+# genuine high-elevation control HRU that the other three melt out. That is a
+# grid->HRU registration/sampling defect in the Margulis layer for this domain,
+# not a real signal. Because the upstream `ensemble_mean` is a straight 4-source
+# average (and `lower_bound`/`upper_bound` are the min/max envelope across
+# sources), the one bad source corrupted the mean and the bounds.
+#
+# **What is recomputed** (over the 3 kept sources, element-wise in time x HRU):
+# `ensemble_mean` = nanmean, `ensemble_std` = nanstd, `lower_bound` = nanmin,
+# `upper_bound` = nanmax, `n_sources` = count of non-NaN sources — matching the
+# upstream definitions verified against `swe_targets.nc`. The `margulis_wus_sr`
+# variable itself is dropped from the written products.
+#
+# This is applied once via `_rebuild_swe_ensemble(...)` immediately after each
+# `swe_targets.nc` read, so `SWE.nc`, `SWE_monthly.nc`, and `SWE_5day_avg.nc`
+# all inherit the corrected ensemble. If the Margulis sampling is fixed upstream
+# later, revert by restoring the four-source list / removing this call.
+
+# %%
+# SWE ensemble sources to KEEP. margulis_wus_sr is excluded (see note above).
+SWE_ENSEMBLE_SOURCES = ["snodas", "era5_land", "ua_swe"]
+SWE_DROP_SOURCES = ["margulis_wus_sr"]
+
+
+def _rebuild_swe_ensemble(ds, keep=SWE_ENSEMBLE_SOURCES, drop=SWE_DROP_SOURCES):
+    """Recompute ensemble_mean/std, lower/upper_bound, n_sources from the KEPT
+    SWE source grids only, and drop the excluded source variable(s).
+
+    Replicates the upstream swe_targets.nc definitions (verified 2026-10-27):
+      ensemble_mean = nanmean(sources), ensemble_std = nanstd(sources),
+      lower_bound   = nanmin(sources),  upper_bound  = nanmax(sources),
+      n_sources     = count of non-NaN sources.
+    Sources are stacked on a temporary 'source' dim; all share (time, hru_id).
+    Only sources actually present are used, so this is a no-op-safe guard if a
+    grid is missing. Returns a new dataset; the input is not modified in place.
+    """
+    present = [s for s in keep if s in ds.data_vars]
+    if not present:
+        raise ValueError(
+            f"None of the kept SWE sources {keep} are present in the dataset "
+            f"(found data_vars: {list(ds.data_vars)})."
+        )
+    stacked = ds[present].to_array("source")
+    out = ds.copy()
+    out["ensemble_mean"] = stacked.mean("source", skipna=True)
+    out["ensemble_std"] = stacked.std("source", skipna=True)
+    out["lower_bound"] = stacked.min("source", skipna=True)
+    out["upper_bound"] = stacked.max("source", skipna=True)
+    out["n_sources"] = stacked.notnull().sum("source").astype("int8")
+    # Drop the excluded source grid(s) so they do not propagate to the products.
+    out = out.drop_vars([v for v in drop if v in out.data_vars])
+    return out
+
+
 # %%
 # Read the raw data set.
 # SWE.nc: filter the DAILY series to the calibration years (no binning here, so
 # there are no resample year-boundary effects to worry about).
 SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
+# 2026-10-27: rebuild the ensemble from the 3 kept sources (drop margulis_wus_sr).
+SWE_daily = _rebuild_swe_ensemble(SWE_daily)
 c_da_swe = (
     SWE_daily.sel(
         time=np.isin(_year_labels(SWE_daily["time"], water_years), swe_cal_years)
@@ -1237,6 +1315,9 @@ SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
 # years, yields only the intended months.
 
 
+# 2026-10-27: rebuild the ensemble from the 3 kept sources (drop margulis_wus_sr)
+# BEFORE the monthly resample, so the monthly mean/bounds exclude the bad source.
+SWE_daily = _rebuild_swe_ensemble(SWE_daily)
 SWE_monthly = SWE_daily.resample(time="1ME").mean()
 c_da_mo = (
     SWE_monthly.sel(
@@ -1265,6 +1346,8 @@ c_da_mo.close()
 # years must be masked out explicitly.
 
 SWE_daily = xr.open_dataset(baselines_dir / "swe_targets.nc", chunks="auto")
+# 2026-10-27: rebuild the ensemble from the 3 kept sources (drop margulis_wus_sr).
+SWE_daily = _rebuild_swe_ensemble(SWE_daily)
 c_da_swe = (
     SWE_daily.sel(
         time=np.isin(_year_labels(SWE_daily["time"], water_years), swe_cal_years)

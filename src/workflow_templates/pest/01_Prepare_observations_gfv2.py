@@ -1025,7 +1025,7 @@ cdat = cdat.sel(
 )  # drop months July, August, and September
 
 
-def _reduce_month_series(values, times, rel_tol=0.20):
+def _reduce_month_series(values, times, rel_tol=0.08):
     """Reduce one HRU-month's ordered 5-day series to the meaningful highs/lows.
 
     Steps:
@@ -1404,7 +1404,9 @@ cdat = cdat[["discharge", "efc", "high_low"]]
 # 1-2 days from the following validation (even) year. Masking the daily series
 # first guarantees every 5-day calibration value is built only from calibration
 # -year days. (cdat itself is left intact for the monthly/validation outputs.)
-cdat_cal_daily = cdat.sel(time=np.isin(_year_labels(cdat["time"], water_years), cal_years))
+cdat_cal_daily = cdat.sel(
+    time=np.isin(_year_labels(cdat["time"], water_years), cal_years)
+)
 
 # Discharge: 5-day resample mean — do not skip NaN so incomplete bins produce NaN
 cdat_5day_discharge = cdat_cal_daily["discharge"].resample(time="5D").mean(skipna=False)

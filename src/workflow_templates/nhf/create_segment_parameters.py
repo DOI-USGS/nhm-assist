@@ -58,9 +58,9 @@ from shapely.ops import substring
 # %%
 ref_flowline_path = pl.Path(r"D:\reference_flowline.gpkg")
 v2_gpkg_path = pl.Path(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\GIS\model_layers.gpkg"
+    r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\GIS\model_layers.gpkg"
 )
-out_dir = pl.Path(r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files")
+out_dir = pl.Path(r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\param_source_files_2026_10_23\segment_params")
 out_dir.mkdir(parents=True, exist_ok=True)
 
 # %% [markdown]
@@ -198,7 +198,7 @@ print(f"Saved COMID crosswalk to {out_dir / 'ohm_seg_to_comid_crosswalk.csv'}")
 # %% [markdown]
 # ## Map: v2 segments with/without COMID associations
 
-# %% jupyter={"source_hidden": true}
+# %%
 # import folium
 
 # # Determine which v2 segments have COMIDs
@@ -376,10 +376,11 @@ print(f"{agg['in_waterbody'].sum()} OHM segments have >50% of length inside NHD 
 
 # %%
 # Compute x_coef: default 0.2, set to 0.0 for waterbody segments and outlet segments (tosegment=0)
-toseg_df = pd.read_csv(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\param_source_files\tosegment.csv"
-)
-toseg_df.rename(columns={"$id": "model_seg_idx"}, inplace=True)
+# Read routing (tosegment) from the nsegment layer of the model geopackage.
+# The layer stores the downstream segment as "to_segment"; rename it to
+# "tosegment" to match the rest of this notebook.
+toseg_df = seg_v2_gdf[["model_seg_idx", "to_segment"]].copy()
+toseg_df.rename(columns={"to_segment": "tosegment"}, inplace=True)
 
 agg = agg.drop(columns=["tosegment"], errors="ignore")
 agg = agg.merge(toseg_df[["model_seg_idx", "tosegment"]], on="model_seg_idx", how="left")
@@ -518,7 +519,7 @@ if missing_bankfull:
 
 # %%
 created_params_dir = pl.Path(
-    r"D:\nhm-assist\nhf_assist\hydrofabric_domain_data\OHM_2026_02_21\created_seg_params"
+    r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\param_source_files_2026_10_23\segment_params"
 )
 created_params_dir.mkdir(parents=True, exist_ok=True)
 
@@ -633,7 +634,7 @@ print(f"\nAll files written to {created_params_dir}")
 # %% [markdown]
 # ## Map: all computed segment parameters
 
-# %% jupyter={"source_hidden": true}
+# %%
 import folium
 from branca.colormap import LinearColormap
 
@@ -653,7 +654,16 @@ bounds = seg_v2_all.total_bounds
 center_lat = (bounds[1] + bounds[3]) / 2
 center_lon = (bounds[0] + bounds[2]) / 2
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles="CartoDB positron")
+m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles=None)
+
+# Base layer: USGS Hydro cached tile service
+folium.TileLayer(
+    tiles="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}",
+    attr="USGS The National Map: Hydrography (NHD)",
+    name="USGS Hydro Cached",
+    overlay=False,
+    control=True,
+).add_to(m)
 
 folium.TileLayer(
     tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
@@ -753,19 +763,6 @@ folium.GeoJson(
     show=False,
 ).add_to(m)
 
-# USGS NHD Hydro WMS overlay
-folium.raster_layers.WmsTileLayer(
-    url="https://basemap.nationalmap.gov/arcgis/services/USGSHydroCached/MapServer/WMSServer",
-    layers="0",
-    fmt="image/png",
-    transparent=True,
-    name="USGS NHD Hydro",
-    overlay=True,
-    control=True,
-    show=False,
-    attr="USGS National Map - NHD",
-).add_to(m)
-
 # Layer: x_coef
 folium.GeoJson(
     seg_v2_all[["model_seg_idx", "x_coef", "geometry"]].to_json(),
@@ -797,6 +794,13 @@ cmap_mann.add_to(m)
 cmap_width.add_to(m)
 cmap_depth.add_to(m)
 folium.LayerControl().add_to(m)
-m
 
-# %%
+# Save the map to HTML and open it in a web browser instead of rendering inline.
+# The embedded GeoJSON for the full segment and reference-flowline network is large
+# enough to crash the editor's inline notebook renderer, so we view it in a browser.
+import webbrowser
+
+map_file = out_dir / "segment_parameters_map.html"
+m.save(str(map_file))
+print(f"Saved segment parameters map to: {map_file}")
+webbrowser.open(map_file.as_uri(), new=2)

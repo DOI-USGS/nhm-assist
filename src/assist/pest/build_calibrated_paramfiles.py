@@ -150,27 +150,68 @@ def discover_starting_param(
     return None
 
 
-def structural_param_from_json(run_dir: pl.Path, md, out_path: pl.Path) -> pl.Path:
-    """Build a starting ``.param`` from the run's own parameters.json.
+def _run_param_dataset(run_dir: pl.Path):
+    """Load the run's parameters.json as an xarray Dataset of parameter values.
 
-    Used when no matching external ``.param`` is found. parameters.json is the
-    full domain parameter set the forward run consumes, so it is a valid
-    structural base; calibrated parameters get overwritten afterward anyway.
+    Uses pywatershed (which reads the JSON the forward run consumes) and applies
+    the same two structural fix-ups forward_run.py does, so the parameter set
+    matches what the model actually ran:
+      - drop ``stream_tave_init`` if present
+      - add ``pref_flow_infil_frac`` (zeros) if missing
+
+    pywatershed is imported lazily so importing this module stays light.
     """
-    params = Parameters.from_json  # noqa -- probe attr existence for older pyPRMS
-    # pyPRMS has no direct json loader; go through pywatershed which does, then
-    # hand arrays to a fresh pyPRMS Parameters via ParameterFile is not possible.
-    # Simplest portable path: use pywatershed to load json, write nothing here,
-    # and let ParameterNetCDF/round-trip do it. To avoid a hard pywatershed dep
-    # at import time, do the import lazily.
-    import pywatershed as pws  # noqa
+    import pywatershed as pws
 
-    raise SystemExit(
-        "No matching .param found under the search root and automatic "
-        "json->param construction is not available in this environment. "
-        "Pass --starting-param pointing at a .param for this domain "
-        f"({len(_read_run_ids(run_dir)[0])} HRUs)."
-    )
+    pws_params = pws.parameters.PrmsParameters.load_from_json(run_dir / "parameters.json")
+    ds = pws_params.to_xr_ds()
+    if "stream_tave_init" in ds:
+        ds = ds.drop_vars("stream_tave_init")
+    if "pref_flow_infil_frac" not in ds and "pref_flow_den" in ds:
+        ds["pref_flow_infil_frac"] = ds["pref_flow_den"][:] * 0.0
+    return ds
+
+
+def overlay_run_values(pf: ParameterFile, run_ds) -> tuple[int, list[str]]:
+    """Overwrite every parameter in ``pf`` with the run's parameters.json value.
+
+    ``pf`` (built from a structural template ``.param``) supplies pyPRMS
+    structure, dimensions, and metadata; this replaces the *values* of every
+    parameter that also exists in the run's JSON, so non-calibrated parameters
+    reflect what the forward run actually used (e.g. non-zero tmax_cbh_adj /
+    tmin_cbh_adj) rather than possibly-stale template values. Calibrated
+    parameters are overwritten again afterward from the ensemble.
+
+    Arrays are oriented to the pyPRMS array's shape (handles the
+    (nmonth, nhru) <-> (nhru, nmonth) axis-order difference). Returns
+    (n_overwritten, names_not_in_json).
+    """
+    overwritten = 0
+    missing: list[str] = []
+    # names the template knows about
+    try:
+        names = list(pf.parameters.keys())
+    except AttributeError:
+        names = [p.name for p in pf.parameters.values()]
+    for name in names:
+        if name not in run_ds:
+            missing.append(name)
+            continue
+        cur = pf.get(name)
+        tgt = np.asarray(cur.data)
+        src = np.asarray(run_ds[name].values)
+        if src.shape != tgt.shape and src.T.shape == tgt.shape:
+            src = src.T
+        if src.shape != tgt.shape:
+            # scalar vs 1-elem, or genuine mismatch: try ravel if sizes match
+            if src.size == tgt.size:
+                src = src.reshape(tgt.shape)
+            else:
+                missing.append(f"{name}(shape {src.shape}!={tgt.shape})")
+                continue
+        cur.data = src.astype(tgt.dtype)
+        overwritten += 1
+    return overwritten, missing
 
 
 # --------------------------------------------------------------------------- #
@@ -358,8 +399,12 @@ def build_param_files(
     total-phi and lowest single-group realization coincide).
 
     ``iteration=None`` auto-detects the final iteration. Each output file is a
-    complete PRMS parameter set: calibrated parameters take the realization's
-    values, everything else is carried from ``starting_param``.
+    complete PRMS parameter set whose values come from the run's own
+    ``parameters.json`` (what the forward run consumed), with the calibrated
+    parameters then overwritten by the realization's ensemble values. The
+    ``starting_param`` template supplies only pyPRMS structure, dimensions, and
+    metadata -- NOT values -- so a stale template cannot leak wrong values
+    (e.g. zeroed tmax_cbh_adj) into the output.
     """
     run_dir = pl.Path(run_dir)
     starting_param = pl.Path(starting_param)
@@ -371,6 +416,7 @@ def build_param_files(
     md = MetaData().metadata
     _assert_domain_match(run_dir, starting_param, md)
     ens = _load_ensemble(run_dir, case, iteration)
+    run_ds = _run_param_dataset(run_dir)  # authoritative values from parameters.json
 
     pairs = list(targets.items()) if isinstance(targets, dict) else list(targets)
 
@@ -382,6 +428,15 @@ def build_param_files(
         real_vals = ens.loc[real_id].astype(float)
 
         pf = ParameterFile(str(starting_param), metadata=md)  # fresh per realization
+        # 1) overlay ALL values from the run's parameters.json (non-calibrated
+        #    params thus match the actual run, not the template).
+        n_over, missing = overlay_run_values(pf, run_ds)
+        print(f"    overlaid {n_over} parameter(s) from parameters.json")
+        if missing:
+            print(f"    note: {len(missing)} template param(s) not in json "
+                  f"(kept template value): {', '.join(missing[:8])}"
+                  + (" ..." if len(missing) > 8 else ""))
+        # 2) overwrite the calibrated params with this realization's values.
         n, nparams = _place_values(pf, real_vals)
         print(f"    placed {n} calibrated values across {nparams} parameters")
 
@@ -418,9 +473,13 @@ def _resolve_targets(args, run_dir: pl.Path, case: str, iteration: int) -> dict:
     # list of pairs so the group winner can share a realization with the total
     # winner yet still get its own group-named file.
     targets: list[tuple[str, str]] = []
-    ranked = pick_realizations(run_dir, case, iteration, n=50)
-    if "base" in ranked.index:
+    # Always export base when the run has one, regardless of its phi rank.
+    # (base can rank well below the lowest-phi members, so don't gate it on
+    # appearing in a top-N slice.)
+    ens = _load_ensemble(run_dir, case, iteration)
+    if "base" in ens.index:
         targets.append(("base", "myparam_base.param"))
+    ranked = pick_realizations(run_dir, case, iteration, n=50)
     nonbase = [r for r in ranked.index if r != "base"]
     if nonbase:
         targets.append((nonbase[0], "myparam_lowest_nonbase.param"))

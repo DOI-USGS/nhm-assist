@@ -386,3 +386,6 @@ pyemu.os_utils.run(
 
 # %%
 pst.control_data.noptmax = 3  # set to 3 so its ready for HW run
+pst.write(
+    os.path.join(pestpp_model_dir, "prior_mc_reweight_obs+noise_mod.pst"), version=2
+)
