@@ -142,7 +142,32 @@ def load_basin_and_hrus(gis_path: pl.Path, run: pl.Path, buffer_km: float):
     lon_min, lat_min, lon_max, lat_max = buffered.total_bounds
     bbox = (float(lon_min), float(lat_min), float(lon_max), float(lat_max))
 
-    pj = json.load(open(run / "parameters.json"))
+    # HRU elevation + nhm_id source. Prefer parameters.json when present (the
+    # pestpp run dir had one); otherwise read them from the PRMS parameter file
+    # myparam.param that the runtime dir provides. Either way pj carries
+    # "hru_elev" and "nhm_id", preserving this function's return contract.
+    pj_path = run / "parameters.json"
+    if pj_path.exists():
+        pj = json.load(open(pj_path))
+    else:
+        param_path = run / "myparam.param"
+        if not param_path.exists():
+            raise FileNotFoundError(
+                f"Neither parameters.json nor myparam.param found in {run}; "
+                "cannot obtain hru_elev / nhm_id."
+            )
+        from pyPRMS import ParameterFile
+        from pyPRMS.metadata.metadata import MetaData
+        _pdb = ParameterFile(param_path, metadata=MetaData().metadata, verbose=False)
+        pj = {
+            "hru_elev": np.asarray(_pdb.get("hru_elev").data, dtype=float).tolist(),
+            "nhm_id": np.asarray(_pdb.get("nhm_id").data, dtype=int).tolist(),
+            # hru_lat/hru_lon feed the nearest-latlon fallback in station_to_hru
+            # (used for stations inside the buffer but outside every HRU polygon).
+            "hru_lat": np.asarray(_pdb.get("hru_lat").data, dtype=float).tolist(),
+            "hru_lon": np.asarray(_pdb.get("hru_lon").data, dtype=float).tolist(),
+        }
+        print(f"  HRU elev/nhm_id source: {param_path.name} (no parameters.json)")
 
     # verify positional identity: nhru ordered by hru_id has nhm_id == pj nhm_id
     nhru_sorted = nhru.sort_values("hru_id").reset_index(drop=True)
@@ -526,20 +551,35 @@ def winter_mean(series: pd.Series):
     return (float(win.mean()) if len(win) else np.nan), int(len(win))
 
 
+def month_mean(series: pd.Series, month: int):
+    """Mean of the series over a single calendar month, plus the day count.
+    Mirrors winter_mean but for one month (used to build the per-month lapse
+    curves)."""
+    s = series.dropna()
+    if s.empty:
+        return np.nan, 0
+    sm = s[s.index.month == month]
+    return (float(sm.mean()) if len(sm) else np.nan), int(len(sm))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--run-dir", type=pl.Path,
-                    default=pl.Path("D:/test_hw_calibration_results/Sandy_beta4"))
+    # Driver source: the SandyRiver runtime dir (freshly repulled GridMET
+    # drivers). Deliberately NOT the pestpp calibration run dir — that directory
+    # is off-limits as a source for this analysis.
+    _runtime = pl.Path("D:/nhm-workspace/Oregon_Recharge/models/"
+                       "SandyRiver/outputs/runtime")
+    ap.add_argument("--run-dir", type=pl.Path, default=_runtime)
     ap.add_argument("--gis", type=pl.Path,
-                    default=pl.Path("D:/nhm-workspace/Oregon_Recharge/models/"
-                                    "SandyRiver/inputs/source_data/GIS/model_layers.gpkg"))
+                    default=_runtime / "GIS" / "model_layers.gpkg")
     ap.add_argument("--weights", type=pl.Path,
-                    default=pl.Path("D:/nhm-workspace/Oregon_Recharge/models/"
-                                    "SandyRiver/inputs/source_data/nhru_weights_gridmet.csv"))
+                    default=_runtime / "nhru_weights_gridmet.csv")
+    # All artifacts (summary CSV, monthly-lapse CSV, HTML, station cache) are
+    # model-specific, so they live in a subdirectory of the model's runtime dir
+    # rather than a shared scratch path. Portable: each model run writes its own.
     ap.add_argument("--out-dir", type=pl.Path,
-                    default=pl.Path("d:/nhm-assist/.agents/tasks/"
-                                    "gridmet-warm-bias-verification"))
+                    default=_runtime / "gridmet_warm_bias")
     ap.add_argument("--buffer-km", type=float, default=15.0)
     ap.add_argument("--wy-start", type=int, default=2010)
     ap.add_argument("--wy-end", type=int, default=2021)
@@ -619,6 +659,7 @@ def main(argv=None) -> int:
 
     # --- per-station loop ---
     rows = []
+    monthly_obs_rows = []  # (station, month) observed means for monthly lapse
     n_live_gridmet = 0
     n_raw_approx = 0
     print("Collocating and pulling daily series per station ...")
@@ -678,6 +719,20 @@ def main(argv=None) -> int:
 
         obs_winter_tmax, _ = winter_mean(obs["tmax_obs"])
         obs_winter_tmin, _ = winter_mean(obs["tmin_obs"])
+
+        # Per-month observed means for this station (used to build the monthly
+        # observed lapse curves). One record per (station, month) that has at
+        # least a month's worth of days, carrying the station elevation.
+        elev_m = float(st["elevation_m"]) if pd.notna(st["elevation_m"]) else np.nan
+        if np.isfinite(elev_m):
+            for _mo in range(1, 13):
+                otx, n_otx = month_mean(obs["tmax_obs"], _mo)
+                otn, n_otn = month_mean(obs["tmin_obs"], _mo)
+                monthly_obs_rows.append({
+                    "station_id": sid, "month": _mo, "elevation_m": elev_m,
+                    "obs_tmax": otx, "n_tmax": n_otx,
+                    "obs_tmin": otn, "n_tmin": n_otn,
+                })
 
         rows.append({
             "station_id": sid, "triplet": st.get("triplet", ""),
@@ -740,6 +795,60 @@ def main(argv=None) -> int:
         obs_tmin_lapse_fit = regress(obs_tn_df["elevation_m"], obs_tn_df["obs_winter_tmin"])
         obs_tmin_lapse_ckm = (obs_tmin_lapse_fit["slope"] * 1000.0 * (5.0 / 9.0)
                               if np.isfinite(obs_tmin_lapse_fit["slope"]) else np.nan)
+
+    # --- MONTHLY lapse curves (observed + model, tmax & tmin) ---
+    # For each calendar month (1..12): the observed lapse is station month-mean
+    # obs-temp regressed on elevation; the model lapse is the per-HRU model
+    # driver month-mean regressed on hru_elev. Window = WY range (win_mask),
+    # same as the winter blocks. Produces a 12-row table the child-model
+    # tmax/tmin_cbh_adj workflow reads to build a per-month adjustment curve.
+    wt_all = model_time[win_mask]  # driver timestamps inside the analysis window
+    model_tmax_arr_win = model_tmax_win  # (ntime_win, nhru), already computed above
+    model_tmin_arr_win = model_tmin_win
+    monthly_obs_df = pd.DataFrame(monthly_obs_rows)
+
+    monthly_rows = []
+    for mo in range(1, 13):
+        # observed lapse this month (stations with >= MIN days that month)
+        o_tx = {"slope": np.nan, "r": np.nan, "n": 0}
+        o_tn = {"slope": np.nan, "r": np.nan, "n": 0}
+        if not monthly_obs_df.empty:
+            dmo = monthly_obs_df[monthly_obs_df["month"] == mo]
+            dtx = dmo.dropna(subset=["elevation_m", "obs_tmax"])
+            dtx = dtx[dtx["n_tmax"] >= 30]
+            o_tx = regress(dtx["elevation_m"], dtx["obs_tmax"])
+            dtn = dmo.dropna(subset=["elevation_m", "obs_tmin"])
+            dtn = dtn[dtn["n_tmin"] >= 30]
+            o_tn = regress(dtn["elevation_m"], dtn["obs_tmin"])
+
+        # model lapse this month: per-HRU model month-mean vs hru_elev
+        mo_mask = (wt_all.month == mo)
+        m_tx = {"slope": np.nan, "r": np.nan, "n": 0}
+        m_tn = {"slope": np.nan, "r": np.nan, "n": 0}
+        if mo_mask.any():
+            hru_mo_tmax = model_tmax_arr_win[mo_mask, :].mean(axis=0)
+            hru_mo_tmin = model_tmin_arr_win[mo_mask, :].mean(axis=0)
+            m_tx = regress(hru_elev_all, hru_mo_tmax)
+            m_tn = regress(hru_elev_all, hru_mo_tmin)
+
+        def _ckm(fit):
+            return (fit["slope"] * 1000.0 * (5.0 / 9.0)
+                    if np.isfinite(fit.get("slope", np.nan)) else np.nan)
+
+        monthly_rows.append({
+            "month": mo,
+            "obs_tmax_lapse_degC_per_km": _ckm(o_tx),
+            "obs_tmin_lapse_degC_per_km": _ckm(o_tn),
+            "model_tmax_lapse_degC_per_km": _ckm(m_tx),
+            "model_tmin_lapse_degC_per_km": _ckm(m_tn),
+            "obs_tmax_r": o_tx.get("r", np.nan),
+            "obs_tmin_r": o_tn.get("r", np.nan),
+            "n_stations": int(o_tx.get("n", 0)),
+        })
+    monthly_lapse_df = pd.DataFrame(monthly_rows)
+    monthly_csv = out_dir / "gridmet_temp_bias_monthly_lapse.csv"
+    monthly_lapse_df.to_csv(monthly_csv, index=False)
+    print(f"wrote {monthly_csv}")
 
     # --- bias vs elevation regressions (both collocation variants, tmax & tmin) ---
     def _bias_regression(col):
