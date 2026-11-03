@@ -419,7 +419,28 @@ for basin_layer in basin_layers:
                 )
             sel = sel[overlap_frac >= 0.5]
 
-            # Save selected HRU segment indices for segment selection below
+            # Override pass: child_models.shp assigns every parent HRU a
+            # basin_id, and that assignment is authoritative. The spatial
+            # (centroid + overlap) selection can miss a boundary HRU whose
+            # polygon lies mostly in this basin but whose centroid falls just
+            # across the line (e.g. SandyRiver HRU nhm_id 7260). Re-add any HRU
+            # whose basin_id is this child, joining child_models.fid_1 to the
+            # parent nhru nhm_id. All other child_models columns are ignored:
+            # fid_1 -> nhm_id is the only reliable key between the two files.
+            assigned = gdf_child_models[gdf_child_models["basin_id"] == basin_id]
+            assigned_nhm_ids = set(assigned["fid_1"].dropna().astype("int64"))
+            override = src_gdf[src_gdf["nhm_id"].astype("int64").isin(assigned_nhm_ids)]
+            readded = override[~override["nhm_id"].isin(sel["nhm_id"])]
+            if len(readded) > 0:
+                print(
+                    f"  Re-added {len(readded)} HRUs by basin_id assignment: "
+                    f"nhm_id={sorted(readded['nhm_id'].tolist())}"
+                )
+            sel = pd.concat([sel, readded]).drop_duplicates(subset="nhm_id")
+
+            # Save selected HRU segment indices for segment selection below.
+            # Computed after the override so segments for re-added HRUs
+            # (via their hru_segment) are picked up by the nsegment branch.
             child_hru_segments = set(sel["hru_segment"].unique())
 
         elif src_layer == "nsegment":

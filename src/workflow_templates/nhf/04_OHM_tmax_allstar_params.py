@@ -409,3 +409,57 @@ allrain_offset_grid = read_param_csv_to_grid(
 
 make_tmax_param_map("tmax_allsnow", allsnow_grid, hru_map_base)
 make_tmax_param_map("tmax_allrain_offset", allrain_offset_grid, hru_map_base)
+
+# %% [markdown]
+# ## Write a provenance log
+#
+# Record every tmax_allstar parameter CSV in the output directory with its
+# creation time and the source data it was derived from. The log is written next
+# to the parameter CSVs as `tmax_allstar_params_log.csv`.
+
+# %%
+import datetime as _dt
+
+_hrrr_source = (
+    "HRRR 3km hourly ("
+    + hrrr_start_date
+    + " to "
+    + hrrr_end_date
+    + ", TMP:2 m masked by CSNOW/CRAIN flags), NOAA/AWS Open Data "
+    + "(s3://noaa-hrrr-bdp-pds); area-weighted to HRUs via grid-to-HRU weights from "
+    + str(v2_gpkg_path)
+    + " (layer=nhru)"
+)
+
+# Source data (file path, or a description for derived values) for each
+# parameter this workflow produces.
+param_sources = {
+    "tmax_allsnow": _hrrr_source
+    + "; monthly all-snow temperature threshold in °F (nhru x 12)",
+    "tmax_allrain_offset": _hrrr_source
+    + "; monthly all-rain minus all-snow temperature offset in °F (nhru x 12)",
+}
+
+log_path = output_dir / "tmax_allstar_params_log.csv"
+
+log_rows = []
+for csv_path in sorted(output_dir.glob("*.csv")):
+    if csv_path.name == log_path.name:
+        continue
+    param = csv_path.stem
+    # Creation time on Windows is st_ctime; fall back to modified time elsewhere.
+    created = _dt.datetime.fromtimestamp(csv_path.stat().st_ctime)
+    log_rows.append(
+        {
+            "parameter": param,
+            "created": created.strftime("%Y-%m-%d %H:%M:%S"),
+            "source_data": param_sources.get(param, "unknown (no recorded source)"),
+            "file_path": str(csv_path),
+        }
+    )
+
+log_df = pd.DataFrame(log_rows, columns=["parameter", "created", "source_data", "file_path"])
+log_df.to_csv(log_path, index=False)
+
+print(f"\nProvenance log written to: {log_path}")
+print(log_df.to_string(index=False))

@@ -86,6 +86,9 @@
 #
 # ## Workflow Steps
 # 1. Read `carea_max`, `smidx_coef`, and `soil_moist_max` from param_source_files
+#    and clamp each to its valid parameter bound (floors `carea_max` and
+#    `smidx_coef` at 0.0001), which prevents the undefined `log10`/`0/0` that
+#    produced NaN `smidx_exp` for HRUs with a zero `carea_max` or `smidx_coef`
 # 2. Compute `ppt_max` per HRU from the precipitation climate driver (prcp.nc)
 # 3. Compute `smidx_max = 1.1 * soil_moist_max + 0.5 * ppt_max`
 # 4. Constrain `smidx_coef`: where `smidx_coef >= carea_max`, set to `0.99 * carea_max`
@@ -148,6 +151,33 @@ print(f"carea_max: {len(carea_max_df)} HRUs, range: {carea_max_df['carea_max'].m
 print(f"smidx_coef: {len(smidx_coef_df)} HRUs, range: {smidx_coef_df['smidx_coef'].min():.6f} - {smidx_coef_df['smidx_coef'].max():.6f}")
 print(f"soil_moist_max: {len(soil_moist_max_df)} HRUs, range: {soil_moist_max_df['soil_moist_max'].min():.6f} - {soil_moist_max_df['soil_moist_max'].max():.6f}")
 
+# Enforce valid parameter bounds BEFORE computing smidx_exp. These are the
+# project-wide param bounds (same values enforced in the gf params parsing
+# workflow); only the keys this notebook consumes are listed here. Clamping the
+# inputs first is what prevents the undefined log/0-division that otherwise
+# produced NaN smidx_exp for HRUs with carea_max == 0 or smidx_coef == 0 (e.g.
+# hru_id 94, 95). A zero carea_max/smidx_coef is physically invalid, so each is
+# floored to its minimum rather than left to propagate a NaN.
+param_bounds = {
+    "carea_max": (0.0001, 1.0),
+    "smidx_coef": (0.0001, None),
+    "soil_moist_max": (9.99e-06, 20.0),
+}
+for _df, _col in (
+    (carea_max_df, "carea_max"),
+    (smidx_coef_df, "smidx_coef"),
+    (soil_moist_max_df, "soil_moist_max"),
+):
+    _lo, _hi = param_bounds[_col]
+    _n = 0
+    if _lo is not None:
+        _n += int((_df[_col] < _lo).sum())
+        _df[_col] = _df[_col].clip(lower=_lo)
+    if _hi is not None:
+        _n += int((_df[_col] > _hi).sum())
+        _df[_col] = _df[_col].clip(upper=_hi)
+    print(f"  {_col}: clamped {_n} values to bounds {(_lo, _hi)}")
+
 # %% [markdown]
 # ## Step 2: Compute ppt_max per HRU
 # Maximum daily precipitation observed at each HRU from the climate driver NetCDF.
@@ -195,9 +225,8 @@ print(f"  Range: {smidx_max.min():.4f} - {smidx_max.max():.4f}")
 carea_max = carea_max_df["carea_max"].values
 smidx_coef = smidx_coef_df["smidx_coef"].values
 
-# Floor smidx_coef at a small value to avoid division by zero
-smidx_coef = np.where(smidx_coef == 0.0, 0.00000001, smidx_coef)
-
+# smidx_coef is already floored to its lower bound in Step 1, so the
+# former zero-floor here is no longer needed.
 # Constrain: smidx_coef must be < carea_max
 n_constrained = (smidx_coef >= carea_max).sum()
 smidx_coef = np.where(smidx_coef >= carea_max, 0.99 * carea_max, smidx_coef)

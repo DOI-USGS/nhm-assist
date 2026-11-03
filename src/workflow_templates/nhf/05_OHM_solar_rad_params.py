@@ -1197,3 +1197,72 @@ widgets.interact(show_jh_coef,
                                          readout_format="d"))
 
 # %%
+
+# %% [markdown]
+# ## Write a provenance log
+#
+# Record every solar-radiation / ET parameter CSV in the output directory with
+# its creation time and the source data it was derived from. The log is written
+# next to the parameter CSVs as `solar_rad_params_log.csv`.
+
+# %%
+import datetime as _dt
+
+_tmax_allstar_dir = r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\param_source_files_2026_10_23\tmax_allstar_params"
+_v11_paramdb = r"D:\nhm-assist\data_dependencies\NHM_v1_1\version1_1_params\paramdb_v1.1_gridmet_CONUS-master"
+_farns_zarr = "s3://mdmf/gdp/farnsworth_evaporation_atlas.zarr/ (USGS OSN)"
+_nrel_zarr = "s3://mdmf/gdp/nrel_solar_radiation.zarr/ (USGS OSN)"
+_model_gpkg = r"D:\nhm-workspace\Oregon_Recharge\fabrics\OHM_2026_02_21\GIS\model_layers.gpkg"
+
+# Source data (file path, or a description for derived values) for each
+# parameter this workflow produces.
+param_sources = {
+    "jh_coef_hru": str(climate_dir / "tmin.nc")
+    + " (minimum daily tmin in °F per HRU over the period of record)",
+    "soltab_potsw": "pywatershed.PRMSSolarGeometry.compute_soltab from "
+    + str(param_source_dir)
+    + " (hru_lat, hru_slope, hru_aspect); clear-sky potential solar radiation (366 x nhru)",
+    "soltab_horad_potsw": "pywatershed.PRMSSolarGeometry.compute_soltab from "
+    + str(param_source_dir)
+    + " (hru_lat, hru_slope, hru_aspect); horizontal clear-sky potential solar radiation (366 x nhru)",
+    "dday_intcp": _v11_paramdb
+    + " (NHM v1.1 CONUS paramdb monthly degree-day intercept; same value per month for all HRUs)",
+    "dday_slope": str(climate_dir)
+    + " (tmax, prcp) + "
+    + _nrel_zarr
+    + " + soltab_potsw + dday_intcp + "
+    + _tmax_allstar_dir
+    + " (tmax_allsnow, tmax_allrain_offset); monthly degree-day slope (nhru x 12)",
+    "jh_coef": str(climate_dir)
+    + " (tmax, tmin) + "
+    + _farns_zarr
+    + " (Farnsworth PET) + "
+    + _nrel_zarr
+    + " + jh_coef_hru + "
+    + _model_gpkg
+    + " (layer=nhru centroids); monthly Jensen-Haise ET coefficient (nhru x 12)",
+}
+
+log_path = output_dir / "solar_rad_params_log.csv"
+
+log_rows = []
+for csv_path in sorted(output_dir.glob("*.csv")):
+    if csv_path.name == log_path.name:
+        continue
+    param = csv_path.stem
+    # Creation time on Windows is st_ctime; fall back to modified time elsewhere.
+    created = _dt.datetime.fromtimestamp(csv_path.stat().st_ctime)
+    log_rows.append(
+        {
+            "parameter": param,
+            "created": created.strftime("%Y-%m-%d %H:%M:%S"),
+            "source_data": param_sources.get(param, "unknown (no recorded source)"),
+            "file_path": str(csv_path),
+        }
+    )
+
+log_df = pd.DataFrame(log_rows, columns=["parameter", "created", "source_data", "file_path"])
+log_df.to_csv(log_path, index=False)
+
+print(f"\nProvenance log written to: {log_path}")
+print(log_df.to_string(index=False))

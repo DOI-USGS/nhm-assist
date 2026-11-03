@@ -651,6 +651,15 @@ param_bounds = {
     # smidx_coef must be strictly positive; a zero coefficient is invalid, so
     # floor it at a small value.
     "smidx_coef": (0.0001, None),
+    "covden_win": (0.0, 0.9999),
+    "carea_max": (0.0001, 1),
+    "dprst_frac": (0.0, 0.9999),
+    "hru_percent_imperv": (0.0, 0.999),
+    "soil_moist_max": (9.99e-06, 20.0),
+    "sat_threshold": (9.99e-06, 999.0),
+    "soil_rechr_max_frac": (0.0, 0.999),
+    "seg_width": (0.18000001, 4),
+    "seg_depth": (0.03, 250),
 }
 
 for pname, (lo, hi) in param_bounds.items():

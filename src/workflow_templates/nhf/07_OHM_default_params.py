@@ -346,3 +346,55 @@ else:
 con.print(f"\n[bold]{len(written)}[/] default-parameter files written to:")
 con.print(f"  [cyan]{out_dir}[/]")
 con.print(sorted(written))
+
+# %% [markdown]
+# ## Write a provenance log
+#
+# Record every parameter CSV this notebook wrote, with its creation time and the
+# source the value came from. Unlike the other workflows, the output folder here
+# is the shared `param_source_files_2026_10_23` directory that also holds CSVs
+# from every other workflow, so the log is restricted to the parameters this
+# notebook actually produced (the `written` list). Each source is either the
+# `pyPRMS` metadata default (value and dimension) or, for `dprst_seep_rate_clos`,
+# a copy of `dprst_seep_rate_open`. The log is written to the output directory as
+# `default_params_log.csv`.
+
+# %%
+import datetime as _dt
+
+
+def _default_source(name: str) -> str:
+    """Describe where a written parameter's value came from."""
+    if name == "dprst_seep_rate_clos":
+        return "copy of dprst_seep_rate_open (OHM has no independent closed-depression estimate)"
+    info = meta.get(name, {})
+    dims = tuple(info.get("dimensions", []))
+    return (
+        f"pyPRMS metadata constant default (default={info.get('default')}, "
+        f"dims={dims}, datatype={info.get('datatype', '')})"
+    )
+
+
+log_path = out_dir / "default_params_log.csv"
+
+log_rows = []
+for param in sorted(written):
+    csv_path = out_dir / f"{param}.csv"
+    if not csv_path.exists():
+        continue
+    # Creation time on Windows is st_ctime; fall back to modified time elsewhere.
+    created = _dt.datetime.fromtimestamp(csv_path.stat().st_ctime)
+    log_rows.append(
+        {
+            "parameter": param,
+            "created": created.strftime("%Y-%m-%d %H:%M:%S"),
+            "source_data": _default_source(param),
+            "file_path": str(csv_path),
+        }
+    )
+
+log_df = pd.DataFrame(log_rows, columns=["parameter", "created", "source_data", "file_path"])
+log_df.to_csv(log_path, index=False)
+
+con.print(f"\n[bold]Provenance log written to:[/] [cyan]{log_path}[/]")
+print(log_df.to_string(index=False))

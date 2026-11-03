@@ -15,6 +15,8 @@
 # | `seg_depth` | Bankfull channel depth (m) | Length-weighted average of BANKFULL_CONUS dataset | 0.1 – 20+ | 1.0 |
 # | `x_coef` | Muskingum routing weighting factor (attenuation of flow wave); set to 0.0 for reservoirs, diversions, and segments flowing out of the basin | Default 0.2; set to 0.0 for waterbody and outlet segments | 0.0 – 0.5 | 0.2 |
 # | `segment_type` | Segment classification | 0=segment, 1=headwater, 2=lake, 5=outbound | 0 – 11 (integer) | 0 |
+# | `nhm_seg` | NHM global segment identifier | Set equal to the `segment_id` field of the nsegment layer (derived fabric: NHM index == local index) | 1 – N (integer) | n/a |
+# | `tosegment` | Downstream segment index for routing (local index); 0 = outlet | Read from the nsegment `to_segment` field; equals `tosegment_nhm` for this derived fabric | 0 – N (integer) | n/a |
 #
 # ## Data sources:
 # - **Reference flowlines**: `D:\reference_flowline.gpkg` (NHDPlusV2 with slope and roughness attributes)
@@ -516,6 +518,15 @@ if missing_bankfull:
 
 # %% [markdown]
 # ## Write seg_slope, mann_n, seg_width, and seg_depth CSVs in paramdb format
+#
+# This section also writes `nhm_seg`, the NHM global segment identifier. OHM is
+# a stand-alone **derived** fabric with no separate national (NHM) indexing of
+# its own, so the NHM segment id is the same as the local segment id. In the
+# `nsegment` layer the `segment_id`, `nhm_seg_id`, and `model_seg_idx` fields are
+# identical for every segment (confirmed: all equal, 1..N, unique, no nulls), so
+# `nhm_seg` is taken directly from the `segment_id` field. If this workflow is
+# ever run against a parent fabric where those columns diverge, `nhm_seg` should
+# be sourced from the true NHM segment id instead.
 
 # %%
 created_params_dir = pl.Path(
@@ -671,6 +682,32 @@ tosegment_nhm_out = pd.DataFrame({
 })
 tosegment_nhm_out.to_csv(created_params_dir / "tosegment_nhm.csv", index=False)
 print(f"Wrote tosegment_nhm.csv: {len(tosegment_nhm_out)} rows (copy of tosegment, NHM index == local index)")
+
+# tosegment: the local-index routing (downstream segment per segment). OHM is a
+# derived fabric with no separate national indexing, so the NHM-index routing
+# equals the local-index routing and tosegment == tosegment_nhm. Both are
+# written from the same toseg_sorted values read from the nsegment layer.
+tosegment_out = pd.DataFrame({
+    "$id": toseg_sorted["model_seg_idx"].astype(int),
+    "tosegment": toseg_sorted["tosegment"].astype(int),
+})
+tosegment_out.to_csv(created_params_dir / "tosegment.csv", index=False)
+print(f"Wrote tosegment.csv: {len(tosegment_out)} rows (local-index routing, == tosegment_nhm for derived OHM)")
+
+# nhm_seg: the NHM global segment identifier. OHM is a stand-alone derived
+# fabric with no separate national indexing, so the NHM segment id equals the
+# local segment id. Per the nsegment layer, segment_id == nhm_seg_id ==
+# model_seg_idx for every row, so nhm_seg is taken directly from the segment_id
+# field. $id stays model_seg_idx to keep rows aligned with the other CSVs.
+nhm_seg_src = seg_v2_gdf[["model_seg_idx", "segment_id"]].sort_values(
+    "model_seg_idx"
+).reset_index(drop=True)
+nhm_seg_out = pd.DataFrame({
+    "$id": nhm_seg_src["model_seg_idx"].astype(int),
+    "nhm_seg": nhm_seg_src["segment_id"].astype(int),
+})
+nhm_seg_out.to_csv(created_params_dir / "nhm_seg.csv", index=False)
+print(f"Wrote nhm_seg.csv: {len(nhm_seg_out)} rows (from segment_id, NHM index == local index)")
 
 print(f"\nAll files written to {created_params_dir}")
 
@@ -928,6 +965,10 @@ param_sources = {
     + " (layer=nsegment routing + waterbody polygons; 0=segment,1=headwater,2=lake,5=outbound)",
     "tosegment_nhm": str(v2_gpkg_path)
     + " (layer=nsegment to_segment; copy of tosegment, NHM index == local index for OHM)",
+    "tosegment": str(v2_gpkg_path)
+    + " (layer=nsegment to_segment; local-index routing, == tosegment_nhm for derived OHM)",
+    "nhm_seg": str(v2_gpkg_path)
+    + " (layer=nsegment segment_id; NHM segment id == local index for derived OHM fabric)",
     "seg_length": str(v2_gpkg_path)
     + " (layer=nsegment line length in EPSG:5070, meters)",
     "seg_lat": str(v2_gpkg_path)
