@@ -1461,6 +1461,13 @@ cdat_5day["high_low"] = cdat_5day["high_low"].where(_valid_mask)
 cdat_5day = cdat_5day.dropna(dim="time", how="all")
 
 # %%
+print("cal_gages:", cal_gages, [type(g).__name__ for g in cal_gages])
+_raw = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc")
+print("sf_efc gages:", _raw.poi_gage_id.values[:10], _raw.poi_gage_id.dtype)
+print("overlap:", set(map(str, cal_gages)) & set(map(str, _raw.poi_gage_id.values)))
+_raw.close()
+
+# %%
 moo = cdat_5day.discharge.to_dataframe()
 # moo.loc[moo['discharge'] <0]
 obs_poi_list = moo.index.get_level_values(0).unique().tolist()

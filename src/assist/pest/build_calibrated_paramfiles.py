@@ -58,12 +58,14 @@ matching starting ``.param``. Common overrides::
     # just list the best realizations and their phi, write nothing
     ... --list --phi-group runoff_mon
 
-The starting ``.param`` supplies structure, dimensions, metadata, and the
-values of every non-calibrated parameter, so it MUST match the calibration
-domain (same nhm_id / nhm_seg set). The tool verifies this before writing. If
-you don't pass ``--starting-param`` it searches ``--param-search-root`` for a
-``.param`` whose ids match the run's ``parameters.json``; failing that it
-builds the structural base from the run's own ``parameters.json``.
+The starting ``.param`` supplies only structure, dimensions and metadata (values
+come from the run's ``parameters.json`` plus the ensemble), but it MUST match
+the calibration domain (same nhm_id / nhm_seg set). The tool verifies this
+before writing. If you don't pass ``--starting-param`` it looks only at
+``<model>/inputs/source_data/myparam.param`` for each model folder directly
+under ``--param-search-root`` and takes the one whose ids match the run's
+``parameters.json``; if none match it exits with a message asking for
+``--starting-param``.
 
 The functions (``build_param_files``, ``pick_realizations``, ...) are also
 importable from another script or notebook.
@@ -79,7 +81,7 @@ import sys
 
 import numpy as np
 import pandas as pd
-from pyPRMS import ParameterFile, Parameters, MetaData
+from pyPRMS import ParameterFile, MetaData
 
 # Default place to hunt for a matching starting .param when one isn't supplied.
 DEFAULT_PARAM_SEARCH_ROOT = pl.Path(r"d:\nhm-workspace\Oregon_Recharge\models")
@@ -132,15 +134,16 @@ def _param_ids(param_path: pl.Path, md) -> tuple[np.ndarray, np.ndarray]:
 def discover_starting_param(
     run_dir: pl.Path, search_root: pl.Path, md
 ) -> pl.Path | None:
-    """Find a ``.param`` under ``search_root`` whose ids match this run's domain.
+    """Find a model's ``inputs/source_data/myparam.param`` matching this run's domain.
 
-    Returns the matching path, or None if nothing matches (caller then falls
-    back to building a structural base from parameters.json).
+    Only files at ``<model>/inputs/source_data/myparam.param`` under
+    ``search_root`` are considered (never model output ``.param`` files). The
+    first one whose ids match the run's ``parameters.json`` is returned, or None.
     """
     want_id, want_seg = _read_run_ids(run_dir)
     if not search_root.exists():
         return None
-    for cand in sorted(search_root.rglob("*.param")):
+    for cand in sorted(search_root.glob("*/inputs/source_data/myparam.param")):
         try:
             cid, cseg = _param_ids(cand, md)
         except Exception:
@@ -524,7 +527,8 @@ def main(argv=None) -> int:
                     help="Structural starting .param for this domain "
                          "(default: auto-discovered under --param-search-root).")
     ap.add_argument("--param-search-root", type=pl.Path, default=DEFAULT_PARAM_SEARCH_ROOT,
-                    help="Where to hunt for a matching starting .param.")
+                    help="Folder of models; only <model>/inputs/source_data/myparam.param "
+                         "is considered when auto-discovering the starting .param.")
     ap.add_argument("--out-dir", type=pl.Path, default=None,
                     help="Where to write outputs (default: the run directory).")
 
@@ -592,7 +596,12 @@ def main(argv=None) -> int:
     if starting is None:
         starting = discover_starting_param(run_dir, args.param_search_root, md)
         if starting is None:
-            starting = structural_param_from_json(run_dir, md, run_dir / "_structural.param")
+            raise SystemExit(
+                "no template found at <model>/inputs/source_data/myparam.param "
+                f"under {args.param_search_root} whose nhm_id / nhm_seg match this run. "
+                "Pass --starting-param pointing at the model's "
+                "inputs/source_data/myparam.param for this domain."
+            )
         print(f"starting  : {starting}  (auto-discovered)")
     else:
         print(f"starting  : {starting}")

@@ -268,8 +268,22 @@ Actions workflow it replaced has been deleted, and the GitHub mirror
   is ever created, it must not be Protected: protected variables never reach
   feature-branch MR pipelines.
 - **Read the log, not the badge.** A green job that collected no tests is
-  still green. As of 2026-09-24 the job collects 457 tests: 448 passed, 9
-  skipped. All 9 skips are example models absent from a checkout.
+  still green. As of 2026-09-24 the job collected 457 tests: 448 passed, 9
+  skipped. All 9 skips are example models absent from a checkout. The suite
+  has grown since, so check a current job log for today's count.
+- **Local Windows runs differ from CI.** On 2026-11-04, the `test` task run
+  locally in `default` on Windows collected 497 tests: 492 passed, 5 failed,
+  none skipped (the example models were present). Three of the failures also
+  fail on a clean checkout of `HEAD`: two Windows path issues
+  (`test_save_workspace_root_writes_repo_dotenv`, backslash escaping in
+  `.env`; `test_no_new_unparseable_templates`, `\` vs `/` separators) and
+  `test_nothing_in_the_repo_imports_a_retired_path`, which flags a retired
+  `assist.nhf.*_v2` import in `tests/unification/test_display_controls_unified.py`.
+  The other two fail only because of git-ignored local files that the tests
+  scan from disk: `.ipynb_checkpoints/` folders under `src/` and an
+  `nhf_assist/` directory. Deleting those brings a local run down to the
+  three. Don't treat any of these as caused by your change without checking
+  whether they fail at `HEAD`.
 
 CI reports but does not yet gate merges: `only_allow_merge_if_pipeline_succeeds`
 is off. While a pipeline is running, GitLab's merge button defaults to
