@@ -251,8 +251,66 @@ NAN_LOCATION_GUARD = {
 }
 
 
+# A second departure, in the prospective-gage layer only. Its popup plots come
+# from notebook 1's last cell, which notebook 1's first cell deletes, so a
+# partial rerun crashed the whole map on a missing file. It now falls back to
+# the placeholder the POI and BOR layers already use, and names the missing
+# gages. nhf also reset the caller's gages_df index in place, which left the
+# next button click with no prospective gages. Exact (old, new) replacements,
+# each required to match once, so the rest still has to be nhf verbatim.
+MISSING_OBS_PLOT_EDITS = {
+    "create_non_poi_obs_marker_cluster": [
+        (
+            "    gages_df.reset_index(inplace=True, drop=False)\n",
+            "    # Not in place: the caller's gages_df is the notebook's own, and a\n"
+            "    # RangeIndex left behind empties additional_gages on the next call.\n"
+            "    gages_df = gages_df.reset_index(drop=False)\n",
+        ),
+        (
+            "    for idx, row in gages_df.iterrows():\n",
+            "    missing_plots = []\n"
+            "    for idx, row in gages_df.iterrows():\n",
+        ),
+        (
+            "            # Read ploty plot of each poi\n"
+            '            with open(obs_plot_file, "r") as f:\n'
+            "                div_txt = f.read()\n",
+            "            # Read ploty plot of each poi — skip if file doesn't exist\n"
+            "            if not obs_plot_file.exists():\n"
+            "                missing_plots.append(poi_gage_id)\n"
+            '                div_txt = f"<p>No observation plot available for {poi_gage_id}</p>"\n'
+            "            else:\n"
+            '                with open(obs_plot_file, "r") as f:\n'
+            "                    div_txt = f.read()\n",
+        ),
+        (
+            "\n    return non_poi_marker_cluster, non_poi_marker_cluster_label",
+            "\n    if missing_plots:\n"
+            "        print(\n"
+            '            f"No observation plot for {len(missing_plots)} prospective gage(s): "\n'
+            "            f\"{', '.join(map(str, missing_plots))}. Their map popups will be \"\n"
+            '            "empty. Run the make_obs_plot_files cell at the end of notebook 1 "\n'
+            '            "to regenerate the plots."\n'
+            "        )\n"
+            "\n    return non_poi_marker_cluster, non_poi_marker_cluster_label",
+        ),
+    ],
+}
+
+
 def _apply_intended_edits(source: str, name: str) -> str:
-    """Splice the NaN-location guard into nhf's baseline for one function."""
+    """Splice the intended edits above into nhf's baseline for one function."""
+    source = _apply_nan_location_guard(source, name)
+    for old, new in MISSING_OBS_PLOT_EDITS.get(name, []):
+        assert source.count(old) == 1, (
+            f"nhf's {name} no longer contains {old!r} exactly once; this "
+            "intended-edit entry is stale and the test needs updating"
+        )
+        source = source.replace(old, new)
+    return source
+
+
+def _apply_nan_location_guard(source: str, name: str) -> str:
     if name not in NAN_LOCATION_GUARD:
         return source
     frame, label = NAN_LOCATION_GUARD[name]
@@ -456,3 +514,58 @@ def test_make_polygon_icon_ring_encloses_the_polygon(common):
     assert '<circle' in ringed["html"] and 'fill="none"' in ringed["html"]
     # the canvas grows to fit the ring rather than clipping it
     assert ringed["icon_size"][0] > plain["icon_size"][0]
+
+
+def _non_poi_inputs(tmp_path):
+    import pandas as pd
+
+    poi_df = pd.DataFrame({"poi_gage_id": ["10393500"]})
+    gages_df = pd.DataFrame(
+        {
+            "poi_gage_id": ["10393500", "10396000", "10403000"],
+            "poi_agency": ["USGS"] * 3,
+            "poi_name": ["in param file", "has plot", "no plot"],
+            "latitude": [43.1, 43.2, 43.3],
+            "longitude": [-118.9, -118.8, -118.7],
+        }
+    ).set_index("poi_gage_id")
+    (tmp_path / "10396000_streamflow_obs.txt").write_text("<div>plot</div>")
+    return poi_df, gages_df
+
+
+def test_non_poi_markers_survive_a_missing_obs_plot_file(common, tmp_path, capsys):
+    """The popup files come from notebook 1's last cell, and notebook 1's first
+    cell deletes them, so a partial rerun left the hydrofabric map raising
+    FileNotFoundError on the first potential gage. The POI and BOR layers
+    already fall back to a placeholder; this layer now does too, and says how
+    to regenerate the files."""
+    poi_df, gages_df = _non_poi_inputs(tmp_path)
+
+    markers, labels = common.create_non_poi_obs_marker_cluster(
+        poi_df, None, gages_df, tmp_path, pathlib.Path("myparam.param"), 10
+    )
+
+    assert len(markers._children) == 2
+    assert len(labels._children) == 2
+    out = capsys.readouterr().out
+    assert "10403000" in out
+    assert "10396000" not in out
+    assert "make_obs_plot_files" in out
+
+
+def test_non_poi_markers_leave_the_callers_gages_df_alone(common, tmp_path):
+    """display_controls hands the notebook's own gages_df to make_hf_map. An
+    in-place reset_index turned its index into a RangeIndex, so the next click
+    found no potential gages and silently drew the map without them."""
+    import pandas as pd
+
+    poi_df, gages_df = _non_poi_inputs(tmp_path)
+    before = gages_df.copy()
+
+    for _ in range(2):
+        markers, _labels = common.create_non_poi_obs_marker_cluster(
+            poi_df, None, gages_df, tmp_path, pathlib.Path("myparam.param"), 10
+        )
+        assert len(markers._children) == 2
+
+    pd.testing.assert_frame_equal(gages_df, before)

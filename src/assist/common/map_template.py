@@ -3082,18 +3082,25 @@ def create_non_poi_obs_marker_cluster(
     ##add Non-poi gage markers and labels using row df.interowss loop
     gages_list = gages_df.index.to_list()
     additional_gages = list(set(gages_list) - set(poi_df.poi_gage_id))
-    gages_df.reset_index(inplace=True, drop=False)
+    # Not in place: the caller's gages_df is the notebook's own, and a
+    # RangeIndex left behind empties additional_gages on the next call.
+    gages_df = gages_df.reset_index(drop=False)
 
     gages_df = _with_locatable_gages(gages_df, "hydrofabric map")
 
+    missing_plots = []
     for idx, row in gages_df.iterrows():
         if row["poi_gage_id"] in additional_gages:
 #########
             poi_gage_id = row["poi_gage_id"]
             obs_plot_file = Folium_maps_dir / f"{poi_gage_id}_streamflow_obs.txt"
-            # Read ploty plot of each poi
-            with open(obs_plot_file, "r") as f:
-                div_txt = f.read()
+            # Read ploty plot of each poi — skip if file doesn't exist
+            if not obs_plot_file.exists():
+                missing_plots.append(poi_gage_id)
+                div_txt = f"<p>No observation plot available for {poi_gage_id}</p>"
+            else:
+                with open(obs_plot_file, "r") as f:
+                    div_txt = f.read()
         
             # Create html code to insert the plotly plot to the folium pop up
             html = (
@@ -3165,6 +3172,14 @@ def create_non_poi_obs_marker_cluster(
         ).add_to(non_poi_marker_cluster)
         else:
             pass
+
+    if missing_plots:
+        print(
+            f"No observation plot for {len(missing_plots)} prospective gage(s): "
+            f"{', '.join(map(str, missing_plots))}. Their map popups will be "
+            "empty. Run the make_obs_plot_files cell at the end of notebook 1 "
+            "to regenerate the plots."
+        )
 
     return non_poi_marker_cluster, non_poi_marker_cluster_label
 
