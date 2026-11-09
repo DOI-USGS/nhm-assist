@@ -183,8 +183,8 @@ phi_new_comps = {
     "soil_moist_mean_mon": 0.04,
     "streamflow_mon": 0.12,
     "streamflow_mean_mon": 0.12,
-    "scnd": 0.22,
-    "_low": 0.26,
+    "scnd": 0.12,
+    "_low": 0.36,
 }
 
 # %%

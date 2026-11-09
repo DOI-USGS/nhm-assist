@@ -9,14 +9,21 @@
 #
 # ## What is plotted
 #
-# | Marker | Meaning |
+# | Element | Meaning |
 # |---|---|
-# | red point with whisker | **observed**: the `base` observation, with a whisker from the 5th to the 95th percentile across *all* obs+noise realizations |
-# | green, large | `starting`: the iteration-0 `base` (pre-calibration) |
-# | black, large | `base`: the final-iteration `base` |
-# | gray, small | `n_random` random members of the final ensemble (seeded) |
+# | thick black line + dots | **observed** `base` value |
+# | gray band + thin black lines | observed 5th-95th percentile range across *all* obs+noise realizations |
+# | red solid line | **sim** `base`: the final-iteration base |
+# | red dashed line | **sim** `starting`: the iteration-0 base (pre-calibration) |
+# | red band + thin red lines | sim 5th-95th percentile range across the final-iteration ensemble |
 #
-# Everything is drawn as points, not lines.
+# Every element is a separate **legend entry you can click to toggle on and
+# off** (double-click isolates one). The observed/sim base lines, percentile
+# lines and bands all **break at the gaps** between calibration years, so
+# nothing is drawn across the missing validation (even) water years. In the
+# combined 5-day plot the observed base dots take a **different black marker
+# shape for each signature group** (color is not used), and a **prior panel**
+# (iteration 0, same style) is stacked above the calibrated one.
 #
 # ## Output files (written to `out_dir`)
 #
@@ -24,6 +31,7 @@
 # |---|---|
 # | `calib_eval_targets.nc` | the extracted sim and obs vectors, so the plots can be rebuilt without re-reading the ensembles |
 # | `<gage>/calib_eval_<group>_<gage>.html` | one interactive plot per gage per target group |
+# | `overlap_metrics.csv` | the two overlap metrics for every gage x group |
 #
 # The plot groups are `actet_mean_mon`, `recharge_ann`, `soil_moist_ann`,
 # `soil_moist_mean_mon`, `runoff_mon`, `swe_monthly`, `streamflow_mon`,
@@ -35,7 +43,9 @@
 #   `starting` comes from iteration 0, everything else from the chosen iteration.
 # - **Observed** values are the noise-sampled ensemble in `<case>.obs+noise.csv`.
 #   Observations are aggregated to the gage *per realization first*, then the
-#   percentiles are taken across realizations.
+#   base value and the 5th/95th percentiles are taken across realizations. The
+#   targets are odd (calibration) water years only, so the line and band break
+#   at every validation-year gap (detected from the spacing of the obs dates).
 # - **Values are matched by observation name** from `<case>.obs_data.csv`, never
 #   by position. The checks below confirm every name is present in both ensembles.
 # - **HRU targets are averaged over the gage's contributing HRUs**: the HRUs on
@@ -45,9 +55,18 @@
 # - **5-day streamflow** is one combined plot per gage, so the 5-day record
 #   reads as a continuous time series. Every `streamflow_5day_*` signature group
 #   (low, ex_low, pulse, small, large; ascending and descending) is on the same
-#   axis. **Observed points are colored by signature group**; the simulated
-#   series stay neutral (green `starting`, black `base`, gray random members)
-#   and run across every date.
+#   axis. **Observed base dots take a different black marker shape per signature
+#   group** (no color); the base line, band and simulated series are the same
+#   as every other plot and run across every date.
+# - **The 5-day plot is a two-panel stack** sharing the x and y axes (zooming
+#   one zooms both). The **bottom** panel is the calibrated plot described
+#   above. The **top** panel is the **prior** in the same style: its red solid
+#   line is the iteration-0 `base` and its red band is the 5th-95th percentile
+#   range of the full **iteration-0 ensemble**. The observed series is the same
+#   in both, and each panel has its own overlap box, so the prior-to-calibrated
+#   change in fit reads straight down the page. Archives written before this
+#   change have no prior ensemble and still get the single calibrated panel;
+#   re-run the extract cell to get the stack.
 # - Values at or below -9990 (the PEST++ no-data fill) are masked, and the
 #   zero-weight `streamflow_nodata` group is skipped.
 # - The **final iteration** is auto-detected by default. Runs do not always
@@ -252,9 +271,12 @@ display(pd.DataFrame(plan, columns=["label", "parameter iteration", "realization
 # %% [markdown]
 # ## Extract the targets
 #
-# Reads the simulated and obs+noise ensembles, keeps the planned realizations
-# for sim and the **full** obs+noise ensemble for the observed whiskers, and
-# writes them to `calib_eval_targets.nc` in `out_dir`.
+# Reads the ensembles and writes `calib_eval_targets.nc` in `out_dir`. It keeps
+# the `starting` and `base` realizations for the sim lines, the **full**
+# obs+noise ensemble for the observed band, and the **full** final-iteration
+# simulated ensemble for the sim band (and, later, the overlap metric). Writing
+# both full ensembles makes the archive larger (a few hundred MB) but means the
+# plots and metric never need to re-read the PEST csvs.
 
 # %%
 targets_path = ce.extract_targets(
@@ -263,8 +285,8 @@ targets_path = ce.extract_targets(
 td = ce.load_targets(targets_path)
 con.print(
     f"Wrote {targets_path}\n"
-    f"  simulated realizations: {len(td.realizations)}   "
-    f"obs+noise realizations: {len(td.obs_ens)}   "
+    f"  obs+noise realizations: {len(td.obs_ens)}   "
+    f"sim ensemble realizations: {len(td.sim_ens)}   "
     f"observations: {td.sim.shape[1]}"
 )
 
@@ -273,11 +295,74 @@ con.print(
 #
 # One HTML per gage per target group, written to `<out_dir>/<gage>/`. HRU
 # targets are the mean over each gage's contributing HRUs; streamflow targets
-# are selected by gage id.
+# are selected by gage id. An overlap-metrics summary CSV is also written to
+# `<out_dir>/overlap_metrics.csv`.
 
 # %%
 plot_gages = ce.select_gages(td, poi_gage_id, gage_set=gage_set, gages=gages)
 written = ce.plot_calibration_evaluation(td, params, out_dir, plot_gages)
+
+# %% [markdown]
+# ## Overlap-metric summary
+#
+# Two per gage-group overlap metrics, both measured against the **observed**
+# noise ensemble's 5-95% band:
+#
+# - **`band_overlap_pct`** - the fraction of the *simulated* 5-95% band that
+#   lies inside the observed band (metric *a*). This is an interval-vs-interval
+#   measure: it only asks whether the two ranges occupy the same values, not how
+#   the simulated members are distributed within their range.
+# - **`member_overlap_pct`** - the fraction of individual *simulated* ensemble
+#   members that fall inside the observed band (metric *d*). This is sensitive
+#   to *where the mass of the simulated ensemble sits*, not just its outer edge.
+#
+# Both are also stamped on each plot, and the full table is written to
+# `overlap_metrics.csv`. Higher is better for both: the simulated ensemble is
+# reproducing the observed target within its own noise.
+#
+# The combined 5-day plot is broken out in the **table** into two rows,
+# `streamflow_5day_low` (the low and ex_low signatures) and
+# `streamflow_5day_high` (the pulse/small/large ascending and descending
+# signatures), so low- and high-flow performance can be judged separately. The
+# 5-day *plot* stays combined.
+#
+# ### Reading the two numbers together
+#
+# They usually agree closely. When they **diverge**, the gap is itself
+# diagnostic, because it means the simulated ensemble is *lopsided* (skewed, or
+# piled up against one edge of its own range) rather than spread evenly:
+#
+# - **`band_overlap` >> `member_overlap`** (band overlaps, but few members land
+#   in range): the simulated range clips the observed band, but most
+#   realizations cluster to one side - often just outside the observed band,
+#   with only the tail of the ensemble reaching in. The model *can* produce
+#   target-like values but typically does not. Read this as a weaker match than
+#   the band number alone suggests; look at the plot to see which side the
+#   simulated base/line sits on (a consistent high or low bias).
+# - **`member_overlap` >= `band_overlap`** (members in range, narrower band
+#   footprint): the bulk of the ensemble sits inside the observed band while the
+#   simulated band's outer percentiles reach beyond it - a tighter, well-centered
+#   ensemble with a few wide realizations. This is generally a *good* sign.
+# - **Both low**: the simulated and observed ranges barely share values at all -
+#   a structural miss (bias or wrong dynamics) for that target at that gage, not
+#   just an ensemble-spread issue. Worth prioritizing when deciding what to
+#   recalibrate.
+# - **Both high**: the simulated ensemble both overlaps and is centered on the
+#   observed band - the target is well reproduced.
+#
+# Also weigh `n_points`: a 90% overlap over 6 annual points is far weaker
+# evidence than 90% over 72 monthly points. And remember these compare against
+# the observed *noise* band, not a single true value - a model can score high by
+# being appropriately uncertain, so pair the metric with the base line on the
+# plot (the calibrated best estimate) when judging fit.
+
+# %%
+metrics = ce.collect_overlap_metrics(td, params, plot_gages)
+# wide view: band overlap per gage x group (member overlap is in the CSV)
+band_wide = metrics.pivot(index="gage", columns="group", values="band_overlap_pct")
+print("band overlap % (gage x group); full detail in overlap_metrics.csv")
+display(band_wide)
+display(metrics)
 
 # %% [markdown]
 # ## Verification
@@ -321,7 +406,8 @@ if stale:
 n_plots = int(check["plots"].sum())
 ok = n_plots > 0 and (check["plots"] > 0).all() and (check["empty files"] == 0).all()
 con.print(
-    f"[green]All checks passed.[/green] {n_plots} plots across {len(plot_gages)} gages are in {out_dir}"
+    f"[green]All checks passed.[/green] {n_plots} plots across {len(plot_gages)} gages, "
+    f"plus {ce.METRICS_CSV}, are in {out_dir}"
     if ok
     else "[bold red]Some gages produced no plots or empty files; see the table above.[/bold red]"
 )

@@ -555,7 +555,9 @@ obs.loc[obs.obgnme.str.startswith("streamflow")]
 # ## Set Standard Deviations for Observation Noise Ensemble
 # Standard deviations define the noise added to observations when generating the
 # observation noise ensemble. Values are computed as a fraction of the observation
-# value, with the fraction specified per group in `Observation_standard_deviation.csv`.
+# value, with the fraction specified per group in `Observation_standard_deviation.csv`
+# (streamflow groups only). Non-streamflow observations use the per-observation
+# ensemble SD from `allobs_std.dat`, written by `01_Prepare_observations_gfv2`.
 
 # %%
 # obs.loc[:,'standard_deviation'] = [1/w if w!=0 else 1e-6 for w in obs.weight]
@@ -591,7 +593,7 @@ obgnme_list
 # read in the STD vals for the obs ensemble
 obsvals_std = pd.read_csv(pestpp_model_dir / "allobs_std.dat", delim_whitespace=True)
 
-obsvals.set_index("obsname", inplace=True, drop=False)
+obsvals_std.set_index("obsname", inplace=True, drop=False)
 
 # %%
 # obs['lower_bound'] = 0
@@ -620,6 +622,57 @@ obs.loc[obs.obgnme.str.startswith("obgnme")]
 
 # %% [markdown]
 # #### Compute standard deviation per observation
+#
+# - **Streamflow groups:** `standard_deviation = noise_percent x obsval`, with
+#   `noise_percent` set per group in `Observation_standard_deviation.csv`.
+# - **Non-streamflow groups:** `standard_deviation` is the per-observation
+#   ensemble SD from `allobs_std.dat` (written by `01_Prepare_observations_gfv2`).
+#
+# **Minimum SD (floor).** The ensemble SD can be very small where the ensemble
+# members agree. Agreement among members does not mean the target is known
+# exactly: the ensemble does not capture all of the uncertainty in the
+# observation, so a very small SD would give that observation almost no noise
+# and treat it as more certain than it is. To prevent that, selected groups have
+# a minimum SD. Any observation whose ensemble SD is below the floor is raised
+# to the floor; larger SDs are left unchanged.
+#
+# Floors are set in the `SD_FLOORS` dictionary in the SD cell below. Each group is
+# judged on its own scale, because some targets are normalized values and others
+# are actual values with units:
+#
+# - **Normalized groups** (dimensionless, roughly 0 to 1) use an **absolute** floor,
+#   an SD in the same units as the target. A fixed value makes sense because the
+#   scale is the same for every observation.
+# - **Groups with units** use a **relative** floor, a fraction of each
+#   observation's own value, so the minimum noise scales with the observation.
+#   An absolute floor would be far too large for small observations (for example
+#   a low flow) and negligible for large ones.
+# - Where a group can have values near zero, an **absolute backstop** is added.
+#   A relative floor of a value near zero is itself near zero, so it cannot
+#   protect those observations. The floor used is the larger of the relative and
+#   absolute parts.
+#
+# | group | floor | type |
+# |---|---|---|
+# | `recharge_ann` | 0.05 | absolute (normalized) |
+# | `soil_moist_ann` | 0.10 | absolute (normalized) |
+# | `soil_moist_mean_mon` | 0.10 | absolute (normalized) |
+# | `actet_mean_mon` | 0.2 x observation value | relative (in/day) |
+# | `runoff_mon` | 0.3 x observation value | relative (cfs) |
+# | `swe_monthly` | larger of 0.2 x observation value and 0.01 | relative with absolute backstop |
+#
+# The relative fractions can be compared with the old `noise_percent` values in
+# `Observation_standard_deviation.csv` (0.2 for most groups, 0.4 for
+# `runoff_mon`). Those old values set the whole SD; here they are only a
+# minimum, and larger ensemble SDs are kept as they are. For the SandyRiver
+# ensemble the floors lifted roughly 46% (`recharge_ann`), 26% (`soil_moist_ann`),
+# 38% (`soil_moist_mean_mon`), 33% (`actet_mean_mon`), 34% (`runoff_mon`) and
+# 22% (`swe_monthly`) of observations. The share affected will differ for other
+# models, and the notebook prints the actual count for each group when it runs.
+#
+# Groups not listed in `SD_FLOORS` have no floor and use the `allobs_std.dat`
+# values as written. Streamflow groups are not floored. The `-9999` no-data
+# override is applied afterward.
 
 # %%
 # tt = obs.groupby("obgnme")
@@ -629,11 +682,61 @@ for cn, _ in obs.groupby("obgnme"):
 # %%
 for cn, _ in obs.groupby("obgnme"):
     print(cn)
-    obs_group_percent = obs_sdbnds.loc[cn, "noise_percent"]
-    obs.loc[obs.obgnme == cn, "standard_deviation"] = obs_group_percent * (
-        obs.loc[obs.obgnme == cn, "obsval"]
-    )
+    mask_cn = obs.obgnme == cn
+    if "streamflow" in cn:
+        # Streamflow: fraction of the observation value, set per group in the csv
+        obs_group_percent = obs_sdbnds.loc[cn, "noise_percent"]
+        obs.loc[mask_cn, "standard_deviation"] = obs_group_percent * (
+            obs.loc[mask_cn, "obsval"]
+        )
+    else:
+        # Non-streamflow: per-observation ensemble SD from allobs_std.dat
+        # (written by 01_Prepare_observations_gfv2)
+        obs.loc[mask_cn, "standard_deviation"] = obs.loc[mask_cn, "obsnme"].map(
+            obsvals_std["obsstd"]
+        )
 # print(cn)
+
+# Every non-streamflow observation must have an SD in allobs_std.dat
+_missing_sd = obs.loc[
+    ~obs.obgnme.str.contains("streamflow") & obs.standard_deviation.isnull()
+]
+if not _missing_sd.empty:
+    raise ValueError(
+        f"{len(_missing_sd)} non-streamflow observations have no SD in "
+        f"allobs_std.dat, e.g. {list(_missing_sd.obsnme[:5])}"
+    )
+
+# Minimum SD (floor) per non-streamflow group. Each group has an absolute part
+# ("abs", in the units of the group) and/or a relative part ("rel", a fraction of
+# the observation's own value). The floor for each observation is the larger of
+# the two; observations with an ensemble SD below it are raised to it.
+SD_FLOORS = {
+    # normalized groups (about 0 to 1): absolute floor
+    "recharge_ann": {"abs": 0.05},
+    "soil_moist_ann": {"abs": 0.10},
+    "soil_moist_mean_mon": {"abs": 0.10},
+    # groups with units: floor relative to each observation's value
+    "actet_mean_mon": {"rel": 0.2},
+    "runoff_mon": {"rel": 0.3},
+    # relative floor, plus an absolute backstop for snow-free months (value ~ 0)
+    "swe_monthly": {"rel": 0.2, "abs": 0.01},
+}
+for cn, rule in SD_FLOORS.items():
+    mask_cn = obs.obgnme == cn
+    if not mask_cn.any():
+        print(f"SD floor: no observations in group {cn}, skipped")
+        continue
+    # Observation value, with tiny negative values (e.g. -1e-24) treated as 0
+    value = obs.loc[mask_cn, "obsval"].clip(lower=0)
+    floor = np.maximum(rule.get("rel", 0.0) * value, rule.get("abs", 0.0))
+    sd = obs.loc[mask_cn, "standard_deviation"]
+    n_below = int((sd < floor).sum())
+    obs.loc[mask_cn, "standard_deviation"] = np.maximum(sd, floor)
+    print(
+        f"SD floor {rule} for {cn}: {n_below} of {int(mask_cn.sum())} "
+        f"observations raised to the floor"
+    )
 
 # Replace std value with 9999 where obsval values with "9999"
 obs.loc[obs.obsval == -9999, "standard_deviation"] = 9999
