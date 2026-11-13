@@ -760,9 +760,28 @@ obs.loc[obs.isnull().any(axis=1)]
 # %% [markdown]
 # ## Set Observation Weights
 # Weights control the relative influence of each observation on the objective function.
-# Streamflow weights are inversely proportional to flow magnitude (per gage), while
-# HRU observations use a flat group-level weight. Validation observations and
+# Streamflow weights are inversely proportional to flow magnitude (per gage), and so
+# are the weights for the HRU `runoff_mon` group (see below). The other HRU
+# observation groups use a flat group-level weight. Validation observations and
 # no-data observations receive zero weight.
+#
+# **`runoff_mon` uses relative weights.** The residuals are in cfs, so a flat weight
+# lets the largest months dominate phi (on the SandyRiver prior run, the largest 10%
+# of observations gave 75% of the group's phi and the smallest 50% gave 1%). The
+# weight is therefore `1 / (wt_percent x max(obsval, RUNOFF_MON_FLOOR_CFS))`, the
+# same form the streamflow groups use. This matches the relative standard deviation
+# set for the group above.
+#
+# `RUNOFF_MON_FLOOR_CFS` (next cell) sets the flow below which every observation
+# gets the same weight. It prevents near-zero months from receiving enormous
+# weights. It is a model-scale choice: a domain with small HRUs (many months below
+# 1 cfs) may need a lower floor, and one with large HRUs may need a higher one.
+# Check how many observations fall below it (printed with the weights below).
+
+# %%
+# Flow floor (cfs) for the relative weights of the `runoff_mon` group. Change this
+# for domains whose HRU flows are on a different scale.
+RUNOFF_MON_FLOOR_CFS = 1.0
 
 # %%
 obs["poi_group"] = obs["obsnme"].str.rsplit(":", n=1).str[-1]
@@ -844,6 +863,25 @@ for cn, _ in obs.groupby("obgnme"):
                 print(
                     f"Observation weights {cn, poi_group} range {min_val} to {max_val} for n={len(obs.loc[mask_cn_and_poi_group])}"
                 )
+
+    elif cn == "runoff_mon":
+        # HRU monthly runoff (cfs): relative weights, flat below the floor.
+        # 1 / (wt_percent * max(obsval, floor)) -- same form as the streamflow groups.
+        obs_group_percent = obs_sdbnds.loc[cn, "wt_percent"]
+        mask_cn = (obs.obgnme == cn) & (obs["obsval"] >= 0)
+        obs.loc[mask_cn, "weight"] = 1 / (
+            obs_group_percent
+            * obs.loc[mask_cn, "obsval"].clip(lower=RUNOFF_MON_FLOOR_CFS)
+        )
+
+        n_floored = int((obs.loc[mask_cn, "obsval"] < RUNOFF_MON_FLOOR_CFS).sum())
+        min_val = obs.loc[mask_cn, "weight"].min()
+        max_val = obs.loc[mask_cn, "weight"].max()
+        print(
+            f"Observation weights {cn} range {min_val} to {max_val} for n={int(mask_cn.sum())} "
+            f"(relative weights; {n_floored} observations below the "
+            f"{RUNOFF_MON_FLOOR_CFS} cfs floor share the maximum weight)"
+        )
 
     else:  # For all other groups that are not streamflow (do these even matter here b/c of inequality calibration:
         obs_group_percent = obs_sdbnds.loc[cn, "wt_percent"]
