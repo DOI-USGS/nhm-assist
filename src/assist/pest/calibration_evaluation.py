@@ -200,7 +200,7 @@ def extract_targets(run_dir, case: str, iteration: int, plan, out_path) -> pl.Pa
     * ``obs_ensemble`` (obs_realization x obsnme) -- the full obs+noise ensemble,
       for the observed 5-95% band.
     * ``sim_ensemble`` (sim_realization x obsnme) -- the full FINAL-iteration
-      simulated ensemble, for the simulated 5-95% band and the overlap metric.
+      simulated ensemble, for the simulated 5-95% band and the change-in-KGE metric.
     * ``sim_ensemble_prior`` (sim_prior_realization x obsnme_5day) -- the full
       ITERATION-0 (prior) simulated ensemble, restricted to the
       ``streamflow_5day_*`` observations. It drives the top (prior) panel of the
@@ -230,7 +230,7 @@ def extract_targets(run_dir, case: str, iteration: int, plan, out_path) -> pl.Pa
 
     obs_full = obs_noise.reindex(columns=names)
     # Full FINAL-iteration simulated ensemble (all realizations), aligned to the
-    # obs-name order. Drives the simulated 5-95% band and the overlap metric.
+    # obs-name order. Drives the simulated 5-95% band and the change-in-KGE metric.
     sim_full = sim_by_iter[iteration].reindex(columns=names)
     # Prior (iteration-0) ensemble, 5-day streamflow names only.
     five_day_names = [n for n in names
@@ -473,62 +473,232 @@ def obs_base_and_band(obs_ens_df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def overlap_metrics(obs_ens_df: pd.DataFrame, sim_ens_df: pd.DataFrame) -> dict:
-    """Two per-group observed-vs-simulated overlap metrics, each a mean over the
-    group's valid points (points where both the observed and simulated 5-95%
-    bands are defined).
+# --------------------------------------------------------------------------- #
+# Change-in-KGE metric (5-day streamflow, continuous monthly series)
+# --------------------------------------------------------------------------- #
+# The 5-day points are averaged to one value per month-year (Oct 1980, Nov
+# 1980, ...). A month-year is kept only if it has at least
+# DKGE_MIN_POINTS_PER_MONTH valid 5-day points (a month holds about 6), and a
+# series is scored only if at least DKGE_MIN_MONTHS month-years are kept.
+DKGE_MIN_POINTS_PER_MONTH = 3
+DKGE_MIN_MONTHS = 12
+DKGE_ALTERNATIVE = "two-sided"   # Wilcoxon alternative: two-sided | greater | less
+KGE_COMPONENTS = ["KGE", "r", "alpha", "beta"]
 
-    Both use the observed 5-95% band ``[obs_p05, obs_p95]`` as the reference.
 
-    * ``band_overlap`` -- metric (a): the fraction of the SIMULATED 5-95% band
-      that lies inside the observed band,
-      ``len([sim_p05,sim_p95] ∩ [obs_p05,obs_p95]) / len([sim_p05,sim_p95])``.
-    * ``member_overlap`` -- metric (d): the fraction of individual simulated
-      ensemble members whose value falls inside the observed band, averaged
-      over members then over points.
+def kge_components(obs, sim) -> dict:
+    """Gupta et al. (2009) Kling-Gupta efficiency and its three components.
 
-    Inputs are the gage-aggregated ensembles indexed by x (time); columns are
-    realizations. Returns ``{"band_overlap": float|nan, "member_overlap":
-    float|nan, "n_points": int}`` with the two fractions as percentages (0-100).
+    ``KGE = 1 - sqrt((r-1)^2 + (alpha-1)^2 + (beta-1)^2)`` with ``r`` the
+    Pearson correlation, ``alpha = std(sim)/std(obs)`` and
+    ``beta = mean(sim)/mean(obs)``. Only points finite in BOTH series are used.
+    Every value is NaN when fewer than 3 points remain or when the observed
+    mean, or either standard deviation, is zero.
     """
-    out = {"band_overlap": float("nan"), "member_overlap": float("nan"), "n_points": 0}
-    if obs_ens_df is None or sim_ens_df is None or obs_ens_df.empty or sim_ens_df.empty:
+    nan = {k: float("nan") for k in KGE_COMPONENTS}
+    obs = np.asarray(obs, dtype=float)
+    sim = np.asarray(sim, dtype=float)
+    ok = np.isfinite(obs) & np.isfinite(sim)
+    obs, sim = obs[ok], sim[ok]
+    if obs.size < 3:
+        return nan
+    mo, ms = obs.mean(), sim.mean()
+    so, ss = obs.std(), sim.std()
+    if mo == 0 or so == 0 or ss == 0:
+        return nan
+    r = float(np.corrcoef(obs, sim)[0, 1])
+    alpha, beta = float(ss / so), float(ms / mo)
+    kge = float(1.0 - np.sqrt((r - 1.0) ** 2 + (alpha - 1.0) ** 2 + (beta - 1.0) ** 2))
+    return {"KGE": kge, "r": r, "alpha": alpha, "beta": beta}
+
+
+def kge_2009(obs, sim) -> float:
+    """Gupta et al. (2009) KGE only; see :func:`kge_components`."""
+    return kge_components(obs, sim)["KGE"]
+
+
+def pbias_pct(obs, sim) -> float:
+    """Percent bias, ``100 * sum(obs - sim) / sum(obs)``, on the points finite
+    in both series. Same sign convention as ``hydroeval.pbias`` (used in the
+    streamflow statistics table of notebook 6): **positive means the model
+    under-predicts** (simulated volume too low), negative means it
+    over-predicts. NaN when fewer than 3 points remain or the observed sum is
+    zero."""
+    obs = np.asarray(obs, dtype=float)
+    sim = np.asarray(sim, dtype=float)
+    ok = np.isfinite(obs) & np.isfinite(sim)
+    obs, sim = obs[ok], sim[ok]
+    if obs.size < 3 or obs.sum() == 0:
+        return float("nan")
+    return float(100.0 * (obs - sim).sum() / obs.sum())
+
+
+def _empty_dkge() -> dict:
+    nan = float("nan")
+    empty = pd.Series(dtype=float)
+    return {"dkge": empty, "kge_final": empty, "kge_prior_base": nan,
+            "median_dkge": nan, "base_dkge": nan, "base_kge_final": nan,
+            "base_kge_prior": nan, "base_percentile": nan,
+            "pbias_final": empty, "pbias_prior": empty, "median_pbias": nan,
+            "base_pbias_final": nan, "base_pbias_prior": nan,
+            "n_members": 0, "n_months": 0,
+            "components_base": pd.DataFrame(index=KGE_COMPONENTS,
+                                            columns=["prior", "final"], dtype=float),
+            "monthly_base": pd.DataFrame(columns=["obs", "prior", "final", "n_points"])}
+
+
+def _set_pbias(out: dict, bf: pd.Series, bp: pd.Series) -> None:
+    """Store per-member PBIAS (final, and the prior base on each member's
+    points) and the base realization's values in a result dict."""
+    ids = [i for i in bf.index if i != "base"]
+    out["pbias_final"] = bf.loc[ids]
+    out["pbias_prior"] = bp.loc[ids]
+    ens = bf.loc[ids].dropna()
+    out["median_pbias"] = float(ens.median()) if len(ens) else float("nan")
+    if "base" in bf.index:
+        out["base_pbias_final"] = float(bf["base"])
+        out["base_pbias_prior"] = float(bp["base"])
+
+
+def delta_kge(obs_ens_df: pd.DataFrame, sim_ens_df: pd.DataFrame,
+              prior_base: pd.Series,
+              min_points_per_month: int = DKGE_MIN_POINTS_PER_MONTH,
+              min_months: int = DKGE_MIN_MONTHS) -> dict:
+    """Change in monthly KGE (final minus prior base) for a gage's 5-day streamflow.
+
+    Inputs are the gage-aggregated 5-day series indexed by date. ``obs_ens_df``
+    and ``sim_ens_df`` have realizations as columns (the observed reference is
+    its ``base`` column, or the median if there is none); ``prior_base`` is the
+    iteration-0 ``base`` simulation (the ``starting`` column of the gage's sim
+    frame), the single pre-calibration model every change is measured from.
+
+    The score is the **continuous monthly KGE**, computed separately for each
+    final-ensemble member:
+
+    1. keep the 5-day dates where the observation, the member and the prior
+       base are all finite, so the member and the prior are scored on exactly
+       the same points;
+    2. average those points to one value per month-year (observed, member and
+       prior alike), dropping month-years with fewer than
+       ``min_points_per_month`` points;
+    3. line the monthly means up in time (one series across all the
+       calibration years) and compute one 2009 KGE (:func:`kge_components`) for
+       the member and one for the prior base against the observed series;
+    4. ``dkge = KGE(member) - KGE(prior base)``.
+
+    A member with fewer than ``min_months`` month-years gets NaN. Positive
+    ``dkge`` means calibration improved the fit. The ``base`` realization's
+    ``base_dkge`` is ``KGE(final base) - KGE(prior base)``; it is NOT part of the
+    ensemble distribution, and ``base_percentile`` is the percent of the other
+    members whose ``dkge`` is at or below it.
+
+    Returns a dict: ``dkge`` / ``kge_final`` (Series by member, base excluded),
+    ``kge_prior_base``, ``median_dkge`` (over members), ``base_dkge``,
+    ``base_kge_final``, ``base_kge_prior``, ``base_percentile`` (0-100),
+    ``n_members``, ``n_months`` (month-years scored for the base),
+    ``pbias_final`` / ``pbias_prior`` (Series by member: PBIAS of the member
+    and of the prior base on that member's monthly series, see
+    :func:`pbias_pct`), ``median_pbias``, ``base_pbias_final``,
+    ``base_pbias_prior``, ``components_base`` (``KGE``/``r``/``alpha``/``beta`` x ``prior``/``final``
+    for the base) and ``monthly_base`` (the base's scored monthly series:
+    ``obs``, ``prior``, ``final``, ``n_points``, indexed by month start).
+    """
+    out = _empty_dkge()
+    if (obs_ens_df is None or sim_ens_df is None or prior_base is None
+            or obs_ens_df.empty or sim_ens_df.empty or len(prior_base) == 0):
         return out
-    # align on common x (time) points
-    common = obs_ens_df.index.intersection(sim_ens_df.index)
-    if len(common) == 0:
+    obs = (obs_ens_df["base"] if "base" in obs_ens_df.columns
+           else obs_ens_df.median(axis=1)).dropna()
+    prior = prior_base.dropna()
+    dates = obs.index.intersection(sim_ens_df.index).intersection(prior.index).sort_values()
+    if len(dates) == 0:
         return out
-    o = obs_ens_df.loc[common]
-    s = sim_ens_df.loc[common]
-    o_p05 = o.quantile(0.05, axis=1)
-    o_p95 = o.quantile(0.95, axis=1)
-    s_p05 = s.quantile(0.05, axis=1)
-    s_p95 = s.quantile(0.95, axis=1)
+    members = list(sim_ens_df.columns)
+    o = obs.loc[dates].to_numpy(dtype=float)
+    p = prior.loc[dates].to_numpy(dtype=float)
+    f = sim_ens_df.loc[dates, members].to_numpy(dtype=float)
 
-    # valid points: both bands finite and positive-width observed band
-    valid = (o_p05.notna() & o_p95.notna() & s_p05.notna() & s_p95.notna()
-             & (o_p95 > o_p05) & (s_p95 >= s_p05))
-    if not valid.any():
+    # Step 1: one validity mask per member (obs, member and prior all finite).
+    ok = np.isfinite(f) & np.isfinite(o)[:, None] & np.isfinite(p)[:, None]
+    month_year = pd.DatetimeIndex(dates).to_period("M")
+
+    # Step 2: monthly means of the masked points, and the points per month-year.
+    def _monthly(values):
+        masked = pd.DataFrame(np.where(ok, values, np.nan), index=dates, columns=members)
+        return masked.groupby(month_year).mean()
+
+    n_pts = pd.DataFrame(ok.astype(int), index=dates, columns=members).groupby(month_year).sum()
+    keep = n_pts >= int(min_points_per_month)
+    o_m = _monthly(np.repeat(o[:, None], len(members), axis=1)).where(keep)
+    p_m = _monthly(np.repeat(p[:, None], len(members), axis=1)).where(keep)
+    f_m = _monthly(f).where(keep)
+    n_months = keep.sum(axis=0)
+
+    # Step 3: one KGE per member and one for the prior base on the same months.
+    # PBIAS is computed on the same monthly series alongside it.
+    kf, kp, comp, bf, bp = {}, {}, {}, {}, {}
+    for m in members:
+        if n_months[m] < int(min_months):
+            kf[m] = kp[m] = bf[m] = bp[m] = float("nan")
+            continue
+        cf = kge_components(o_m[m], f_m[m])
+        cp = kge_components(o_m[m], p_m[m])
+        kf[m], kp[m] = cf["KGE"], cp["KGE"]
+        bf[m], bp[m] = pbias_pct(o_m[m], f_m[m]), pbias_pct(o_m[m], p_m[m])
+        if m == "base":
+            comp = {"prior": cp, "final": cf}
+    kf, kp = pd.Series(kf, dtype=float), pd.Series(kp, dtype=float)
+    _set_pbias(out, pd.Series(bf, dtype=float), pd.Series(bp, dtype=float))
+
+    # Step 4: change from the prior base.
+    dk = kf - kp
+    ens_ids = [i for i in dk.index if i != "base"]
+    ens = dk.loc[ens_ids].dropna()
+
+    out["dkge"] = dk.loc[ens_ids]
+    out["kge_final"] = kf.loc[ens_ids]
+    out["median_dkge"] = float(ens.median()) if len(ens) else float("nan")
+    out["n_members"] = int(len(ens))
+    if "base" in dk.index and np.isfinite(dk["base"]):
+        out["base_dkge"] = float(dk["base"])
+        out["base_kge_final"] = float(kf["base"])
+        out["base_kge_prior"] = float(kp["base"])
+        out["kge_prior_base"] = float(kp["base"])
+        out["n_months"] = int(n_months["base"])
+        out["components_base"] = pd.DataFrame(comp).reindex(KGE_COMPONENTS)
+        mb = pd.DataFrame({"obs": o_m["base"], "prior": p_m["base"],
+                           "final": f_m["base"], "n_points": n_pts["base"]})
+        mb = mb[keep["base"]]
+        mb.index = mb.index.to_timestamp()
+        mb.index.name = "month"
+        out["monthly_base"] = mb
+        if len(ens):
+            out["base_percentile"] = float((ens <= dk["base"]).mean() * 100.0)
+    return out
+
+
+def dkge_wilcoxon(per_gage: pd.DataFrame, alternative: str = DKGE_ALTERNATIVE) -> dict:
+    """Wilcoxon signed-rank test across gages on the per-gage median ``dkge``.
+
+    ``per_gage`` needs a ``median_dkge`` column (one row per gage). Tests
+    whether the median change differs from zero (``alternative="greater"`` to
+    test for improvement only). Returns ``n_gages``, ``n_improved`` (gages with
+    a positive median), ``median_of_medians``, ``statistic``, ``p_value`` and
+    ``alternative``; the test fields are NaN when it cannot be run (no gages, or
+    every median exactly zero).
+    """
+    from scipy.stats import wilcoxon
+
+    x = per_gage["median_dkge"].dropna() if "median_dkge" in per_gage else pd.Series(dtype=float)
+    out = {"n_gages": int(len(x)), "n_improved": int((x > 0).sum()),
+           "median_of_medians": float(x.median()) if len(x) else float("nan"),
+           "statistic": float("nan"), "p_value": float("nan"),
+           "alternative": alternative}
+    if len(x) == 0 or (x == 0).all():
         return out
-    o_lo, o_hi = o_p05[valid], o_p95[valid]
-    s_lo, s_hi = s_p05[valid], s_p95[valid]
-
-    # (a) fraction of the sim band inside the obs band
-    inter = (np.minimum(o_hi, s_hi) - np.maximum(o_lo, s_lo)).clip(lower=0)
-    sim_w = (s_hi - s_lo)
-    # where the sim band has zero width, it either sits inside (1) or outside (0)
-    band_frac = np.where(sim_w > 0, inter / sim_w.where(sim_w > 0, other=np.nan),
-                         ((s_lo >= o_lo) & (s_lo <= o_hi)).astype(float))
-    band_frac = pd.Series(band_frac, index=o_lo.index)
-
-    # (d) fraction of sim members inside the obs band, per point
-    sim_vals = s.loc[valid]
-    inside = sim_vals.ge(o_lo, axis=0) & sim_vals.le(o_hi, axis=0)
-    member_frac = inside.mean(axis=1)  # over members, per point
-
-    out["band_overlap"] = float(band_frac.mean() * 100.0)
-    out["member_overlap"] = float(member_frac.mean() * 100.0)
-    out["n_points"] = int(valid.sum())
+    res = wilcoxon(x.to_numpy(), alternative=alternative)
+    out["statistic"] = float(res.statistic)
+    out["p_value"] = float(res.pvalue)
     return out
 
 
@@ -699,38 +869,54 @@ def add_observed_band(fig: go.Figure, ow: pd.DataFrame, group: str,
 # --------------------------------------------------------------------------- #
 # Figures
 # --------------------------------------------------------------------------- #
-def _add_overlap_annotation(fig: go.Figure, obs_ens_df, sim_ens_df,
-                            xref: str = "paper", yref: str = "paper") -> dict:
-    """Compute the two overlap metrics and stamp them in a box in the top-left
-    of the plot (or of one subplot, via ``xref="x2 domain"`` / ``yref="y2 domain"``).
-    Returns the metrics dict (also for callers that tabulate)."""
-    m = overlap_metrics(obs_ens_df, sim_ens_df)
-    if m["n_points"] == 0 or not np.isfinite(m["band_overlap"]):
-        return m
+def _stamp_box(fig: go.Figure, text: str, xref: str = "paper", yref: str = "paper") -> None:
+    """Small text box in the top-left of the plot (or of one subplot, via
+    ``xref="x2 domain"`` / ``yref="y2 domain"``)."""
     fig.add_annotation(
         xref=xref, yref=yref, x=0.01, y=0.99, xanchor="left", yanchor="top",
         showarrow=False, align="left",
         bordercolor="rgba(80,80,80,0.6)", borderwidth=1, borderpad=4,
-        bgcolor="rgba(255,255,255,0.75)", font=dict(size=11),
-        text=(f"5-95% band overlap: {m['band_overlap']:.0f}%<br>"
-              f"ensemble member overlap: {m['member_overlap']:.0f}%<br>"
-              f"<span style='color:#888'>n = {m['n_points']} points</span>"),
+        bgcolor="rgba(255,255,255,0.75)", font=dict(size=11), text=text,
     )
-    return m
+
+
+def _add_dkge_annotation(fig: go.Figure, res: dict, xref: str = "paper",
+                         yref: str = "paper") -> None:
+    """Stamp the monthly change-in-KGE result for one gage (calibrated panel):
+    the base realization's change, where it falls in the ensemble's change
+    distribution, and the ensemble median."""
+    if not res or not np.isfinite(res.get("base_dkge", float("nan"))):
+        return
+    pct = res["base_percentile"]
+    _stamp_box(fig, (
+        f"monthly &Delta;KGE (final &minus; prior)<br>"
+        f"base: {res['base_dkge']:+.2f} "
+        f"(KGE {res['base_kge_prior']:.2f} &rarr; {res['base_kge_final']:.2f})<br>"
+        f"base at {pct:.0f}th percentile of ensemble<br>"
+        f"ensemble median: {res['median_dkge']:+.2f}<br>"
+        f"<span style='color:#888'>{res['n_members']} members, "
+        f"{res['n_months']} month-years</span>"),
+        xref=xref, yref=yref)
+
+
+def _add_prior_kge_annotation(fig: go.Figure, res: dict, xref: str, yref: str) -> None:
+    """Stamp the base realization's prior monthly KGE on the prior panel."""
+    if not res or not np.isfinite(res.get("base_kge_prior", float("nan"))):
+        return
+    _stamp_box(fig, f"monthly KGE, base: {res['base_kge_prior']:.2f}",
+               xref=xref, yref=yref)
 
 
 def build_group_figure(gage, group, sim_df, obs_ens_df, realizations,
                        sim_ens_df=None, x_title=None, y_title=None) -> go.Figure:
     """Observed band (black base line+dots, p05/p95 lines, gray fill) and the
     simulated red lines + 5-95% band for one group. Everything breaks at the
-    calibration-year gaps. An overlap-metric box is stamped top-left.
-    ``realizations`` is accepted for signature compatibility but no longer used
-    (random members were dropped)."""
+    calibration-year gaps. ``realizations`` is accepted for signature
+    compatibility but no longer used (random members were dropped)."""
     fig = go.Figure()
     add_observed_band(fig, obs_base_and_band(obs_ens_df), group,
                       legend_label="observed (base; 5-95% band)")
     add_sim_traces(fig, sim_df, group, sim_ens_df)
-    _add_overlap_annotation(fig, obs_ens_df, sim_ens_df)
 
     fig.update_layout(
         title=f"{group} &mdash; gage {gage}  (obs vs sim)",
@@ -831,7 +1017,7 @@ def add_sim_traces(fig: go.Figure, sim_df: pd.DataFrame, group: str,
 
 
 def _fiveday_panel(sim_df, obs_ens_df, x_group, sim_ens_df=None) -> go.Figure:
-    """Traces for ONE 5-day streamflow panel (no layout, no overlap box).
+    """Traces for ONE 5-day streamflow panel (no layout, no metric box).
 
     The observed base line, 5-95% band and percentile lines span the whole
     record (one continuous observed series, broken only at calibration-year
@@ -868,7 +1054,7 @@ def _fiveday_panel(sim_df, obs_ens_df, x_group, sim_ens_df=None) -> go.Figure:
 
 def build_fiveday_figure(gage, sim_df, obs_ens_df, x_group, realizations,
                          sim_ens_df=None, sim_ens_prior_df=None,
-                         iteration=None) -> go.Figure:
+                         iteration=None, dkge=None) -> go.Figure:
     """Combined 5-day streamflow plot: every signature group on one time axis.
 
     With ``sim_ens_prior_df`` (the iteration-0 ensemble aggregated to this gage)
@@ -882,7 +1068,9 @@ def build_fiveday_figure(gage, sim_df, obs_ens_df, x_group, realizations,
 
     The observed series is identical in both panels. Without
     ``sim_ens_prior_df`` (an older archive) only the calibrated plot is drawn.
-    Each panel carries its own overlap-metric box. ``realizations`` is accepted
+    ``dkge`` (the :func:`delta_kge` result for this gage) stamps the prior
+    panel with the base's prior KGE and the calibrated panel with the change in
+    KGE and where the base falls in the ensemble. ``realizations`` is accepted
     for signature compatibility but no longer used.
     """
     calibrated = _fiveday_panel(sim_df, obs_ens_df, x_group, sim_ens_df)
@@ -890,7 +1078,7 @@ def build_fiveday_figure(gage, sim_df, obs_ens_df, x_group, realizations,
 
     if sim_ens_prior_df is None or sim_ens_prior_df.empty:
         fig = calibrated
-        _add_overlap_annotation(fig, obs_ens_df, sim_ens_df)
+        _add_dkge_annotation(fig, dkge)
         fig.update_layout(
             title=f"5-day streamflow &mdash; gage {gage}  "
                   f"(obs vs sim; observed marker shape = signature group)",
@@ -928,10 +1116,8 @@ def build_fiveday_figure(gage, sim_df, obs_ens_df, x_group, realizations,
     for tr in calibrated.data:
         fig.add_trace(tr, row=2, col=1)
 
-    _add_overlap_annotation(fig, obs_ens_df, sim_ens_prior_df,
-                            xref="x domain", yref="y domain")
-    _add_overlap_annotation(fig, obs_ens_df, sim_ens_df,
-                            xref="x2 domain", yref="y2 domain")
+    _add_prior_kge_annotation(fig, dkge, xref="x domain", yref="y domain")
+    _add_dkge_annotation(fig, dkge, xref="x2 domain", yref="y2 domain")
 
     fig.update_layout(
         title=f"5-day streamflow &mdash; gage {gage}  "
@@ -980,7 +1166,7 @@ def iter_gage_plot_data(td: TargetData, gage, params, nhm_id):
     for each plot of one gage. ``x_group`` and ``prior_ens_df`` (the iteration-0
     ensemble) are only set for the 5-day plot (else None).
 
-    Shared by :func:`build_gage_figures` and :func:`collect_overlap_metrics` so
+    Shared by :func:`build_gage_figures` and :func:`collect_dkge_metrics` so
     the group/pool selection and aggregation live in one place.
     """
     pos, _ = contributing_hru_positions(gage, params)
@@ -1022,86 +1208,415 @@ def iter_gage_plot_data(td: TargetData, gage, params, nhm_id):
             yield FIVEDAY_KEY, sim_df, obs_df, sim_ens_df, x_group, prior_ens_df
 
 
-def build_gage_figures(td: TargetData, gage, params, nhm_id) -> dict:
+def build_dkge_figure(gage, res: dict) -> go.Figure:
+    """Per-gage change-in-KGE figure (two panels).
+
+    Left: histogram of the final-ensemble members' ``dkge`` (continuous monthly
+    KGE of the member minus that of the prior base), with lines at zero (no
+    change), the ensemble median, and the ``base`` realization, labelled with
+    the percentile the base falls at. Right: the base's KGE and its three
+    components (``r``, ``alpha``, ``beta``), prior vs final; 1 is perfect for
+    all four, so the bars show which component calibration moved.
+    """
+    fig = make_subplots(rows=1, cols=2, column_widths=[0.6, 0.4],
+                        subplot_titles=("ensemble change in monthly KGE",
+                                        "base: KGE and its components"))
+    d = res["dkge"].dropna()
+    fig.add_trace(go.Histogram(x=d.values, nbinsx=30, name="ensemble members",
+                               marker_color="rgba(214,39,40,0.45)"), row=1, col=1)
+    # vertical reference lines span the histogram's real count range
+    counts, _ = np.histogram(d.values, bins=30) if len(d) else (np.array([1]), None)
+    ymax = float(counts.max()) * 1.25
+    for v, label, color, dash in (
+            (0.0, "no change", "gray", "dot"),
+            (res["median_dkge"], f"ensemble median {res['median_dkge']:+.2f}", "#1f77b4", "dash"),
+            (res["base_dkge"],
+             f"base {res['base_dkge']:+.2f} ({res['base_percentile']:.0f}th pct)",
+             "black", "solid")):
+        if not np.isfinite(v):
+            continue
+        fig.add_trace(go.Scatter(x=[v, v], y=[0, ymax], mode="lines", name=label,
+                                 line=dict(color=color, width=2.5, dash=dash)),
+                      row=1, col=1)
+    fig.update_yaxes(title_text="members", row=1, col=1)
+    fig.update_xaxes(title_text="&Delta;KGE (member final &minus; prior base)", row=1, col=1)
+    cb = res["components_base"]
+    if cb.notna().any().any():
+        labels = ["KGE", "r", "&alpha; (std ratio)", "&beta; (mean ratio)"]
+        for col, name, color in (("prior", "prior base", "rgba(80,80,80,0.6)"),
+                                 ("final", "final base", "#d62728")):
+            fig.add_trace(go.Bar(x=labels, y=cb[col].values, name=name,
+                                 marker_color=color,
+                                 text=[f"{v:.2f}" for v in cb[col].values],
+                                 textposition="outside"), row=1, col=2)
+        fig.add_hline(y=1.0, line=dict(color="gray", dash="dot"), row=1, col=2)
+        fig.update_yaxes(title_text="value (1 = perfect)", row=1, col=2)
+    fig.update_layout(
+        title=(f"Change in monthly KGE &mdash; gage {gage}  "
+               f"({res['n_members']} members, {res['n_months']} month-years scored)"),
+        height=460, template="plotly_white", barmode="group",
+        legend=dict(orientation="h", yanchor="bottom", y=1.1, x=0),
+        margin=dict(t=110, r=30, l=70, b=60))
+    return fig
+
+
+def build_gage_figures(td: TargetData, gage, params, nhm_id,
+                       min_points_per_month: int = DKGE_MIN_POINTS_PER_MONTH,
+                       min_months: int = DKGE_MIN_MONTHS) -> dict:
     """All figures for one gage, as ``{plot key: Figure}``.
 
     Keys are the HRU / monthly-streamflow group names, plus ``streamflow_5day``
-    for the combined 5-day plot.
+    for the combined 5-day plot and ``dkge_5day`` for the change-in-KGE figure
+    (only when the gage has 5-day targets and a scorable change in KGE).
     """
     figs = {}
     for key, sim_df, obs_df, sim_ens_df, x_group, prior_ens_df in iter_gage_plot_data(
             td, gage, params, nhm_id):
         if key == FIVEDAY_KEY:
+            res = _gage_dkge(sim_df, obs_df, sim_ens_df, min_points_per_month, min_months)
             figs[key] = build_fiveday_figure(
                 gage, sim_df, obs_df, x_group, td.realizations,
                 sim_ens_df=sim_ens_df, sim_ens_prior_df=prior_ens_df,
-                iteration=td.final_iteration)
+                iteration=td.final_iteration, dkge=res)
+            if np.isfinite(res["base_dkge"]):
+                figs["dkge_5day"] = build_dkge_figure(gage, res)
         else:
             figs[key] = build_group_figure(
                 gage, key, sim_df, obs_df, td.realizations, sim_ens_df=sim_ens_df)
     return figs
 
 
-# The combined 5-day plot is broken out in the metrics TABLE into low- and
-# high-flow rows, matching the phi-factor substring patterns used to re-weight
-# them: "_low" (low + ex_low) vs "scnd" (the pulse/small/large ascending and
-# descending signatures). The on-plot figure stays combined.
-FIVEDAY_TABLE_BUCKETS = [
-    ("streamflow_5day_low", "_low"),
-    ("streamflow_5day_high", "scnd"),
+# --------------------------------------------------------------------------- #
+# High- and low-flow buckets (scored on the 5-day points directly)
+# --------------------------------------------------------------------------- #
+# The 5-day signature groups split into two buckets by the same substring
+# patterns used for the phi-factor re-weighting: "_low" (low + ex_low) and
+# "scnd" (the pulse/small/large ascending and descending signatures). Each
+# bucket is a subset of dates scattered through the year, so it is scored on
+# its 5-day points directly; monthly means of a subset would not be real
+# monthly flows. A bucket needs DKGE_MIN_POINTS_BUCKET valid points.
+DKGE_BUCKETS = [
+    ("streamflow_5day_high", "scnd", "high flows"),
+    ("streamflow_5day_low", "_low", "low flows"),
 ]
+DKGE_MIN_POINTS_BUCKET = 30
+DKGE_ALL_GROUP = FIVEDAY_KEY
+DKGE_GROUP_LABELS = {DKGE_ALL_GROUP: "all flows (monthly)",
+                     **{g: lab for g, _pat, lab in DKGE_BUCKETS}}
 
 
-def _metric_row(gage, group, obs_ens_df, sim_ens_df):
-    m = overlap_metrics(obs_ens_df, sim_ens_df)
+def delta_kge_points(obs_ens_df: pd.DataFrame, sim_ens_df: pd.DataFrame,
+                     prior_base: pd.Series, dates=None,
+                     min_points: int = DKGE_MIN_POINTS_BUCKET) -> dict:
+    """Change in KGE (final minus prior base) scored on 5-day points directly.
+
+    Same inputs and outputs as :func:`delta_kge`, restricted to ``dates`` (a
+    flow bucket), but with no monthly averaging: for each realization the KGE
+    is computed on the 5-day points where the observation, the realization and
+    the prior base are all finite, and the prior base is scored on exactly
+    those points. A realization with fewer than ``min_points`` points gets NaN.
+    ``n_points`` is the number of points scored for the base; ``n_months`` is
+    0 and ``monthly_base`` is empty.
+    """
+    out = _empty_dkge()
+    out["n_points"] = 0
+    if (obs_ens_df is None or sim_ens_df is None or prior_base is None
+            or obs_ens_df.empty or sim_ens_df.empty or len(prior_base) == 0):
+        return out
+    obs = (obs_ens_df["base"] if "base" in obs_ens_df.columns
+           else obs_ens_df.median(axis=1)).dropna()
+    prior = prior_base.dropna()
+    common = obs.index.intersection(sim_ens_df.index).intersection(prior.index)
+    if dates is not None:
+        common = common.intersection(pd.Index(dates))
+    common = common.sort_values()
+    if len(common) == 0:
+        return out
+    o = obs.loc[common].to_numpy(dtype=float)
+    p = prior.loc[common].to_numpy(dtype=float)
+    fin = sim_ens_df.loc[common]
+
+    kf, kp, comp, n_base, bf, bp = {}, {}, {}, 0, {}, {}
+    for m in fin.columns:
+        s = fin[m].to_numpy(dtype=float)
+        ok = np.isfinite(o) & np.isfinite(s) & np.isfinite(p)
+        if ok.sum() < int(min_points):
+            kf[m] = kp[m] = bf[m] = bp[m] = float("nan")
+            continue
+        cf = kge_components(o[ok], s[ok])
+        cp = kge_components(o[ok], p[ok])
+        kf[m], kp[m] = cf["KGE"], cp["KGE"]
+        bf[m], bp[m] = pbias_pct(o[ok], s[ok]), pbias_pct(o[ok], p[ok])
+        if m == "base":
+            comp, n_base = {"prior": cp, "final": cf}, int(ok.sum())
+    kf, kp = pd.Series(kf, dtype=float), pd.Series(kp, dtype=float)
+    _set_pbias(out, pd.Series(bf, dtype=float), pd.Series(bp, dtype=float))
+    dk = kf - kp
+    ens_ids = [i for i in dk.index if i != "base"]
+    ens = dk.loc[ens_ids].dropna()
+
+    out["dkge"] = dk.loc[ens_ids]
+    out["kge_final"] = kf.loc[ens_ids]
+    out["median_dkge"] = float(ens.median()) if len(ens) else float("nan")
+    out["n_members"] = int(len(ens))
+    if "base" in dk.index and np.isfinite(dk["base"]):
+        out["base_dkge"] = float(dk["base"])
+        out["base_kge_final"] = float(kf["base"])
+        out["base_kge_prior"] = float(kp["base"])
+        out["kge_prior_base"] = float(kp["base"])
+        out["n_points"] = n_base
+        out["components_base"] = pd.DataFrame(comp).reindex(KGE_COMPONENTS)
+        if len(ens):
+            out["base_percentile"] = float((ens <= dk["base"]).mean() * 100.0)
+    return out
+
+
+def _gage_dkge(sim_df, obs_ens_df, sim_ens_df, min_points_per_month, min_months,
+               x_group=None, min_points_bucket: int = DKGE_MIN_POINTS_BUCKET) -> dict:
+    """:func:`delta_kge` for one gage, using the iteration-0 ``starting`` base
+    as the prior. With ``x_group`` (date -> 5-day signature group) the result
+    also carries ``buckets``: ``{bucket group: delta_kge_points result}`` for
+    the high- and low-flow buckets. Empty result when the gage has no
+    ``starting`` series."""
+    prior = sim_df["starting"] if "starting" in sim_df.columns else None
+    res = delta_kge(obs_ens_df, sim_ens_df, prior,
+                    min_points_per_month=min_points_per_month,
+                    min_months=min_months)
+    mb = res["monthly_base"]
+    res["n_points"] = int(mb["n_points"].sum()) if not mb.empty else 0
+    res["buckets"] = {}
+    if x_group:
+        xg = pd.Series(x_group)
+        for group, pattern, _label in DKGE_BUCKETS:
+            dates = xg[xg.str.contains(pattern, na=False)].index
+            res["buckets"][group] = delta_kge_points(
+                obs_ens_df, sim_ens_df, prior, dates=dates,
+                min_points=min_points_bucket)
+    return res
+
+
+DKGE_CSV = "dkge_metrics.csv"
+DKGE_WILCOXON_CSV = "dkge_wilcoxon.csv"
+DKGE_SUMMARY_HTML = "calib_eval_dkge_summary.html"
+DKGE_COLUMNS = ["gage", "group", "method", "n_months", "n_points", "n_members",
+                "kge_prior_base", "kge_final_base", "base_dkge", "median_dkge",
+                "dkge_p05", "dkge_p95", "base_percentile",
+                "pbias_prior_base", "pbias_final_base", "median_pbias",
+                "pbias_p05", "pbias_p95"]
+
+
+def _dkge_row(gage, group, method, res) -> dict:
+    d = res["dkge"].dropna()
+    pb = res.get("pbias_final", pd.Series(dtype=float)).dropna()
     return {
-        "gage": str(gage), "group": group, "n_points": m["n_points"],
-        "band_overlap_pct": round(m["band_overlap"], 1)
-        if np.isfinite(m["band_overlap"]) else np.nan,
-        "member_overlap_pct": round(m["member_overlap"], 1)
-        if np.isfinite(m["member_overlap"]) else np.nan,
+        "gage": str(gage), "group": group, "method": method,
+        "n_months": res["n_months"], "n_points": res.get("n_points", 0),
+        "n_members": res["n_members"],
+        "kge_prior_base": res["base_kge_prior"],
+        "kge_final_base": res["base_kge_final"],
+        "base_dkge": res["base_dkge"], "median_dkge": res["median_dkge"],
+        "dkge_p05": float(d.quantile(0.05)) if len(d) else np.nan,
+        "dkge_p95": float(d.quantile(0.95)) if len(d) else np.nan,
+        "base_percentile": res["base_percentile"],
+        "pbias_prior_base": res.get("base_pbias_prior", np.nan),
+        "pbias_final_base": res.get("base_pbias_final", np.nan),
+        "median_pbias": res.get("median_pbias", np.nan),
+        "pbias_p05": float(pb.quantile(0.05)) if len(pb) else np.nan,
+        "pbias_p95": float(pb.quantile(0.95)) if len(pb) else np.nan,
     }
 
 
-def collect_overlap_metrics(td: TargetData, params, gages) -> pd.DataFrame:
-    """Overlap metrics for every gage x plot group, as a tidy DataFrame.
+def collect_dkge_metrics(td: TargetData, params, gages,
+                         min_points_per_month: int = DKGE_MIN_POINTS_PER_MONTH,
+                         min_months: int = DKGE_MIN_MONTHS,
+                         alternative: str = DKGE_ALTERNATIVE,
+                         min_points_bucket: int = DKGE_MIN_POINTS_BUCKET):
+    """Change-in-KGE for every gage that has 5-day streamflow targets.
 
-    Columns: ``gage``, ``group``, ``n_points``, ``band_overlap_pct`` (metric a),
-    ``member_overlap_pct`` (metric d). One row per gage x group that has data.
-    The combined 5-day plot is split here into ``streamflow_5day_low`` and
-    ``streamflow_5day_high`` rows (the plot itself stays combined).
+    Returns ``(table, wilcoxon, results)``:
+
+    * ``table`` -- up to three rows per gage: ``streamflow_5day`` (all flows,
+      continuous monthly KGE), ``streamflow_5day_high`` and
+      ``streamflow_5day_low`` (the flow buckets, KGE on the 5-day points).
+      Columns: ``method``, ``n_months`` (month-years, all-flows row),
+      ``n_points`` (5-day points scored for the base), ensemble size, the
+      base's prior and final KGE, ``base_dkge``, the ensemble ``median_dkge``
+      and its 5th/95th percentiles, and ``base_percentile``.
+    * ``wilcoxon`` -- one row per group: :func:`dkge_wilcoxon` of the per-gage
+      ``median_dkge`` for that group.
+    * ``results`` -- ``{gage: delta_kge result dict}`` for the all-flows score,
+      each with a ``buckets`` entry holding the two bucket results.
     """
     nhm_id = [int(x) for x in np.asarray(params["nhm_id"])]
-    rows = []
+    rows, results = [], {}
     for gage in gages:
-        for key, _sim, obs_ens_df, sim_ens_df, x_group, _prior in iter_gage_plot_data(
+        for key, sim_df, obs_df, sim_ens_df, x_group, _prior in iter_gage_plot_data(
                 td, gage, params, nhm_id):
-            if key == FIVEDAY_KEY and x_group:
-                # split the aggregated ensembles by date into low / high buckets
-                xg = pd.Series(x_group)  # x (date) -> signature obgnme
-                for row_group, pattern in FIVEDAY_TABLE_BUCKETS:
-                    xs = xg[xg.str.contains(pattern, na=False)].index
-                    o = obs_ens_df.loc[obs_ens_df.index.intersection(xs)]
-                    s = (sim_ens_df.loc[sim_ens_df.index.intersection(xs)]
-                         if sim_ens_df is not None else None)
-                    if o.empty:
-                        continue
-                    rows.append(_metric_row(gage, row_group, o, s))
-            else:
-                rows.append(_metric_row(gage, key, obs_ens_df, sim_ens_df))
-    return pd.DataFrame(rows, columns=[
-        "gage", "group", "n_points", "band_overlap_pct", "member_overlap_pct"])
+            if key != FIVEDAY_KEY:
+                continue
+            res = _gage_dkge(sim_df, obs_df, sim_ens_df, min_points_per_month,
+                             min_months, x_group=x_group,
+                             min_points_bucket=min_points_bucket)
+            results[str(gage)] = res
+            rows.append(_dkge_row(gage, DKGE_ALL_GROUP, "monthly mean series", res))
+            for group, _pat, _lab in DKGE_BUCKETS:
+                if group in res["buckets"]:
+                    rows.append(_dkge_row(gage, group, "5-day points",
+                                          res["buckets"][group]))
+    table = pd.DataFrame(rows, columns=DKGE_COLUMNS)
+    num = [c for c in DKGE_COLUMNS if c not in ("gage", "group", "method")]
+    table[num] = table[num].astype(float).round(3)
+    groups = [DKGE_ALL_GROUP] + [g for g, _p, _l in DKGE_BUCKETS]
+    wil = pd.DataFrame([{"group": g, **dkge_wilcoxon(table[table["group"] == g],
+                                                     alternative=alternative)}
+                        for g in groups])
+    return table, wil, results
 
 
-METRICS_CSV = "overlap_metrics.csv"
+def _group_result(results: dict, gage: str, group: str) -> dict:
+    res = results.get(gage, {})
+    return res if group == DKGE_ALL_GROUP else res.get("buckets", {}).get(group, {})
 
 
-def plot_calibration_evaluation(td: TargetData, params, out_dir, gages) -> dict:
-    """Write one HTML per gage per target group, plus an overlap-metrics CSV.
+DKGE_COMBINED_LABEL = "all gages (mean)"
 
-    Layout: ``<out_dir>/<gage>/calib_eval_<key>_<gage>.html`` and
-    ``<out_dir>/overlap_metrics.csv``. Returns ``{gage: [paths]}`` (the per-gage
-    HTML paths; the CSV path is ``out_dir / METRICS_CSV``).
+
+def combined_dkge(table: pd.DataFrame, results: dict, group: str) -> dict:
+    """Change in KGE averaged over all gages, for one group.
+
+    For each ensemble member, the mean of that member's ``dkge`` over the gages
+    where it was scored; a member is the same parameter set at every gage, so
+    this is the member's average change across the domain. The base's value is
+    the mean of the gages' ``base_dkge``, and ``base_percentile`` is the percent
+    of members whose mean is at or below it. Every gage counts equally,
+    whatever its size or record length.
+
+    Returns ``dkge`` (Series by member), ``median_dkge``, ``base_dkge``,
+    ``base_percentile``, ``n_gages`` (gages with a base score) and
+    ``n_members``.
+    """
+    sub = table[(table["group"] == group)].dropna(subset=["base_dkge"])
+    per_gage = {g: _group_result(results, g, group).get("dkge", pd.Series(dtype=float))
+                for g in sub["gage"]}
+    per_gage = {g: s for g, s in per_gage.items() if len(s.dropna())}
+    nan = float("nan")
+    out = {"dkge": pd.Series(dtype=float), "median_dkge": nan, "base_dkge": nan,
+           "base_percentile": nan, "n_gages": int(len(sub)), "n_members": 0}
+    if sub.empty:
+        return out
+    out["base_dkge"] = float(sub["base_dkge"].mean())
+    if per_gage:
+        m = pd.DataFrame(per_gage).mean(axis=1, skipna=True).dropna()
+        out["dkge"] = m
+        out["n_members"] = int(len(m))
+        if len(m):
+            out["median_dkge"] = float(m.median())
+            out["base_percentile"] = float((m <= out["base_dkge"]).mean() * 100.0)
+    return out
+
+
+def build_dkge_summary_figure(table: pd.DataFrame, results: dict,
+                              wilcoxon: pd.DataFrame) -> go.Figure:
+    """Across-gage view in three panels: all flows (continuous monthly KGE),
+    high flows and low flows (KGE on the 5-day points of each bucket). Each
+    panel has one box per gage of the ensemble members' change, the ``base``
+    realization as a black diamond, a line at zero, and that group's Wilcoxon
+    result on the per-gage median change in its subplot title. Gages are in
+    the same order in every panel (by the all-flows median change).
+
+    The bottom row of each panel, ``all gages (mean)``, is
+    :func:`combined_dkge`: a box of each member's change averaged over the
+    gages, with the base's averaged change as a black diamond."""
+    groups = [DKGE_ALL_GROUP] + [g for g, _p, _l in DKGE_BUCKETS]
+    wil = wilcoxon.set_index("group")
+    allg = table[table["group"] == DKGE_ALL_GROUP]
+    order = allg.sort_values("median_dkge", na_position="first")["gage"].tolist()
+    # Plotly draws the first category at the bottom of a category axis.
+    y_order = [DKGE_COMBINED_LABEL] + order
+
+    def _title(g):
+        w = wil.loc[g] if g in wil.index else None
+        if w is None or not w["n_gages"]:
+            return f"{DKGE_GROUP_LABELS[g]}<br><sup>no gages scored</sup>"
+        ptxt = f"{w['p_value']:.3g}" if np.isfinite(w["p_value"]) else "n/a"
+        return (f"{DKGE_GROUP_LABELS[g]}<br><sup>Wilcoxon p = {ptxt}, "
+                f"{int(w['n_improved'])} of {int(w['n_gages'])} gages improved</sup>")
+
+    fig = make_subplots(rows=1, cols=len(groups), shared_yaxes=True,
+                        horizontal_spacing=0.04,
+                        subplot_titles=[_title(g) for g in groups])
+    for c, group in enumerate(groups, start=1):
+        sub = table[table["group"] == group].set_index("gage")
+        for g in order:
+            d = _group_result(results, g, group).get("dkge", pd.Series(dtype=float)).dropna()
+            if len(d):
+                fig.add_trace(go.Box(x=d.values, y=[g] * len(d), orientation="h",
+                                     name=g, boxpoints=False,
+                                     marker_color="rgba(214,39,40,0.7)",
+                                     showlegend=False), row=1, col=c)
+        b = sub.reindex(order).dropna(subset=["base_dkge"])
+        if not b.empty:
+            fig.add_trace(go.Scatter(
+                x=b["base_dkge"].values, y=b.index.tolist(), mode="markers",
+                name="base realization", legendgroup="base", showlegend=(c == 1),
+                marker=dict(color="black", symbol="diamond", size=9),
+                customdata=np.stack([b["base_percentile"].values,
+                                     b["kge_prior_base"].values,
+                                     b["kge_final_base"].values], axis=1),
+                hovertemplate=("base %{x:+.2f} (%{customdata[0]:.0f}th pct)<br>"
+                               "KGE %{customdata[1]:.2f} &rarr; %{customdata[2]:.2f}"
+                               "<extra>%{y}</extra>")), row=1, col=c)
+        # Combined row: each member's change averaged over all gages.
+        cmb = combined_dkge(table, results, group)
+        if len(cmb["dkge"]):
+            fig.add_trace(go.Box(x=cmb["dkge"].values,
+                                 y=[DKGE_COMBINED_LABEL] * len(cmb["dkge"]),
+                                 orientation="h", name=DKGE_COMBINED_LABEL,
+                                 boxpoints=False, marker_color="rgba(31,119,180,0.8)",
+                                 showlegend=False), row=1, col=c)
+        if np.isfinite(cmb["base_dkge"]):
+            fig.add_trace(go.Scatter(
+                x=[cmb["base_dkge"]], y=[DKGE_COMBINED_LABEL], mode="markers",
+                name="base realization", legendgroup="base", showlegend=False,
+                marker=dict(color="black", symbol="diamond", size=11,
+                            line=dict(color="white", width=1)),
+                customdata=[[cmb["base_percentile"], cmb["n_gages"], cmb["median_dkge"]]],
+                hovertemplate=("mean over %{customdata[1]} gages: base %{x:+.2f} "
+                               "(%{customdata[0]:.0f}th pct)<br>ensemble median "
+                               "%{customdata[2]:+.2f}<extra>all gages</extra>")),
+                row=1, col=c)
+        fig.add_vline(x=0, line=dict(color="gray", dash="dot"), row=1, col=c)
+        fig.update_xaxes(title_text="&Delta;KGE (final &minus; prior base)", row=1, col=c)
+    fig.update_yaxes(type="category", categoryorder="array", categoryarray=y_order)
+    fig.update_yaxes(title_text="gage", row=1, col=1)
+    # thin rule separating the combined row from the per-gage rows
+    if order:
+        fig.add_hline(y=0.5, line=dict(color="rgba(80,80,80,0.5)", width=1))
+    fig.update_layout(
+        title=("Change in KGE across gages (box = ensemble, diamond = base; "
+               "blue row = mean over all gages)<br>"
+               "<sup>all flows: KGE on the continuous monthly series; high/low "
+               "flows: KGE on the 5-day points of each bucket</sup>"),
+        height=max(460, 40 * len(y_order) + 240), template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.12, x=0),
+        margin=dict(t=160, r=30, l=90, b=60))
+    return fig
+
+
+def plot_calibration_evaluation(td: TargetData, params, out_dir, gages,
+                                min_points_per_month: int = DKGE_MIN_POINTS_PER_MONTH,
+                                min_months: int = DKGE_MIN_MONTHS,
+                                alternative: str = DKGE_ALTERNATIVE,
+                                min_points_bucket: int = DKGE_MIN_POINTS_BUCKET) -> dict:
+    """Write one HTML per gage per plot, plus the change-in-KGE tables.
+
+    Layout: ``<out_dir>/<gage>/calib_eval_<key>_<gage>.html`` (``key`` includes
+    ``dkge_5day`` where scorable), ``<out_dir>/dkge_metrics.csv`` (per gage and
+    group), ``<out_dir>/dkge_wilcoxon.csv`` (one row per group),
+    ``<out_dir>/dkge_members.csv`` (every realization's change, for
+    comparing runs), ``<out_dir>/dkge_settings.json`` and
+    ``<out_dir>/calib_eval_dkge_summary.html``. Returns ``{gage: [paths]}`` (the
+    per-gage HTML paths only).
     """
     out_dir = pl.Path(out_dir)
     nhm_id = [int(x) for x in np.asarray(params["nhm_id"])]
@@ -1110,12 +1625,86 @@ def plot_calibration_evaluation(td: TargetData, params, out_dir, gages) -> dict:
         gage_dir = out_dir / str(gage)
         gage_dir.mkdir(parents=True, exist_ok=True)
         paths = []
-        for key, fig in build_gage_figures(td, gage, params, nhm_id).items():
+        figs = build_gage_figures(td, gage, params, nhm_id,
+                                  min_points_per_month=min_points_per_month,
+                                  min_months=min_months)
+        for key, fig in figs.items():
             p = gage_dir / f"calib_eval_{key}_{gage}.html"
             fig.write_html(str(p), include_plotlyjs="cdn")
             paths.append(p)
         written[str(gage)] = paths
-    # Overlap-metrics summary table across all gages x groups.
-    metrics = collect_overlap_metrics(td, params, gages)
-    metrics.to_csv(out_dir / METRICS_CSV, index=False)
+    table, wilcoxon, results = collect_dkge_metrics(
+        td, params, gages, min_points_per_month=min_points_per_month,
+        min_months=min_months, alternative=alternative,
+        min_points_bucket=min_points_bucket)
+    write_dkge_outputs(out_dir, table, wilcoxon, results, dkge_settings(
+        min_points_per_month, min_months, min_points_bucket, alternative,
+        td.final_iteration))
+    if table["median_dkge"].notna().any():
+        build_dkge_summary_figure(table, results, wilcoxon).write_html(
+            str(out_dir / DKGE_SUMMARY_HTML), include_plotlyjs="cdn")
     return written
+
+
+DKGE_MEMBERS_CSV = "dkge_members.csv"
+DKGE_SETTINGS_JSON = "dkge_settings.json"
+
+
+def dkge_settings(min_points_per_month=DKGE_MIN_POINTS_PER_MONTH,
+                  min_months=DKGE_MIN_MONTHS,
+                  min_points_bucket=DKGE_MIN_POINTS_BUCKET,
+                  alternative=DKGE_ALTERNATIVE, final_iteration=None) -> dict:
+    """The settings a change-in-KGE result was computed with, so a later
+    comparison can tell whether two runs were scored the same way."""
+    return {"min_points_per_month": int(min_points_per_month),
+            "min_months": int(min_months),
+            "min_points_bucket": int(min_points_bucket),
+            "alternative": str(alternative),
+            "final_iteration": None if final_iteration is None else int(final_iteration)}
+
+
+def dkge_members_long(results: dict) -> pd.DataFrame:
+    """Every realization's change in KGE, long format: ``gage``, ``group``,
+    ``realization``, ``dkge``, ``pbias`` (the realization's final PBIAS) and
+    ``pbias_prior`` (the prior base's PBIAS on the same points; for the base
+    row, the prior base's own). The ``base`` realization is included as its own
+    row (it is kept out of the ensemble distribution elsewhere, so readers
+    filter on ``realization != "base"``)."""
+    frames = []
+    groups = [DKGE_ALL_GROUP] + [g for g, _p, _l in DKGE_BUCKETS]
+    for gage in results:
+        for group in groups:
+            res = _group_result(results, gage, group)
+            if not res:
+                continue
+            d = res.get("dkge", pd.Series(dtype=float)).dropna()
+            pf = res.get("pbias_final", pd.Series(dtype=float))
+            pp = res.get("pbias_prior", pd.Series(dtype=float))
+            rows = pd.DataFrame({"gage": str(gage), "group": group,
+                                 "realization": d.index.astype(str), "dkge": d.values,
+                                 "pbias": pf.reindex(d.index).values,
+                                 "pbias_prior": pp.reindex(d.index).values})
+            if np.isfinite(res.get("base_dkge", float("nan"))):
+                rows = pd.concat([rows, pd.DataFrame([{
+                    "gage": str(gage), "group": group, "realization": "base",
+                    "dkge": res["base_dkge"],
+                    "pbias": res.get("base_pbias_final", np.nan),
+                    "pbias_prior": res.get("base_pbias_prior", np.nan)}])],
+                    ignore_index=True)
+            frames.append(rows)
+    cols = ["gage", "group", "realization", "dkge", "pbias", "pbias_prior"]
+    return pd.concat(frames, ignore_index=True)[cols] if frames else pd.DataFrame(columns=cols)
+
+
+def write_dkge_outputs(out_dir, table, wilcoxon, results, settings: dict) -> None:
+    """Write the change-in-KGE tables: ``dkge_metrics.csv``,
+    ``dkge_wilcoxon.csv``, ``dkge_members.csv`` (every realization) and
+    ``dkge_settings.json``."""
+    import json
+
+    out_dir = pl.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(out_dir / DKGE_CSV, index=False)
+    wilcoxon.to_csv(out_dir / DKGE_WILCOXON_CSV, index=False)
+    dkge_members_long(results).to_csv(out_dir / DKGE_MEMBERS_CSV, index=False)
+    (out_dir / DKGE_SETTINGS_JSON).write_text(json.dumps(settings, indent=2), encoding="utf-8")

@@ -31,7 +31,10 @@
 # |---|---|
 # | `calib_eval_targets.nc` | the extracted sim and obs vectors, so the plots can be rebuilt without re-reading the ensembles |
 # | `<gage>/calib_eval_<group>_<gage>.html` | one interactive plot per gage per target group |
-# | `overlap_metrics.csv` | the two overlap metrics for every gage x group |
+# | `<gage>/calib_eval_dkge_5day_<gage>.html` | the change-in-KGE figure for a gage with 5-day targets |
+# | `dkge_metrics.csv` | the change in continuous monthly KGE for every gage with 5-day targets |
+# | `dkge_wilcoxon.csv` | the Wilcoxon signed-rank test on the per-gage median change |
+# | `calib_eval_dkge_summary.html` | the change in KGE for all gages in one figure |
 #
 # The plot groups are `actet_mean_mon`, `recharge_ann`, `soil_moist_ann`,
 # `soil_moist_mean_mon`, `runoff_mon`, `swe_monthly`, `streamflow_mon`,
@@ -63,8 +66,10 @@
 #   above. The **top** panel is the **prior** in the same style: its red solid
 #   line is the iteration-0 `base` and its red band is the 5th-95th percentile
 #   range of the full **iteration-0 ensemble**. The observed series is the same
-#   in both, and each panel has its own overlap box, so the prior-to-calibrated
-#   change in fit reads straight down the page. Archives written before this
+#   in both. The prior panel is stamped with the base realization's prior KGE
+#   and the calibrated panel with the change in KGE (see "Change-in-KGE
+#   metric" below), so the prior-to-calibrated change in fit reads straight
+#   down the page. Archives written before this
 #   change have no prior ensemble and still get the single calibrated panel;
 #   re-run the extract cell to get the stack.
 # - Values at or below -9990 (the PEST++ no-data fill) are masked, and the
@@ -115,6 +120,19 @@ gages = None
 
 # Gage to preview inline at the end. None = the first gage with a streamflow target.
 preview_gage = None
+
+# Change-in-KGE metric (5-day streamflow, continuous monthly KGE). The 5-day
+# points are averaged to one value per month-year; a month-year is kept only if
+# it has at least this many valid 5-day points (a full month holds about 6), and
+# a gage is scored only if at least this many month-years are kept.
+dkge_min_points_per_month = 3
+dkge_min_months = 12
+# Wilcoxon alternative across gages: "two-sided" (the median change differs from
+# zero), or "greater" (the median change is positive, i.e. calibration helped).
+dkge_alternative = "two-sided"
+# High- and low-flow buckets are scored on their 5-day points directly; a bucket
+# needs at least this many valid points at a gage to get a score.
+dkge_min_points_bucket = 30
 
 # %% [markdown]
 # ## Setup
@@ -274,7 +292,7 @@ display(pd.DataFrame(plan, columns=["label", "parameter iteration", "realization
 # Reads the ensembles and writes `calib_eval_targets.nc` in `out_dir`. It keeps
 # the `starting` and `base` realizations for the sim lines, the **full**
 # obs+noise ensemble for the observed band, and the **full** final-iteration
-# simulated ensemble for the sim band (and, later, the overlap metric). Writing
+# simulated ensemble for the sim band and the change-in-KGE metric. Writing
 # both full ensembles makes the archive larger (a few hundred MB) but means the
 # plots and metric never need to re-read the PEST csvs.
 
@@ -295,74 +313,274 @@ con.print(
 #
 # One HTML per gage per target group, written to `<out_dir>/<gage>/`. HRU
 # targets are the mean over each gage's contributing HRUs; streamflow targets
-# are selected by gage id. An overlap-metrics summary CSV is also written to
-# `<out_dir>/overlap_metrics.csv`.
+# are selected by gage id. The change-in-KGE tables and summary figure are also
+# written to `<out_dir>`.
 
 # %%
 plot_gages = ce.select_gages(td, poi_gage_id, gage_set=gage_set, gages=gages)
-written = ce.plot_calibration_evaluation(td, params, out_dir, plot_gages)
+written = ce.plot_calibration_evaluation(
+    td, params, out_dir, plot_gages,
+    min_points_per_month=dkge_min_points_per_month,
+    min_months=dkge_min_months,
+    alternative=dkge_alternative,
+    min_points_bucket=dkge_min_points_bucket,
+)
 
 # %% [markdown]
-# ## Overlap-metric summary
+# ## Change-in-KGE metric (5-day streamflow)
 #
-# Two per gage-group overlap metrics, both measured against the **observed**
-# noise ensemble's 5-95% band:
+# One number per gage that says whether calibration improved the fit to the
+# 5-day streamflow targets, plus where the **base** realization sits among the
+# final ensemble. It uses only the odd (calibration) water years that are in
+# the PEST++ files, so it measures **calibration improvement, not validation
+# skill**. It is computed for all flows and, separately, for high and low flows
+# (see below). Other target groups are not scored.
 #
-# - **`band_overlap_pct`** - the fraction of the *simulated* 5-95% band that
-#   lies inside the observed band (metric *a*). This is an interval-vs-interval
-#   measure: it only asks whether the two ranges occupy the same values, not how
-#   the simulated members are distributed within their range.
-# - **`member_overlap_pct`** - the fraction of individual *simulated* ensemble
-#   members that fall inside the observed band (metric *d*). This is sensitive
-#   to *where the mass of the simulated ensemble sits*, not just its outer edge.
+# ### The score: KGE on a continuous monthly series
 #
-# Both are also stamped on each plot, and the full table is written to
-# `overlap_metrics.csv`. Higher is better for both: the simulated ensemble is
-# reproducing the observed target within its own noise.
+# The Kling-Gupta efficiency (Gupta et al., 2009) compares a simulated series
+# $S$ with an observed series $O$:
 #
-# The combined 5-day plot is broken out in the **table** into two rows,
-# `streamflow_5day_low` (the low and ex_low signatures) and
-# `streamflow_5day_high` (the pulse/small/large ascending and descending
-# signatures), so low- and high-flow performance can be judged separately. The
-# 5-day *plot* stays combined.
+# $$\mathrm{KGE} = 1 - \sqrt{(r-1)^2 + (\alpha-1)^2 + (\beta-1)^2}$$
 #
-# ### Reading the two numbers together
+# | Component | Definition | Measures | Perfect |
+# |---|---|---|---|
+# | $r$ | Pearson correlation of $S$ and $O$ | timing and shape | 1 |
+# | $\alpha$ | $\sigma_S / \sigma_O$ | variability (too flashy > 1, too flat < 1) | 1 |
+# | $\beta$ | $\mu_S / \mu_O$ | volume bias (too wet > 1, too dry < 1) | 1 |
 #
-# They usually agree closely. When they **diverge**, the gap is itself
-# diagnostic, because it means the simulated ensemble is *lopsided* (skewed, or
-# piled up against one edge of its own range) rather than spread evenly:
+# KGE is 1 at best and has no lower limit. KGE > −0.41 means the simulation
+# beats using the observed mean as a predictor (Knoben et al., 2019).
 #
-# - **`band_overlap` >> `member_overlap`** (band overlaps, but few members land
-#   in range): the simulated range clips the observed band, but most
-#   realizations cluster to one side - often just outside the observed band,
-#   with only the tail of the ensemble reaching in. The model *can* produce
-#   target-like values but typically does not. Read this as a weaker match than
-#   the band number alone suggests; look at the plot to see which side the
-#   simulated base/line sits on (a consistent high or low bias).
-# - **`member_overlap` >= `band_overlap`** (members in range, narrower band
-#   footprint): the bulk of the ensemble sits inside the observed band while the
-#   simulated band's outer percentiles reach beyond it - a tighter, well-centered
-#   ensemble with a few wide realizations. This is generally a *good* sign.
-# - **Both low**: the simulated and observed ranges barely share values at all -
-#   a structural miss (bias or wrong dynamics) for that target at that gage, not
-#   just an ensemble-spread issue. Worth prioritizing when deciding what to
-#   recalibrate.
-# - **Both high**: the simulated ensemble both overlaps and is centered on the
-#   observed band - the target is well reproduced.
+# ### How the value is calculated, step by step
 #
-# Also weigh `n_points`: a 90% overlap over 6 annual points is far weaker
-# evidence than 90% over 72 monthly points. And remember these compare against
-# the observed *noise* band, not a single true value - a model can score high by
-# being appropriately uncertain, so pair the metric with the base line on the
-# plot (the calibrated best estimate) when judging fit.
+# For one gage, and separately for every realization being scored:
+#
+# 1. **Collect the 5-day points.** Take every `streamflow_5day_*` target for the
+#    gage (all signature groups together). The observed value is the observed
+#    `base` (the noise-free observation), the simulated value is the
+#    realization's model-equivalent from `<case>.<iteration>.obs.csv`, and the
+#    prior value is the iteration-0 `base` from `<case>.0.obs.csv`.
+# 2. **Keep matching points only.** A date is used only if the observed, the
+#    simulated and the prior values are all present. The realization and the
+#    prior are therefore always scored on exactly the same dates.
+# 3. **Average to monthly values.** Group the dates by month-year (Oct 1980,
+#    Nov 1980, ...) and average the 5-day values in each, for the observed,
+#    simulated and prior series alike. A month-year with fewer than
+#    `dkge_min_points_per_month` points is dropped (a full month holds about 6).
+# 4. **Line the months up in time.** The monthly means form one series running
+#    through all the calibration years. The even (validation) years are simply
+#    absent; nothing is interpolated across them. A series with fewer than
+#    `dkge_min_months` month-years gets no score.
+# 5. **Score it.** Compute the KGE above twice on that series: simulated vs
+#    observed, and prior vs observed.
+# 6. **Take the change.** $\Delta\mathrm{KGE} = \mathrm{KGE}_{\text{realization}} - \mathrm{KGE}_{\text{prior base}}$.
+#    Positive means the calibrated model fits the monthly hydrograph better
+#    than the pre-calibration model did.
+#
+# This is the same kind of monthly KGE as the "Monthly" column of the
+# streamflow statistics table in notebook 6, with two differences: notebook 6
+# averages **daily** values over the gage's **whole record**, while this uses
+# the **5-day targets** in the **calibration years only**. Expect the two to be
+# close but not identical.
+#
+# ### From one gage to the ensemble and across gages
+#
+# - **`base_dkge`** is step 6 for the final `base` realization.
+# - **Ensemble distribution.** Steps 1-6 are repeated for every other member of
+#   the final ensemble, always against the same single prior base. The base is
+#   *not* included in this distribution.
+# - **`median_dkge`** is the median of that distribution, and **`dkge_p05`** /
+#   **`dkge_p95`** are its 5th and 95th percentiles.
+# - **`base_percentile`** is the percent of ensemble members whose
+#   $\Delta\mathrm{KGE}$ is at or below the base's. Near 50, the base is a typical
+#   member. Near 100, it improved more than almost every member.
+# - **Wilcoxon signed-rank test (across gages).** Each gage contributes one
+#   number, its `median_dkge`. The test asks whether those medians are centred
+#   on zero. `dkge_alternative = "two-sided"` tests for any change, `"greater"`
+#   for improvement only. `n_improved` counts gages with a positive median. With
+#   few gages the test has little power, so read the per-gage values too.
+#
+# ### High-flow and low-flow scores
+#
+# The all-flows score above is driven mostly by high-flow months. Two more
+# scores separate the flow regimes, using the EFC signature group of each
+# 5-day target. The buckets use the same substring patterns as the phi-factor
+# re-weighting:
+#
+# Each 5-day observation name carries a code `streamflow_5day_<efc>_<limb>`
+# (see `assist.common.efc`). `<efc>` is the Environmental Flow Component:
+# 1 large flood, 2 small flood, 3 high-flow pulse, 4 low flow, 5 extreme low
+# flow. `<limb>` is the hydrograph position: 1 low flow, 2 ascending,
+# 3 descending. For a 5-day bin, notebook 01 takes the most frequent daily
+# value of each separately, and notebook 03 assigns the signature groups:
+#
+# | Bucket (`group`) | Signature groups (contain) | Codes |
+# |---|---|---|
+# | `streamflow_5day_high` | `scnd`: `large_ascnd`, `large_dscnd`, `small_ascnd`, `small_dscnd`, `pulse_ascnd`, `pulse_dscnd` | `1_2`, `1_3`, `2_2`, `2_3`, `3_2`, `3_3` |
+# | `streamflow_5day_low` | `_low`: `low`, `ex_low` | `3_1`, `4_1`, `5_1` |
+#
+# `3_1` is a bin whose most frequent EFC class is a pulse but whose most
+# frequent limb is low flow (a mixed bin). Notebook 03 deliberately puts it in
+# `low`, by its limb. Buckets follow the **signature group**, so they always
+# match the groups PEST++ was calibrated with. A code that notebook 03 does not
+# map to one of these groups is counted in the all-flows score but in neither
+# bucket.
+#
+# How a bucket's value is calculated, for one gage and one realization:
+#
+# 1. **Select the bucket's dates.** Take the gage's 5-day targets whose
+#    signature group is in the bucket. Each 5-day date belongs to exactly one
+#    signature group, so the two buckets never share a point.
+# 2. **Keep matching points only**, exactly as in step 2 above: a date is used
+#    only if the observed, simulated and prior values are all present.
+# 3. **Score the 5-day points directly.** Compute the same KGE formula on the
+#    bucket's 5-day values, for the realization and for the prior base. There
+#    is **no monthly averaging** here. A bucket's dates are scattered through
+#    the year (low flows mostly in late summer, pulses mostly in winter and
+#    spring), so a monthly mean of only those points would not be a real
+#    monthly flow. A bucket needs at least `dkge_min_points_bucket` points.
+# 4. **Take the change**: $\Delta\mathrm{KGE} = \mathrm{KGE}_{\text{realization}} - \mathrm{KGE}_{\text{prior base}}$,
+#    then the ensemble median, the percentiles and the base's percentile as for
+#    the all-flows score. The Wilcoxon test is run separately for each bucket.
+#
+# A KGE inside one flow regime is harsher than the all-flows monthly KGE. The
+# bucket covers a narrow range of flows, so a modest error moves $r$ and
+# $\alpha$ a lot. Compare a bucket's prior and final values with each other,
+# not with the all-flows number.
+#
+# ### Columns of the table below (`dkge_metrics.csv`)
+#
+# Up to three rows per gage, one per `group`: `streamflow_5day` (all flows),
+# `streamflow_5day_high` and `streamflow_5day_low`.
+#
+# | Column | Meaning |
+# |---|---|
+# | `method` | `monthly mean series` (all flows) or `5-day points` (buckets) |
+# | `n_months` | month-years scored for the base (all flows only; 0 for buckets) |
+# | `n_points` | 5-day points scored for the base |
+# | `n_members` | ensemble members with a score (base excluded) |
+# | `kge_prior_base` | KGE of the iteration-0 `base` |
+# | `kge_final_base` | KGE of the final `base` |
+# | `base_dkge` | `kge_final_base − kge_prior_base` |
+# | `median_dkge`, `dkge_p05`, `dkge_p95` | median and 5th/95th percentiles of the ensemble's change |
+# | `base_percentile` | where `base_dkge` falls in the ensemble's change (0-100) |
+# | `pbias_prior_base`, `pbias_final_base` | percent bias of the iteration-0 and final `base`, on the same points as the KGE |
+# | `median_pbias`, `pbias_p05`, `pbias_p95` | median and 5th/95th percentiles of the ensemble's final PBIAS |
+#
+# PBIAS is $100 \times \sum (O - S) / \sum O$, the `hydroeval.pbias` convention
+# used in notebook 6: positive means the model under-predicts, negative means it
+# over-predicts. It is not plotted here; `compare_calibration_evaluation_plots`
+# plots it. `dkge_members.csv` carries each realization's final PBIAS
+# (`pbias`) and the prior base's on the same points (`pbias_prior`).
+#
+# `dkge_wilcoxon.csv` holds the across-gage test, one row per `group`:
+# `n_gages`, `n_improved`, `median_of_medians`, `statistic`, `p_value`,
+# `alternative`.
+#
+# ### Where it shows up
+#
+# - **5-day plot.** The prior panel shows the base's prior KGE. The calibrated
+#   panel shows the base's change, its prior → final KGE, its percentile, and
+#   the ensemble median (all flows).
+# - **`calib_eval_dkge_5day_<gage>.html`.** Left: a histogram of the ensemble's
+#   change with lines at zero, the ensemble median and the base. Right: the
+#   base's KGE, $r$, $\alpha$ and $\beta$, prior vs final, so you can see which
+#   component calibration moved (all flows).
+# - **`calib_eval_dkge_summary.html`.** Three panels side by side: all flows,
+#   high flows, low flows. Each has one box per gage of the ensemble's change,
+#   the base as a black diamond, and that group's Wilcoxon result in the panel
+#   title. Gages are in the same order in all three panels. The bottom row of
+#   each panel, **`all gages (mean)`** (blue), is the combined score below.
+#
+# ### Combined score: the mean over all gages
+#
+# One number per group for the whole domain, drawn as the bottom row of each
+# panel of `calib_eval_dkge_summary.html` and listed in the table after the
+# Wilcoxon results. How it is calculated, for one group:
+#
+# 1. **Per gage.** Use the per-gage $\Delta\mathrm{KGE}$ already computed
+#    above (all flows, high flows or low flows).
+# 2. **Per member.** An ensemble member is the same parameter set at every
+#    gage. For each member, average its $\Delta\mathrm{KGE}$ over the gages
+#    where it was scored. This gives one domain-average change per member, and
+#    the box shows the distribution of those averages.
+# 3. **Base.** The diamond is the average of the gages' `base_dkge`.
+#    `base_percentile` is the percent of members whose average is at or below
+#    it, and `median_dkge` is the median of the members' averages.
+#
+# Every gage counts equally, whatever its drainage area or record length. Nested
+# gages share upstream area, so a large basin with several gages carries more
+# weight than its size alone would suggest. A plain mean is pulled by one gage
+# with a very large change (common in the low-flow group), so read it next to the
+# per-gage rows above it.
+#
+# ### Reading it
+#
+# - A change near zero at a gage that already fit well is not a failure; read
+#   `kge_prior_base` and `kge_final_base` alongside it.
+# - The all-flows score is driven mostly by high-flow months and says little
+#   about late-summer low flows. Read the low-flow row for those.
+# - The reference is the observed `base`, not a true value, and the ensemble is
+#   the PEST++ IES posterior, so the spread of the change reflects posterior
+#   parameter uncertainty, not sampling error.
 
 # %%
-metrics = ce.collect_overlap_metrics(td, params, plot_gages)
-# wide view: band overlap per gage x group (member overlap is in the CSV)
-band_wide = metrics.pivot(index="gage", columns="group", values="band_overlap_pct")
-print("band overlap % (gage x group); full detail in overlap_metrics.csv")
-display(band_wide)
-display(metrics)
+dkge_table, dkge_wilcoxon, dkge_results = ce.collect_dkge_metrics(
+    td, params, plot_gages,
+    min_points_per_month=dkge_min_points_per_month,
+    min_months=dkge_min_months,
+    alternative=dkge_alternative,
+    min_points_bucket=dkge_min_points_bucket,
+)
+display(dkge_table.set_index(["gage", "group"]))
+print("Wilcoxon signed-rank test on the per-gage median change, per group")
+display(dkge_wilcoxon.set_index("group"))
+
+# Combined score: each member's change averaged over all gages (see above).
+dkge_combined = pd.DataFrame([
+    {"group": g, **{k: v for k, v in ce.combined_dkge(dkge_table, dkge_results, g).items()
+                    if k != "dkge"}}
+    for g in dkge_table["group"].unique()
+]).set_index("group")
+print("Change in KGE averaged over all gages, per group")
+display(dkge_combined.round(3))
+
+# %% [markdown]
+# ### Worked example for one gage
+#
+# The intermediate values behind one gage's `base_dkge`, so the number can be
+# checked by hand. The gage is `preview_gage` (or the first gage with a 5-day
+# score). The first table is the scored monthly series from steps 3-4 (the
+# first and last few month-years). The second is the KGE and its components
+# from step 5. Recomputing KGE from the `r`, `alpha` and `beta` rows with the
+# formula above reproduces the `KGE` row, and `final − prior` in that row is
+# `base_dkge`.
+
+# %%
+scored = [g for g, r in dkge_results.items() if np.isfinite(r["base_dkge"])]
+ex_gage = str(preview_gage) if preview_gage and str(preview_gage) in scored else (scored[0] if scored else None)
+if ex_gage is None:
+    con.print("[bold yellow]No gage has a 5-day change-in-KGE score; nothing to show.[/bold yellow]")
+else:
+    ex = dkge_results[ex_gage]
+    mb = ex["monthly_base"]
+    con.print(
+        f"Gage {ex_gage}: {ex['n_months']} month-years scored, "
+        f"{int(mb['n_points'].sum())} 5-day points, "
+        f"{mb.index.min():%Y-%m} to {mb.index.max():%Y-%m}"
+    )
+    print("Monthly means used in the score (cfs), first and last 6 month-years")
+    display(pd.concat([mb.head(6), mb.tail(6)]).round(2))
+    cb = ex["components_base"].copy()
+    cb["final − prior"] = cb["final"] - cb["prior"]
+    print("KGE and its components for the base realization")
+    display(cb.round(3))
+    con.print(
+        f"base_dkge = {ex['base_kge_final']:.3f} − ({ex['base_kge_prior']:.3f}) = "
+        f"{ex['base_dkge']:+.3f};  ensemble median {ex['median_dkge']:+.3f};  "
+        f"base at the {ex['base_percentile']:.0f}th percentile of {ex['n_members']} members"
+    )
 
 # %% [markdown]
 # ## Verification
@@ -407,7 +625,7 @@ n_plots = int(check["plots"].sum())
 ok = n_plots > 0 and (check["plots"] > 0).all() and (check["empty files"] == 0).all()
 con.print(
     f"[green]All checks passed.[/green] {n_plots} plots across {len(plot_gages)} gages, "
-    f"plus {ce.METRICS_CSV}, are in {out_dir}"
+    f"plus {ce.DKGE_CSV}, are in {out_dir}"
     if ok
     else "[bold red]Some gages produced no plots or empty files; see the table above.[/bold red]"
 )
