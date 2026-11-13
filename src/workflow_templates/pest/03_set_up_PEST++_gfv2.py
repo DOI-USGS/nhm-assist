@@ -772,6 +772,12 @@ obs.loc[obs.isnull().any(axis=1)]
 # same form the streamflow groups use. This matches the relative standard deviation
 # set for the group above.
 #
+# **Streamflow weights are also scaled by gage observation count** (end of the
+# weights cell, controlled by `GAGE_COUNT_WT_EXPONENT`). Notebook 05 rebalances whole
+# groups, not the gages inside them, and gages with long records otherwise give most
+# of the phi. The scaling is done separately for the 5-day, monthly and mean monthly
+# observations, so each type is balanced across gages on its own.
+#
 # `RUNOFF_MON_FLOOR_CFS` (next cell) sets the flow below which every observation
 # gets the same weight. It prevents near-zero months from receiving enormous
 # weights. It is a model-scale choice: a domain with small HRUs (many months below
@@ -779,9 +785,28 @@ obs.loc[obs.isnull().any(axis=1)]
 # Check how many observations fall below it (printed with the weights below).
 
 # %%
-# Flow floor (cfs) for the relative weights of the `runoff_mon` group. Change this
-# for domains whose HRU flows are on a different scale.
+# Flow floors (cfs) for the relative weights. Observations below a floor all get
+# the weight of an observation AT the floor, so near-zero flows are not given
+# enormous weights. Change these for domains whose flows are on a different scale.
+#
+# - `RUNOFF_MON_FLOOR_CFS`: the HRU `runoff_mon` group.
+# - `STREAMFLOW_FLOOR_CFS`: all streamflow groups (5-day, monthly, mean monthly).
+#   Lowering it makes near-dry gages much more influential, because the weight at
+#   the floor is 1 / (wt_percent x floor). Check the per-gage weight ranges
+#   printed below, and how many observations fall at or under the floor.
 RUNOFF_MON_FLOOR_CFS = 1.0
+STREAMFLOW_FLOOR_CFS = 5.0
+
+# Exponent for the gage-count weight scaling applied after the streamflow weights
+# are set (end of the weights cell below). Within each observation type (5-day,
+# monthly, mean monthly), each gage's weights are multiplied by
+#     (n_gage / median_n_over_gages) ** (-GAGE_COUNT_WT_EXPONENT)
+# where n is that gage's number of weighted observations of that type. Gages with
+# more observations are down-weighted per observation, so gages with long records
+# do not dominate phi. 0 turns the scaling off; 0.5 gives every gage about the same
+# total weight; 0.25 is a partial correction (5-day values are autocorrelated, so
+# the raw count overstates the information in a record).
+GAGE_COUNT_WT_EXPONENT = 0.25
 
 # %%
 obs["poi_group"] = obs["obsnme"].str.rsplit(":", n=1).str[-1]
@@ -842,7 +867,7 @@ for cn, _ in obs.groupby("obgnme"):
 
                 # For zero flows (optional, of user wants to set "0" flows to a diff wt, like "0"
                 #               here we set the wt value using the "low_bound" value.
-                low_bound = 5
+                low_bound = STREAMFLOW_FLOOR_CFS
                 mask_cn_and_zero = (mask_cn_and_poi_group) & (obs["obsval"] == 0)
                 obs.loc[mask_cn_and_zero, "weight"] = 1 / (
                     obs_group_percent * low_bound
@@ -897,6 +922,41 @@ for cn, _ in obs.groupby("obgnme"):
 print(
     "Note: Monthly streamflow obs are still being weighted here based upon streamflow rules."
 )
+
+# Gage-count scaling (see GAGE_COUNT_WT_EXPONENT above). This is in the same cell as
+# the weight loop on purpose: the loop recomputes every weight from scratch, so
+# re-running the cell cannot scale the weights twice.
+# Notebook 05 rescales whole groups, so it cannot rebalance gages WITHIN a group;
+# this scaling is what does that. Only observations that carry weight are counted
+# (validation and no-data observations are already zero-weighted at this point).
+if GAGE_COUNT_WT_EXPONENT != 0:
+    _is_sf = obs.obgnme.str.startswith("streamflow_") & (obs.weight > 0)
+    _family = pd.Series("", index=obs.index)
+    _family[obs.obgnme.str.startswith("streamflow_5day")] = "5-day"
+    _family[obs.obgnme == "streamflow_mon"] = "monthly"
+    _family[obs.obgnme == "streamflow_mean_mon"] = "mean monthly"
+    _unknown = sorted(obs.loc[_is_sf & (_family == ""), "obgnme"].unique())
+    if _unknown:
+        print(
+            f"[Note] Not gage-count scaled (not 5-day/monthly/mean monthly): {_unknown}"
+        )
+    for _fam in ["5-day", "monthly", "mean monthly"]:
+        _m = _is_sf & (_family == _fam)
+        if not _m.any():
+            continue
+        _n_by_gage = obs.loc[_m].groupby("poi_group").size()
+        _mult = (_n_by_gage / _n_by_gage.median()) ** (-GAGE_COUNT_WT_EXPONENT)
+        obs.loc[_m, "weight"] = obs.loc[_m, "weight"] * obs.loc[_m, "poi_group"].map(
+            _mult
+        )
+        print(
+            f"Gage-count weight scaling ({_fam}, exponent {GAGE_COUNT_WT_EXPONENT}): "
+            f"{len(_n_by_gage)} gages, n per gage {int(_n_by_gage.min())} to "
+            f"{int(_n_by_gage.max())}, weight multiplier {_mult.min():.2f} to "
+            f"{_mult.max():.2f}"
+        )
+else:
+    print("Gage-count weight scaling is off (GAGE_COUNT_WT_EXPONENT = 0).")
 
 # %% [markdown]
 # #### Zero-weight validation observations
