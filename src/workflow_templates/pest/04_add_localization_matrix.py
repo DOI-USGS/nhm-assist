@@ -255,19 +255,40 @@ new_par_groups = dict(
 
 # %%
 # assign meaningful descriptive names to the parameter supergroups
-group_name_lookup = dict(
-    zip(
-        [f"obs_combo_{i+1}" for i in range(7)],
-        [
-            "Daily, all",
-            "Daily;\nLand Surface",
-            "Daily, low",
-            "Daily, low;\nLand Surface",
-            "Land Surface",
-            "Monthly;\nMean Monthly;\nLand Surface",
-            "Daily, high;\nLand Surface",
-        ],
-    )
+#
+# Labels are derived from the observation groups in each combo, not from the
+# combo number. Combo numbers follow the order parameters first appear in
+# localization_groups.csv, which differs between templates (NHM vs NHF) and
+# can change when trimming to the groups present in the PST merges combos.
+def describe_combo(obs_groups):
+    """Return a short label for a set of observation group names."""
+    daily = {g for g in obs_groups if g.startswith("streamflow_5day")}
+    low = {g for g in daily if g.endswith(("_low", "_ex_low"))}
+    high = daily - low
+    monthly = {g for g in obs_groups if g in ("streamflow_mon", "streamflow_mean_mon")}
+    land = {g for g in obs_groups if not g.startswith("streamflow")}
+    streamflow_other = set(obs_groups) - daily - monthly - land
+    if streamflow_other:
+        raise ValueError(f"Unrecognized streamflow groups: {sorted(streamflow_other)}")
+
+    parts = []
+    if low and high:
+        parts.append("Daily" if land else "Daily, all")
+    elif low:
+        parts.append("Daily, low")
+    elif high:
+        parts.append("Daily, high")
+    if monthly:
+        parts.append("Monthly;\nMean Monthly")
+    if land:
+        parts.append("Land Surface")
+    return ";\n".join(parts) if parts else "No observations"
+
+
+group_name_lookup = {k: describe_combo(v) for k, v in group_lookup.items()}
+# Two combos with the same label would be indistinguishable in plots.
+assert len(set(group_name_lookup.values())) == len(group_name_lookup), (
+    f"Duplicate localization group labels: {group_name_lookup}"
 )
 group_name_lookup
 
@@ -317,7 +338,11 @@ pars.pargp.unique()
 # ### Verify no parameters were left ungrouped
 
 # %%
-assert "pargp" not in pars.pargp.unique()
+unmapped = sorted(set(pars.pargp.unique()) - set(group_lookup))
+assert not unmapped, (
+    f"Parameter groups with no localization entry (add the parameter type to "
+    f"localization_groups.csv): {unmapped}"
+)
 
 # %%
 base_loc.columns

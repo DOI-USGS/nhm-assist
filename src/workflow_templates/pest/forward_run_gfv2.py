@@ -260,6 +260,80 @@ if "smidx_coef" in params.parameters:
         params = pws.parameters.PrmsParameters.from_ds(params_ds)
 
 # %%
+# hru_deplcrv is an INDEX (1..n_curves) into the snarea_curve library, but PEST++
+# estimates it as a continuous number. Snap it to a valid curve id before the
+# model is built: round to the nearest integer, clip to the curves that exist,
+# and cast back to the parameter's integer dtype (a bare cast would truncate).
+# n_curves comes from the library itself (11 points per curve), not a constant.
+if "hru_deplcrv" in params.parameters and "snarea_curve" in params.parameters:
+    _n_curves = int(np.asarray(params.parameters["snarea_curve"]).size // 11)
+    _deplcrv = np.asarray(params.parameters["hru_deplcrv"], dtype="float64")
+    assert np.all(np.isfinite(_deplcrv)), "hru_deplcrv contains NaN/Inf"
+    _deplcrv_idx = np.clip(np.rint(_deplcrv), 1, _n_curves)
+    params_ds = params.to_xr_ds()
+    # Explicit int32: the PEST-filled parameters.json loads this as float64 (the
+    # template token is a float), and pywatershed declares it an integer index.
+    params_ds["hru_deplcrv"] = params_ds["hru_deplcrv"].copy(
+        data=_deplcrv_idx.astype("int32")
+    )
+    params = pws.parameters.PrmsParameters.from_ds(params_ds)
+
+# %%
+# smidx_exp is NOT calibrated; it is derived from the calibrated parameters.
+# Recompute it from this realization's carea_max, smidx_coef and soil_moist_max
+# so it stays consistent with them on every PEST++ run (each ensemble member and
+# each iteration gets its own smidx_exp), overwriting whatever value
+# parameters.json carries. The calculation follows the byHW method
+# (concatPARAM.f, Markstrom) and is the same as the
+# create_smidx_exp_param / 06_OHM_smidex_exp_param workflow:
+#
+#   smidx_max = 1.1 * soil_moist_max + 0.5 * ppt_max
+#   smidx_coef = 0.99 * carea_max   where smidx_coef >= carea_max
+#   smidx_exp  = log10(carea_max / smidx_coef) ** (1 / smidx_max)
+#
+# No clipping of smidx_exp is applied (the byHW clip to 1.0 is disabled there
+# too). carea_max and smidx_coef are floored at 0.0001 for the calculation
+# ONLY (as 06_OHM_smidex_exp_param does) so a sampled carea_max == 0 cannot
+# produce 0/0 -> NaN; the calibrated parameters themselves are left untouched.
+# ppt_max is the maximum daily precipitation per HRU in the run's own prcp.nc.
+_SMIDX_FLOOR = 0.0001
+
+with xr.open_dataset(work_dir / "prcp.nc") as _prcp_ds:
+    _ppt_max = _prcp_ds["prcp"].max(dim="time").values.astype("float64")
+
+_carea_max = np.asarray(params.parameters["carea_max"], dtype="float64")
+_smidx_coef = np.asarray(params.parameters["smidx_coef"], dtype="float64")
+_soil_moist_max = np.asarray(params.parameters["soil_moist_max"], dtype="float64")
+
+# prcp.nc is matched to the parameters positionally (as in the notebook).
+assert _ppt_max.shape == _carea_max.shape, (
+    f"prcp.nc has {_ppt_max.shape[0]} HRUs but the parameters have "
+    f"{_carea_max.shape[0]}; cannot compute smidx_exp."
+)
+
+_carea_max = np.maximum(_carea_max, _SMIDX_FLOOR)
+_smidx_coef = np.maximum(_smidx_coef, _SMIDX_FLOOR)
+_smidx_coef = np.where(_smidx_coef >= _carea_max, 0.99 * _carea_max, _smidx_coef)
+_smidx_max = 1.1 * _soil_moist_max + 0.5 * _ppt_max
+_smidx_exp = np.log10(_carea_max / _smidx_coef) ** (1.0 / _smidx_max)
+
+# A NaN/Inf here would silently poison the realization; stop instead.
+assert np.all(np.isfinite(_smidx_exp)), (
+    f"smidx_exp is not finite for {int((~np.isfinite(_smidx_exp)).sum())} HRU(s)"
+)
+
+params_ds = params.to_xr_ds()
+_like = "smidx_exp" if "smidx_exp" in params_ds else "smidx_coef"
+params_ds["smidx_exp"] = params_ds[_like].copy(
+    data=_smidx_exp.astype(params_ds[_like].dtype)
+)
+params = pws.parameters.PrmsParameters.from_ds(params_ds)
+con.print(
+    f"smidx_exp recalculated for {_smidx_exp.size} HRUs "
+    f"(range {_smidx_exp.min():.4f} - {_smidx_exp.max():.4f})"
+)
+
+# %%
 control.options = control.options | {
     "input_dir": work_dir,
     "budget_type": None,

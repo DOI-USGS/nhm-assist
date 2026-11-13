@@ -369,7 +369,13 @@ def _place_values(pf: ParameterFile, real_vals: pd.Series) -> tuple[int, int]:
                 f"{pname}: only {filled.sum()}/{filled.size} slots filled "
                 f"-- id set or shape mismatch between ensemble and starting file"
             )
-        param.data = arr.astype(np.asarray(param.data).dtype)  # back to native dtype
+        native = np.asarray(param.data).dtype
+        if np.issubdtype(native, np.integer):
+            # Index parameters (e.g. hru_deplcrv) are estimated as floats. Round,
+            # don't truncate: the forward run rounds, so this keeps the file
+            # identical to what the model ran.
+            arr = np.rint(arr)
+        param.data = arr.astype(native)  # back to native dtype
         placed += filled.size
     return placed, len(by_param)
 
