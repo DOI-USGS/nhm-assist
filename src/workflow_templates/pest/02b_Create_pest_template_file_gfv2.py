@@ -382,6 +382,76 @@ for cp in range_list:
 
 
 # %% [markdown]
+# #### Bound overrides for snow parameters
+#
+# These replace the Percent / Range bounds above for three snow parameters. The
+# values come from forward-run tests on the SandyRiver prior (Nov 2026):
+#
+# - **`tmax_allsnow`: `parval1` +/- `offset` (6 F).** The Range method gave
+#   -10 to 40 F, so the prior spread was about +/-12.5 F. Raising it 4 F at a
+#   mid-elevation HRU turned late-melting snow into a 183-inch pack, and with
+#   the wide prior 31% of mid-elevation HRU samples kept snow through
+#   August-September (19% with +/- 6 F, 17% with +/- 4 F, 10% at the starting
+#   values). The wide prior also inflated peak SWE (median 1.19 x target).
+# - **`snarea_thresh`: lower bound `lower_factor` x `parval1` (0.5).**
+# - **`rad_trncf`: upper bound `upper_factor` x `parval1` (1.5).**
+#   With the Percent method (+/- 20%) neither could reach values that let
+#   HRU 7304 melt out on time. Melt-out matched the observations only when
+#   `snarea_thresh` x0.5, `rad_trncf` x1.5, `cecn_coef` x2 and depletion curve 4
+#   were combined (Aug-Sep SWE 2.98 -> 0.20 in, peak unchanged). The other
+#   bound of each keeps its Percent value.
+#
+# Every override is clipped to the physical limits in `par_cal_bounds_use.csv`
+# (`par_lower_bound`, `par_upper_bound`). `BOUND_OVERRIDE_HRUS = None` applies
+# them to every HRU; a list of `nhm_id` values limits them to those HRUs. Set
+# `BOUND_OVERRIDES = {}` to keep the Percent / Range bounds. Notebook 03 keeps
+# `tmax_allsnow` untransformed (no log), since its lower bound is now positive.
+
+# %%
+BOUND_OVERRIDES = {
+    "tmax_allsnow": {"offset": 6.0},          # parval1 +/- 6 F
+    "snarea_thresh": {"lower_factor": 0.5},   # lower bound 0.5 x parval1
+    "rad_trncf": {"upper_factor": 1.5},       # upper bound 1.5 x parval1
+}
+BOUND_OVERRIDE_HRUS = None  # None = all HRUs, or e.g. [7304, 7303, 11843]
+
+for _p, _rule in BOUND_OVERRIDES.items():
+    _sel = par_starting_vals.parname.str.startswith(_p + ":")
+    if BOUND_OVERRIDE_HRUS is not None:
+        _hrus = {f"hru_{h}" for h in BOUND_OVERRIDE_HRUS}
+        _sel &= par_starting_vals.parname.str.split(":").str[1].isin(_hrus)
+    if not _sel.any():
+        print(f"Bound override: no {_p} parameters selected, skipped")
+        continue
+    _v = par_starting_vals.loc[_sel, "parval1"].astype(float)
+    _lo = par_starting_vals.loc[_sel, "parlbnd"].astype(float)
+    _hi = par_starting_vals.loc[_sel, "parubnd"].astype(float)
+    if "offset" in _rule:
+        _lo, _hi = _v - _rule["offset"], _v + _rule["offset"]
+    if "lower_factor" in _rule:
+        _lo = _v * _rule["lower_factor"]
+    if "upper_factor" in _rule:
+        _hi = _v * _rule["upper_factor"]
+    # Clip only the side(s) this rule sets to the physical limits, and never let a
+    # bound cross parval1 (some starting values lie outside the csv limits, e.g.
+    # snarea_thresh above 50 in at glacier HRUs; their other bound is left as is).
+    _plo, _phi = float(bnds.loc[_p, "par_lower_bound"]), float(bnds.loc[_p, "par_upper_bound"])
+    if "offset" in _rule or "lower_factor" in _rule:
+        _lo = _lo.clip(lower=_plo, upper=_phi)
+    if "offset" in _rule or "upper_factor" in _rule:
+        _hi = _hi.clip(lower=_plo, upper=_phi)
+    _lo, _hi = np.minimum(_lo, _v), np.maximum(_hi, _v)
+    par_starting_vals.loc[_sel, "parlbnd"] = _lo
+    par_starting_vals.loc[_sel, "parubnd"] = _hi
+    _bad = int((_lo >= _hi).sum())
+    print(
+        f"Bound override {_p} {_rule}: {int(_sel.sum())} parameters | "
+        f"lower {_lo.min():.4g}-{_lo.max():.4g} | upper {_hi.min():.4g}-{_hi.max():.4g}"
+        + (f" | WARNING: {_bad} with lower >= upper" if _bad else "")
+    )
+
+
+# %% [markdown]
 # #### Review final `par_starting_vals`
 
 # %%

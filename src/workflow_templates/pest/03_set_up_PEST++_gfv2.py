@@ -1111,19 +1111,28 @@ pars.sample(50)
 # %% [markdown]
 # #### Disable log-transformation for parameters with non-positive lower bounds
 #
-# `hru_deplcrv` is also left untransformed. It is an index (1 to n) into the
-# snow depletion curves, which the forward run rounds to the nearest curve. Its
-# bounds (0.5 to 9.5) give every curve an equal share of the range only on a
-# linear scale; a log transform would crowd the high-numbered curves together
-# and spread the low ones apart.
+# Two parameter types are always left untransformed (`NO_LOG_TYPES`):
+#
+# - `hru_deplcrv` is an index (1 to n) into the snow depletion curves, which the
+#   forward run rounds to the nearest curve. Its bounds (0.5 to 9.5) give every
+#   curve an equal share of the range only on a linear scale; a log transform
+#   would crowd the high-numbered curves together and spread the low ones apart.
+# - `tmax_allsnow` is a temperature in degrees F. Notebook 02b bounds it at
+#   `parval1` +/- 6 F, so its lower bound is positive and the rule above would
+#   otherwise log-transform it.
 
 # %%
 pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
-pars.loc[pars.parnme.str.startswith("hru_deplcrv"), "partrans"] = "none"
-print(
-    "partrans by type for hru_deplcrv:",
-    pars.loc[pars.parnme.str.startswith("hru_deplcrv"), "partrans"].value_counts().to_dict(),
-)
+# Never log-transform these, whatever their lower bound:
+# - hru_deplcrv: curve index, see above.
+# - tmax_allsnow: a temperature in degrees F. With bounds of parval1 +/- 6 F
+#   (notebook 02b) its lower bound is positive, which would otherwise switch it
+#   to a log transform.
+NO_LOG_TYPES = ("hru_deplcrv", "tmax_allsnow")
+for _t in NO_LOG_TYPES:
+    pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"] = "none"
+    print(f"partrans for {_t}:",
+          pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"].value_counts().to_dict())
 
 # %% [markdown]
 # #### Set the forward model command
