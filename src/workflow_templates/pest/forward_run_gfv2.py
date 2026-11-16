@@ -543,10 +543,73 @@ for var in var_list + diagnostic_vars:
     out_subset_ds[var].attrs = var_meta
 
 
+# %% [markdown]
+# #### Snowpack temperature clip (workaround for a pywatershed snow defect)
+#
+# pywatershed 2.0.4's PRMSSnow can produce physically impossible snowpack
+# temperatures and heat deficits on thin or nearly all-liquid packs:
+#
+# 1. The conduction step removes `qcond = cst * (ts - pk_temp)` from the pack
+#    with no limit, so a thin pack can be cooled far below the surface (air)
+#    temperature. (The warming direction is limited; the cooling one is not.)
+# 2. When rain melts almost all the ice in a thin pack, the depth (computed from
+#    the ice) goes to ~0, so density = SWE / depth and the conduction
+#    coefficient `cst` (proportional to density) explode, and one step adds
+#    1e20+ Langleys of heat deficit.
+#
+# A deficit that large can never be paid off, so the pack never melts again and
+# grows every year ("snow towers", thousands of inches at HRUs that melt out
+# completely in the observations). Diagnosed on Sandy_beta2_n prior members
+# (see the snow-tower diagnostic notes / pywatershed issue report).
+#
+# The clip runs after every day: a pack is kept no colder than the coldest
+# minimum air temperature at that HRU over the previous `SNOW_CLIP_WINDOW_DAYS`
+# days (and never above 0 C), and its heat deficit is reset to match
+# (`pk_def = -pk_temp * 1.27 * SWE`, the relation PRMSSnow itself uses). An empty
+# pack gets zero temperature and deficit. Real cold content is never colder than
+# the air that produced it, so only impossible states are changed. On the four
+# diagnostic members it removed every numerical tower and changed SWE at
+# non-tower targets by a median of 0.000 in (0.3-0.6% of targets by > 0.5 in).
+# Set `SNOW_TEMP_CLIP = False` to run pywatershed unmodified.
+
+# %%
+SNOW_TEMP_CLIP = True
+SNOW_CLIP_WINDOW_DAYS = 30
+
+_snow_proc = model.processes["PRMSSnow"]
+_atm_proc = model.processes["PRMSAtmosphere"]
+_nhru_clip = len(np.asarray(_snow_proc.pkwater_equiv))
+_tmin_hist = np.zeros((SNOW_CLIP_WINDOW_DAYS, _nhru_clip))
+_n_snow_clips = np.zeros(_nhru_clip, dtype=np.int64)
+
+
+def _clip_snowpack_temperature(istep):
+    """Clip impossible pk_temp / pk_def in place after a model step."""
+    tmin = _atm_proc["tminc"]
+    tmin = np.asarray(tmin.current if hasattr(tmin, "current") else tmin)
+    _tmin_hist[istep % SNOW_CLIP_WINDOW_DAYS] = tmin
+    n_hist = min(istep + 1, SNOW_CLIP_WINDOW_DAYS)
+    floor = np.minimum(0.0, _tmin_hist[:n_hist].min(axis=0))
+    swe = np.asarray(_snow_proc.pkwater_equiv)
+    pk_temp = _snow_proc.pk_temp
+    pk_def = _snow_proc.pk_def
+    has_pack = swe > 0
+    bad = has_pack & (~np.isfinite(pk_temp) | ~np.isfinite(pk_def) | (pk_temp < floor))
+    if bad.any():
+        pk_temp[bad] = floor[bad]
+        pk_def[bad] = -floor[bad] * 1.27 * swe[bad]
+        _n_snow_clips[bad] += 1
+    no_pack = ~has_pack & ((pk_temp != 0) | (pk_def != 0))
+    pk_temp[no_pack] = 0.0
+    pk_def[no_pack] = 0.0
+
+
 # %%
 for istep in range(n_time_steps):
     model.advance()
     model.calculate()
+    if SNOW_TEMP_CLIP:
+        _clip_snowpack_temperature(istep)
 
     if model_output_netcdf:
         model.output()
@@ -573,6 +636,13 @@ for istep in range(n_time_steps):
 
 # %%
 out_subset_ds.to_netcdf(custom_output_file)
+
+# %%
+if SNOW_TEMP_CLIP:
+    print(
+        f"Snowpack temperature clip: {int(_n_snow_clips.sum())} HRU-days clipped "
+        f"at {int((_n_snow_clips > 0).sum())} of {_nhru_clip} HRUs"
+    )
 
 # %%
 print(f"That took {time.time()-sttime:.3f} looong seconds")
@@ -988,7 +1058,7 @@ with open(rootdir / of_name, encoding="utf-8",mode='a') as ofp:
 #
 # Matches the `SWE_monthly` target in 01_Prepare_observations_gfv2 (built from
 # SWE_monthly.nc in notebook 00): monthly-mean SWE (inches) over the calibration
-# (odd) years, with June-October dropped and NaNs filled with the -9999 PEST++
+# (odd) years, all 12 months kept, and NaNs filled with the -9999 PEST++
 # no-data sentinel. Replaces the former snow-covered-area (SCA) target.
 
 # %%
@@ -1007,12 +1077,11 @@ swe_monthly = swe_monthly.sel(
 )
 
 # %%
-# Fill NaNs with the -9999 PEST++ no-data sentinel and drop June-October,
-# exactly as notebook 01 does when writing the SWE_monthly target.
+# Fill NaNs with the -9999 PEST++ no-data sentinel, exactly as notebook 01 does
+# when writing the SWE_monthly target. All 12 months are kept (June-October used
+# to be dropped); notebook 01 and this file must keep the same month set, since
+# allobs.dat and modelobs.dat are paired by position.
 swe_monthly_restr = swe_monthly.fillna(-9999)
-swe_monthly_restr = swe_monthly_restr.sel(
-    time=~swe_monthly_restr['time'].dt.month.isin([6, 7, 8, 9, 10])
-)
 
 # %%
 inds = [f'{i.year}_{i.month}_{i.day}:{j}' for i in swe_monthly_restr.indexes['time'] for j in swe_monthly_restr['nhm_id'].values]

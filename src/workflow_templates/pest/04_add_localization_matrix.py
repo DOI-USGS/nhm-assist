@@ -287,9 +287,9 @@ def describe_combo(obs_groups):
 
 group_name_lookup = {k: describe_combo(v) for k, v in group_lookup.items()}
 # Two combos with the same label would be indistinguishable in plots.
-assert len(set(group_name_lookup.values())) == len(group_name_lookup), (
-    f"Duplicate localization group labels: {group_name_lookup}"
-)
+assert len(set(group_name_lookup.values())) == len(
+    group_name_lookup
+), f"Duplicate localization group labels: {group_name_lookup}"
 group_name_lookup
 
 # %%

@@ -1110,9 +1110,20 @@ pars.sample(50)
 
 # %% [markdown]
 # #### Disable log-transformation for parameters with non-positive lower bounds
+#
+# `hru_deplcrv` is also left untransformed. It is an index (1 to n) into the
+# snow depletion curves, which the forward run rounds to the nearest curve. Its
+# bounds (0.5 to 9.5) give every curve an equal share of the range only on a
+# linear scale; a log transform would crowd the high-numbered curves together
+# and spread the low ones apart.
 
 # %%
 pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
+pars.loc[pars.parnme.str.startswith("hru_deplcrv"), "partrans"] = "none"
+print(
+    "partrans by type for hru_deplcrv:",
+    pars.loc[pars.parnme.str.startswith("hru_deplcrv"), "partrans"].value_counts().to_dict(),
+)
 
 # %% [markdown]
 # #### Set the forward model command

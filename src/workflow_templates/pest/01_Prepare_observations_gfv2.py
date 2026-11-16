@@ -969,9 +969,10 @@ cdat
 # %%
 cdat = xr.open_dataset(obsdir / "SWE_monthly.nc")
 cdat = cdat.fillna(-9999)
-cdat = cdat.sel(
-    time=~cdat["time"].dt.month.isin([6, 7, 8, 9, 10])
-)  # drop months July, August, and September
+# All 12 months of every calibration year are kept as targets. June-October used
+# to be dropped, which hid snow that never melts out ("snow towers") in the
+# summer. Keep this in step with the SWE post-processing in forward_run_gfv2.py:
+# the observation and model-output lines are paired by position.
 # set up the indices in sequence
 inds = [
     f"swe_monthly:{i.year}_{i.month}_{i.day}:{j}"
