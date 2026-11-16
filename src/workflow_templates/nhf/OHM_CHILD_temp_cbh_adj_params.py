@@ -88,8 +88,15 @@
 # ```
 # deficit_degC_per_km[m] = obs_lapse[m] - model_lapse[m]      # SIGN PRESERVED
 # deficit_degF_per_m[m]  = deficit_degC_per_km[m] / 1000 * 1.8
-# adj(hru, m) = -(deficit_degF_per_m[m]) * max(0.0, hru_elev[hru] - elev_ref)
+# adj(hru, m) = deficit_degF_per_m[m] * max(0.0, hru_elev[hru] - elev_ref)
 # ```
+#
+# Lapse rates are negative (temperature falls with height), so a deficit of
+# `obs - model` < 0 means the observations cool faster with height than the
+# forcing. Adding `deficit * height` to the forcing gives it the observed lapse.
+# (Before 2026-11-16 this read `adj = -(deficit) * height`, which warmed high HRUs
+# in under-lapsing months instead of cooling them. Files written with that sign,
+# including the first `myparam_mod_tadj.param`, have the adjustments reversed.)
 #
 # The adjustment is 0 at and below `elev_ref` and grows with height above it. Its
 # **sign is the measured sign** of that month's deficit: a negative deficit
@@ -267,7 +274,7 @@ tmin_deficit_degC_per_km_m = (
 
 # Convert to a per-meter adjustment slope in degF/m, sign preserved:
 #   degC/km -> degC/m (/1000) -> degF/m (*1.8).
-# The adjustment applied below is -(deficit_slope) * height_above, so a
+# The adjustment applied below is deficit_slope * height_above, so a
 # negative deficit (obs colder aloft) cools and a positive deficit warms.
 tmax_deficit_degF_per_m_m = (tmax_deficit_degC_per_km_m / 1000.0) * 1.8
 tmin_deficit_degF_per_m_m = (tmin_deficit_degC_per_km_m / 1000.0) * 1.8
@@ -360,7 +367,7 @@ print(f"USING elev_ref = {elev_ref:.2f} m")
 # %% [markdown]
 # ## Step 4: Compute the per-HRU, per-month adjustments
 #
-# For each month m: `adj[:, m] = -(deficit_slope_degF_per_m[m]) * max(0, hru_elev - elev_ref)`.
+# For each month m: `adj[:, m] = deficit_slope_degF_per_m[m] * max(0, hru_elev - elev_ref)`.
 #
 # The adjustment is zero at/below `elev_ref` and grows (in whichever direction the
 # month's deficit dictates) with height above it. Months with a negative deficit
@@ -371,10 +378,11 @@ print(f"USING elev_ref = {elev_ref:.2f} m")
 # %%
 height_above = np.maximum(0.0, hru_elev - elev_ref)  # (nhru,)
 
-# Per-month adjustment: outer product of height_above (nhru,) with the negated
-# per-month deficit slope (12,). Sign preserved — cooling or warming per month.
-tmax_adj = -np.outer(height_above, tmax_deficit_degF_per_m_m)  # (nhru, 12)
-tmin_adj = -np.outer(height_above, tmin_deficit_degF_per_m_m)  # (nhru, 12)
+# Per-month adjustment: outer product of height_above (nhru,) with the per-month
+# deficit slope (12,). A negative deficit (obs colder aloft) gives cooling that
+# grows with height; a positive deficit gives a small warming.
+tmax_adj = np.outer(height_above, tmax_deficit_degF_per_m_m)  # (nhru, 12)
+tmin_adj = np.outer(height_above, tmin_deficit_degF_per_m_m)  # (nhru, 12)
 
 assert tmax_adj.shape == (nhru, 12), f"tmax_adj shape {tmax_adj.shape}"
 assert tmin_adj.shape == (nhru, 12), f"tmin_adj shape {tmin_adj.shape}"
@@ -405,9 +413,10 @@ print(f"  lowest  HRU (elev {hru_elev[i_lo]:.1f} m): all-zero = "
 #
 # Pure array arithmetic (no pywatershed run). For every month, regress the
 # computed adjustment on `hru_elev` over the HRUs above `elev_ref`: the slope must
-# equal `-(deficit_slope_degF_per_m[m])`. Adding each month's deficit to that
-# month's model lapse must reproduce that month's observed lapse. Asserts fail
-# loudly if the math drifts.
+# equal `deficit_slope_degF_per_m[m]`. Converting that fitted slope back to degC/km
+# and adding it to the month's model lapse must reproduce the month's observed
+# lapse, so the check tests the adjustment actually written (an adjustment with
+# the wrong sign fails here). Asserts fail loudly if the math drifts.
 
 # %%
 above = hru_elev > elev_ref
@@ -418,26 +427,29 @@ print(f"  {'mon':>3} {'tmax_slope':>11} {'expect':>11} | "
       f"{'tmax_eff_after':>14} {'obs_tmax':>9}")
 for k in range(12):
     s_tx = float(np.polyfit(hru_elev[above], tmax_adj[above, k], 1)[0])
-    assert np.isclose(s_tx, -tmax_deficit_degF_per_m_m[k], atol=1e-9), (
+    assert np.isclose(s_tx, tmax_deficit_degF_per_m_m[k], atol=1e-9), (
         f"month {k + 1} tmax adj slope {s_tx:.8f} != "
-        f"{-tmax_deficit_degF_per_m_m[k]:.8f}"
+        f"{tmax_deficit_degF_per_m_m[k]:.8f}"
     )
     s_tn = float(np.polyfit(hru_elev[above], tmin_adj[above, k], 1)[0])
-    assert np.isclose(s_tn, -tmin_deficit_degF_per_m_m[k], atol=1e-9), (
+    assert np.isclose(s_tn, tmin_deficit_degF_per_m_m[k], atol=1e-9), (
         f"month {k + 1} tmin adj slope {s_tn:.8f} != "
-        f"{-tmin_deficit_degF_per_m_m[k]:.8f}"
+        f"{tmin_deficit_degF_per_m_m[k]:.8f}"
     )
-    # corrected effective lapse = model + deficit == observed (by construction)
-    tmax_eff_after = (
-        ml["model_tmax_lapse_degC_per_km"][k] + tmax_deficit_degC_per_km_m[k]
+    # corrected effective lapse = model lapse + the fitted adjustment slope
+    # (degF/m -> degC/km: / 1.8 * 1000); it must equal the observed lapse.
+    tmax_eff_after = ml["model_tmax_lapse_degC_per_km"][k] + s_tx / 1.8 * 1000.0
+    assert np.isclose(tmax_eff_after, ml["obs_tmax_lapse_degC_per_km"][k], atol=1e-6), (
+        f"month {k + 1}: corrected tmax lapse {tmax_eff_after:.4f} != observed "
+        f"{ml['obs_tmax_lapse_degC_per_km'][k]:.4f} (wrong adjustment sign?)"
     )
-    assert np.isclose(tmax_eff_after, ml["obs_tmax_lapse_degC_per_km"][k], atol=1e-6)
-    tmin_eff_after = (
-        ml["model_tmin_lapse_degC_per_km"][k] + tmin_deficit_degC_per_km_m[k]
+    tmin_eff_after = ml["model_tmin_lapse_degC_per_km"][k] + s_tn / 1.8 * 1000.0
+    assert np.isclose(tmin_eff_after, ml["obs_tmin_lapse_degC_per_km"][k], atol=1e-6), (
+        f"month {k + 1}: corrected tmin lapse {tmin_eff_after:.4f} != observed "
+        f"{ml['obs_tmin_lapse_degC_per_km'][k]:.4f} (wrong adjustment sign?)"
     )
-    assert np.isclose(tmin_eff_after, ml["obs_tmin_lapse_degC_per_km"][k], atol=1e-6)
     print(f"  {month_names[k]:>3} {s_tx:>11.6f} "
-          f"{-tmax_deficit_degF_per_m_m[k]:>11.6f} | "
+          f"{tmax_deficit_degF_per_m_m[k]:>11.6f} | "
           f"{tmax_eff_after:>14.3f} {ml['obs_tmax_lapse_degC_per_km'][k]:>9.3f}")
 print("Sanity check passed: per-month corrected lapse matches the observed lapse.")
 

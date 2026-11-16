@@ -1131,8 +1131,12 @@ pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
 NO_LOG_TYPES = ("hru_deplcrv", "tmax_allsnow")
 for _t in NO_LOG_TYPES:
     pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"] = "none"
-    print(f"partrans for {_t}:",
-          pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"].value_counts().to_dict())
+    print(
+        f"partrans for {_t}:",
+        pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"]
+        .value_counts()
+        .to_dict(),
+    )
 
 # %% [markdown]
 # #### Set the forward model command

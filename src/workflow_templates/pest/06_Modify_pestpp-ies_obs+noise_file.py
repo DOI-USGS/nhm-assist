@@ -97,9 +97,10 @@ pestpp_model_dir = config["model_dir"] / "pestpp_ies"
 #    (`ObservationEnsemble.from_gaussian_draw`) from `prior_mc_reweight.pst`.
 # 2. Modify that ensemble (the section below is where we will make our edits).
 # 3. Write the modified ensemble back out as a binary `.jcb` file using pyemu.
-# 4. Build the prior parameter ensemble, with a truncated-normal draw for
-#    `hru_deplcrv` so its prior members do not pile up on the bounds, and write
-#    it as a `.jcb` file (`ies_parameter_ensemble`).
+# 4. Build the prior parameter ensemble, with truncated-normal draws for
+#    `hru_deplcrv`, `snarea_thresh` and `rad_trncf` so their prior members do
+#    not pile up on the bounds, and write it as a `.jcb` file
+#    (`ies_parameter_ensemble`).
 # 5. Update the PEST++ control file so that the IES noise ensemble points at
 #    the modified `.jcb` file (`ies_observation_ensemble`).
 #
@@ -367,49 +368,65 @@ obs_ensemble.to_binary(str(obs_noise_jcb))
 print(f"wrote modified obs+noise ensemble: {obs_noise_jcb}")
 
 # %% [markdown]
-# ## Prior Parameter Ensemble: Truncated-Normal Draw for `hru_deplcrv`
+# ## Prior Parameter Ensemble: Truncated-Normal Draws
 #
-# **Why.** `hru_deplcrv` is the index (1 to n) of each HRU's snow depletion
-# curve. It is estimated as a continuous value with bounds 0.5 to 9.5, and the
-# forward run rounds it to the nearest curve, so each curve owns an equal
-# 1-unit slice of the range. When PEST++ IES draws the prior itself, it draws a
-# Gaussian around each parameter's starting value (`parval1`) and **clips** any
-# value outside the bounds back onto the bound. Many HRUs start on curve 9 (or
-# 2), only 0.5 from a bound, so a large share of their prior members (about 41%
-# for a start of 9 with the default spread) pile up exactly on 9.5 or 0.5 and
-# all become that end curve. That over-samples the gentlest (curve 9) and
-# steepest curves and under-samples the rest.
+# **Why.** When PEST++ IES draws the prior itself, it draws a Gaussian around
+# each parameter's starting value (`parval1`) and **clips** any value outside
+# the bounds back onto the bound. Where a starting value sits close to a bound,
+# a large share of the prior members pile up exactly on that bound:
+#
+# - `hru_deplcrv` (snow depletion curve index, bounds 0.5 to 9.5, rounded to a
+#   curve by the forward run): many HRUs start on curve 9 (or 2), only 0.5 from
+#   a bound, so with the default spread about 41% of their members land on 9.5
+#   or 0.5 and all become that end curve.
+# - `snarea_thresh` and `rad_trncf`: notebook 02b gives them uneven bounds
+#   (`snarea_thresh` 0.5 to 1.2 x `parval1`; `rad_trncf` 0.8 to 1.5 x `parval1`)
+#   so calibration can melt late-melting HRUs out. The prior is centred on
+#   `parval1`, so the near bound collects the draws: on the SandyRiver beta3
+#   prior 20% of `snarea_thresh` values sat on its upper bound and 8% of
+#   `rad_trncf` values on its lower bound.
 #
 # **What this section does.** It builds the prior parameter ensemble here and
 # passes it to PEST++ IES with `ies_parameter_ensemble`:
 #
-# - Every parameter except `hru_deplcrv` is drawn the way PEST++ IES draws it
-#   internally: a Gaussian around `parval1` in the parameter's transformed space,
-#   with a standard deviation of (upper bound - lower bound) / `par_sigma_range`
-#   (4 unless the control file sets it), clipped to the bounds. Their prior is
-#   unchanged.
-# - `hru_deplcrv` is redrawn from a **truncated normal**: same centre
-#   (`parval1`) and standard deviation, but any value outside 0.5 to 9.5 is
-#   **redrawn** instead of clipped, so nothing piles up on the bounds and each
-#   HRU stays centred on its starting curve.
+# - Every parameter not listed in `TRUNCNORM_PARAMS` is drawn the way PEST++
+#   IES draws it internally: a Gaussian around `parval1` in the parameter's
+#   transformed space, with a standard deviation of
+#   (upper bound - lower bound) / `par_sigma_range` (4 unless the control file
+#   sets it), clipped to the bounds. Their prior is unchanged.
+# - Each type in `TRUNCNORM_PARAMS` is redrawn from a **truncated normal**: the
+#   same centre and spread, in the same transformed space (log10 for
+#   log-transformed parameters, linear otherwise), but any value outside the
+#   bounds is **redrawn** instead of clipped. Nothing piles up on a bound and
+#   each HRU stays centred on its starting value. With uneven bounds the draw
+#   is still centred on `parval1`, so more members fall on the wide side; that
+#   is the intended effect of widening that side.
 # - The `base` realization keeps every parameter at `parval1`.
 # - Realization names and order match the obs+noise ensemble above exactly
 #   (`base` first), so PEST++ pairs parameter and noise realizations one to one.
 #
-# **Settings.** `HRU_DEPLCRV_SD = None` keeps the default spread
-# ((9.5 - 0.5) / 4 = 2.25 curves); set a number (in curves) to narrow or widen
-# it. `PAR_ENSEMBLE_SEED` makes the draw reproducible. Set
-# `TRUNCATED_DEPLCRV_PRIOR = False` to skip this section and let PEST++ draw the
-# prior itself, as before.
+# **Settings.** `TRUNCNORM_PARAMS` maps each parameter type to `None` (the
+# default spread above) or a standard deviation in the transformed units
+# (curves for `hru_deplcrv`, log10 units for the log-transformed ones). Remove a
+# type from the dict to give it the plain PEST++ draw. `PAR_ENSEMBLE_SEED`
+# makes the draw reproducible. Set `TRUNCATED_PRIOR = False` to skip this
+# section and let PEST++ draw the prior itself. The ensemble file is
+# `prior_par_ens_truncnorm.jcb` (earlier versions wrote
+# `prior_par_ens_deplcrv_truncnorm.jcb`; an old copy in the run folder is not
+# used once the control file is rewritten below).
 
 # %%
-TRUNCATED_DEPLCRV_PRIOR = True
-HRU_DEPLCRV_SD = None          # curves; None -> (parubnd - parlbnd) / par_sigma_range
+TRUNCATED_PRIOR = True
+TRUNCNORM_PARAMS = {
+    "hru_deplcrv": None,  # SD in curves; None -> (parubnd - parlbnd) / par_sigma_range
+    "snarea_thresh": None,  # SD in log10 units when log-transformed
+    "rad_trncf": None,
+}
 PAR_ENSEMBLE_SEED = 20261117
 
-par_ens_jcb = pestpp_model_dir / "prior_par_ens_deplcrv_truncnorm.jcb"
+par_ens_jcb = pestpp_model_dir / "prior_par_ens_truncnorm.jcb"
 
-if TRUNCATED_DEPLCRV_PRIOR:
+if TRUNCATED_PRIOR:
     pars = pst.parameter_data
     sigma_range = float(pst.pestpp_options.get("par_sigma_range", 4.0))
     rng = np.random.default_rng(PAR_ENSEMBLE_SEED)
@@ -425,55 +442,91 @@ if TRUNCATED_DEPLCRV_PRIOR:
     par_ens.enforce()
     par_ens.add_base()
     par_df = par_ens._df.copy()
+    draw_rows = [r for r in par_df.index if r != "base"]
 
-    # 2. hru_deplcrv: truncated normal around parval1 (redraw out-of-bounds values).
-    dep = pars.loc[pars.parnme.str.startswith("hru_deplcrv")]
-    if dep.empty:
-        print("No hru_deplcrv parameters in the control file; only the Gaussian draw is used.")
-    else:
-        draw_rows = [r for r in par_df.index if r != "base"]
-        lo = dep.parlbnd.to_numpy(float)
-        hi = dep.parubnd.to_numpy(float)
-        mu = dep.parval1.to_numpy(float)
-        sd = (hi - lo) / sigma_range if HRU_DEPLCRV_SD is None else np.full(len(dep), float(HRU_DEPLCRV_SD))
-        vals = rng.normal(mu, sd, size=(len(draw_rows), len(dep)))
-        out = (vals < lo) | (vals > hi)
-        while out.any():  # rejection sampling: redraw only the out-of-bounds values
-            vals[out] = rng.normal(np.broadcast_to(mu, vals.shape)[out], np.broadcast_to(sd, vals.shape)[out])
-            out = (vals < lo) | (vals > hi)
-        par_df.loc[draw_rows, dep.parnme.to_list()] = vals
-        par_df.loc["base", dep.parnme.to_list()] = mu
+    # 2. Truncated-normal redraw for the listed types (redraw out-of-bounds values).
+    for ptype, sd_override in TRUNCNORM_PARAMS.items():
+        sel = pars.loc[pars.parnme.str.startswith(ptype + ":")]
+        if sel.empty:
+            print(f"{ptype}: not in the control file, skipped")
+            continue
+        names = sel.parnme.to_list()
+        is_log = (sel.partrans == "log").to_numpy()
 
-        # Report: where members land, as curves after the forward run's rounding.
-        n_curves = int(round(hi.max() - 0.5))  # bounds 0.5 to n + 0.5
-        curve = np.clip(np.rint(vals), 1, n_curves).astype(int)
-        at_bound = np.isclose(vals, lo) | np.isclose(vals, hi)
-        print(f"hru_deplcrv: {len(dep)} parameters | SD {np.median(sd):.2f} curves | "
-              f"values exactly on a bound: {100 * at_bound.mean():.2f}%")
-        print("  share of prior members on each curve (all HRUs):")
-        shares = [100 * (curve == c).mean() for c in range(1, n_curves + 1)]
-        print("  " + "  ".join(f"{c}: {s:4.1f}%" for c, s in zip(range(1, n_curves + 1), shares)))
-        start9 = np.isclose(mu, hi - 0.5)
-        if start9.any():
-            print(f"  HRUs starting on curve {n_curves}: {int(start9.sum())} | their members on curve "
-                  f"{n_curves}: {100 * (curve[:, start9] == n_curves).mean():.1f}%")
+        def to_t(x):
+            """Natural -> transformed (log10 where log-transformed)."""
+            x = np.asarray(x, dtype=float)
+            return np.where(is_log, np.log10(np.where(is_log, x, 1.0)), x)
+
+        lo = to_t(sel.parlbnd)
+        hi = to_t(sel.parubnd)
+        mu = to_t(sel.parval1)
+        sd = (
+            (hi - lo) / sigma_range
+            if sd_override is None
+            else np.full(len(sel), float(sd_override))
+        )
+        fixed = ~(hi > lo)  # zero-width bounds: keep parval1
+        lo_b, hi_b = np.broadcast_to(lo, (len(draw_rows), len(sel))), np.broadcast_to(
+            hi, (len(draw_rows), len(sel))
+        )
+        mu_b, sd_b = np.broadcast_to(mu, lo_b.shape), np.broadcast_to(sd, lo_b.shape)
+        vals = rng.normal(mu_b, sd_b)
+        out = ((vals < lo_b) | (vals > hi_b)) & ~fixed[None, :]
+        for _ in range(1000):  # rejection sampling: redraw only out-of-bounds values
+            if not out.any():
+                break
+            vals[out] = rng.normal(mu_b[out], sd_b[out])
+            out = ((vals < lo_b) | (vals > hi_b)) & ~fixed[None, :]
+        vals = np.clip(vals, lo_b, hi_b)  # only reached if 1000 rounds were not enough
+        vals[:, fixed] = mu[fixed]
+        nat = np.where(is_log[None, :], 10.0**vals, vals)
+        par_df.loc[draw_rows, names] = nat
+        par_df.loc["base", names] = sel.parval1.to_numpy(float)
+
+        # Report.
+        at_bound = (np.isclose(vals, lo_b) | np.isclose(vals, hi_b))[:, ~fixed]
+        shift = np.median(
+            (vals - mu_b)[:, ~fixed] / np.where(sd_b > 0, sd_b, 1.0)[:, ~fixed]
+        )
+        print(
+            f"{ptype}: {len(sel)} parameters ({'log10' if is_log.all() else 'linear' if not is_log.any() else 'mixed'}"
+            f" space) | values exactly on a bound: {100 * at_bound.mean():.2f}% | "
+            f"median draw - parval1: {shift:+.2f} SD"
+        )
+        if ptype == "hru_deplcrv":
+            n_curves = int(round(sel.parubnd.max() - 0.5))  # bounds 0.5 to n + 0.5
+            curve = np.clip(np.rint(nat), 1, n_curves).astype(int)
+            shares = [100 * (curve == c).mean() for c in range(1, n_curves + 1)]
+            print(
+                "  share of prior members on each curve: "
+                + "  ".join(
+                    f"{c}: {s:4.1f}%" for c, s in zip(range(1, n_curves + 1), shares)
+                )
+            )
 
     # 3. Same realization names and order as the obs+noise ensemble; write .jcb.
     # Match by name as text (pyemu may label realizations with ints or strings).
     par_df.index = par_df.index.map(str)
     obs_names = list(obs_noise_modified.index.map(str))
     missing = sorted(set(obs_names) - set(par_df.index))
-    assert not missing, f"realizations in the obs+noise ensemble but not drawn here: {missing[:5]}"
+    assert (
+        not missing
+    ), f"realizations in the obs+noise ensemble but not drawn here: {missing[:5]}"
     par_df = par_df.loc[obs_names]
     par_df.index = obs_noise_modified.index
     assert list(par_df.index) == list(obs_noise_modified.index)
     assert list(par_df.columns) == list(pst.parameter_data.parnme)
     pyemu.ParameterEnsemble(pst=pst, df=par_df).to_binary(str(par_ens_jcb))
     pst.pestpp_options["ies_parameter_ensemble"] = par_ens_jcb.name
-    print(f"wrote prior parameter ensemble: {par_ens_jcb} ({par_df.shape[0]} reals x {par_df.shape[1]} pars)")
+    print(
+        f"wrote prior parameter ensemble: {par_ens_jcb} ({par_df.shape[0]} reals x {par_df.shape[1]} pars)"
+    )
 else:
     pst.pestpp_options.pop("ies_parameter_ensemble", None)
-    print("TRUNCATED_DEPLCRV_PRIOR is False: PEST++ IES will draw the prior parameter ensemble itself.")
+    print(
+        "TRUNCATED_PRIOR is False: PEST++ IES will draw the prior parameter ensemble itself."
+    )
 
 # %% [markdown]
 # ## Point the Control File at the Modified `.jcb`

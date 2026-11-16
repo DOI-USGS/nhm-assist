@@ -409,9 +409,9 @@ for cp in range_list:
 
 # %%
 BOUND_OVERRIDES = {
-    "tmax_allsnow": {"offset": 6.0},          # parval1 +/- 6 F
-    "snarea_thresh": {"lower_factor": 0.5},   # lower bound 0.5 x parval1
-    "rad_trncf": {"upper_factor": 1.5},       # upper bound 1.5 x parval1
+    "tmax_allsnow": {"offset": 6.0},  # parval1 +/- 6 F
+    "snarea_thresh": {"lower_factor": 0.5},  # lower bound 0.5 x parval1
+    "rad_trncf": {"upper_factor": 1.5},  # upper bound 1.5 x parval1
 }
 BOUND_OVERRIDE_HRUS = None  # None = all HRUs, or e.g. [7304, 7303, 11843]
 
@@ -435,7 +435,9 @@ for _p, _rule in BOUND_OVERRIDES.items():
     # Clip only the side(s) this rule sets to the physical limits, and never let a
     # bound cross parval1 (some starting values lie outside the csv limits, e.g.
     # snarea_thresh above 50 in at glacier HRUs; their other bound is left as is).
-    _plo, _phi = float(bnds.loc[_p, "par_lower_bound"]), float(bnds.loc[_p, "par_upper_bound"])
+    _plo, _phi = float(bnds.loc[_p, "par_lower_bound"]), float(
+        bnds.loc[_p, "par_upper_bound"]
+    )
     if "offset" in _rule or "lower_factor" in _rule:
         _lo = _lo.clip(lower=_plo, upper=_phi)
     if "offset" in _rule or "upper_factor" in _rule:
