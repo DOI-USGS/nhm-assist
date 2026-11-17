@@ -75,12 +75,13 @@
 # The source run: a folder holding the PEST++ IES output (*.pst,
 # *.par_data.csv, *.obs_data.csv, parameters.json) and its
 # calibration_evaluation/ folder.
-run_dir = r"D:\test_hw_calibration_results\Sandy_beta3_n"
+run_dir = r"D:\test_hw_calibration_results\Sandy_beta4_n"
 
 # One or more runs to compare with the source. Each must have the same starting
 # parameter values as the source, or it is left out.
 compare_to = [
-    r"D:\test_hw_calibration_results\Sandy_beta2_n",
+    r"D:\test_hw_calibration_results\Sandy_beta3_n",
+    r"D:\test_hw_calibration_results\Sandy_beta2_n"
 ]
 
 # Labels for the plots and tables, in the order [run_dir, *compare_to].

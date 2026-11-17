@@ -93,7 +93,7 @@
 # %%
 # Folder holding the PEST++ IES output (*.pst, *.obs.csv, *.obs_data.csv,
 # *.obs+noise.csv, parameters.json).
-run_dir = r"D:\test_hw_calibration_results\Sandy_beta3_n"
+run_dir = r"D:\test_hw_calibration_results\Sandy_beta4_n"
 
 # PEST++ case name. None = taken from the .pst file in run_dir.
 case = None

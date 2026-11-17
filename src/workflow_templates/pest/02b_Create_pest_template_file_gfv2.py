@@ -283,9 +283,122 @@ cal_par_list = [
     "ssr2gw_rate",
     "tmax_allrain_offset",
     "tmax_allsnow",
-    # "tmax_cbh_adj",
-    # "tmin_cbh_adj",
+    "tmax_cbh_adj",
+    "tmin_cbh_adj",
 ]
+
+# %% [markdown]
+# ### Permanent-snow ("perm_snow") HRUs
+#
+# Some HRUs carry glaciers and/or a snowpack that persists through the summer
+# months. They are listed in `project_config/perm_snow_hrus.csv`, a master list
+# for the whole project with two columns: `hru_id` (the `nhm_id`) and
+# `child_domain` (the model in which the HRU was identified). The list lives in
+# `project_config` because the model's `pestpp_ies` folder is often deleted and
+# rebuilt. It can name HRUs that are not in this model; only those that are in
+# this model are selected, and the rest are reported and skipped.
+#
+# **Why these HRUs are handled differently.** On the SandyRiver model (Nov 2026)
+# the six highest HRUs, 2 to 3.5 km from the Mt. Hood summit, never melted out
+# in the forward run: their snowpack grew every year from the first summer of the
+# run (1979) and passed 1,500 in of SWE by 2020. The SWE targets come from
+# gridded products (SNODAS, ERA5-Land, UA SWE) that show no SWE there in late
+# summer, so they do not represent the glaciers, and the model has no way to
+# hold a small summer pack either. With the warm-bias `tmax_cbh_adj` /
+# `tmin_cbh_adj` from `myparam_mod_tadj.param` (mostly negative at these HRUs)
+# the pack grew about 59 in a year. Forward-run tests showed that
+# `tmax_cbh_adj` = +4.5 F and `tmin_cbh_adj` = 0 F in every month stopped the
+# growth and gave a peak SWE of about 46 in against a 35-43 in target. Summer-only
+# temperature or `cecn_coef` changes did not stop it.
+#
+# **What this does when perm_snow HRUs are found in this model:**
+#
+# 1. Adds `tmax_cbh_adj` and `tmin_cbh_adj` to the adjustable parameters.
+# 2. Sets their starting values at the perm_snow HRUs to +4.5 F (`tmax_cbh_adj`)
+#    and 0 F (`tmin_cbh_adj`) in every month, in both the template and
+#    `parameters.json`. If the parameter file had other values there, it warns
+#    and says which values were replaced.
+# 3. The bounds are set further down ("Bounds for perm_snow HRUs"):
+#    `tmax_cbh_adj` = starting value +/- 1 F with an upper limit of +6 F, and
+#    `tmin_cbh_adj` = -1.5 to +1.5 F. Every other HRU keeps the values from the
+#    parameter file; notebook 03 holds those fixed.
+#
+# Notebook 03 can also give the perm_snow HRUs' SWE observations zero weight
+# (`PERM_SNOW_ZERO_WEIGHT_SWE`, off by default).
+#
+# With no list file, or no listed HRU in this model, nothing changes:
+# `tmax_cbh_adj` and `tmin_cbh_adj` stay out of the calibration.
+
+# %%
+from assist.pest.perm_snow import (
+    PERM_SNOW_START_VALUES,
+    perm_snow_list_path,
+    select_perm_snow_hrus,
+    set_perm_snow_start_values,
+    update_parameters_json,
+)
+
+perm_snow_path = perm_snow_list_path(project_context)
+perm_snow = select_perm_snow_hrus(perm_snow_path, pars["nhm_id"])
+PERM_SNOW_HRUS = perm_snow.selected
+
+if perm_snow_path is None:
+    con.print(
+        "perm_snow: not running inside a project, so there is no "
+        "project_config/perm_snow_hrus.csv. No perm_snow HRUs."
+    )
+elif not perm_snow_path.exists():
+    con.print(f"perm_snow: {perm_snow_path} not found. No perm_snow HRUs.")
+else:
+    con.print(f"perm_snow list: {perm_snow_path}")
+    if perm_snow.not_in_model:
+        con.print(
+            f"  {len(perm_snow.not_in_model)} listed HRU(s) are not in this model "
+            f"and are skipped: {perm_snow.not_in_model}"
+        )
+
+if PERM_SNOW_HRUS:
+    con.print(
+        f"[bold]{len(PERM_SNOW_HRUS)} perm_snow HRU(s) selected in "
+        f"{config['subdomain']}:[/bold]"
+    )
+    for _h in PERM_SNOW_HRUS:
+        con.print(
+            f"  hru {_h} (listed from: {perm_snow.child_domain.get(_h) or 'unknown'})"
+        )
+    con.print(
+        "These are [bold]perm_snow[/bold] HRUs: glaciers and/or snowpacks that "
+        "persist through the summer months are present, so they are handled "
+        "differently during calibration (temperature adjustments below; optional "
+        "zero-weight SWE in notebook 03)."
+    )
+
+    for _p in PERM_SNOW_START_VALUES:
+        if _p not in cal_par_list:
+            cal_par_list.append(_p)
+
+    _changed = set_perm_snow_start_values(pars, PERM_SNOW_HRUS)
+    update_parameters_json(parameters_json_file, PERM_SNOW_HRUS)
+    if _changed.empty:
+        con.print(
+            "Starting values already +4.5 F (tmax_cbh_adj) and 0 F (tmin_cbh_adj) "
+            "at every perm_snow HRU."
+        )
+    else:
+        con.print(
+            f"[bold yellow]Warning:[/bold yellow] {param_file.name} has other "
+            "values at perm_snow HRUs. They were identified in previous calibration "
+            "attempts as perm_snow HRUs and are listed in "
+            f"{perm_snow_path.name}, so their starting values are being changed "
+            "to tmax_cbh_adj = +4.5 F and tmin_cbh_adj = 0 F in every month (in the "
+            "template and parameters.json), and their bounds are reset below."
+        )
+        con.print(_changed.round(2).to_string(index=False))
+else:
+    con.print(
+        "No perm_snow HRUs in this model: tmax_cbh_adj and tmin_cbh_adj are not "
+        "calibrated."
+    )
 
 # %% [markdown]
 # ### Additional parameters under consideration
@@ -451,6 +564,72 @@ for _p, _rule in BOUND_OVERRIDES.items():
         f"lower {_lo.min():.4g}-{_lo.max():.4g} | upper {_hi.min():.4g}-{_hi.max():.4g}"
         + (f" | WARNING: {_bad} with lower >= upper" if _bad else "")
     )
+
+# %% [markdown]
+# #### Bounds for perm_snow HRUs
+#
+# Only runs when perm_snow HRUs were selected above. These replace the Range
+# bounds (-3 to +3 F from `par_cal_bounds_use.csv`) for `tmax_cbh_adj` and
+# `tmin_cbh_adj`:
+#
+# - **perm_snow HRUs, `tmax_cbh_adj`:** starting value (+4.5 F) +/- 1 F, with
+#   the upper bound capped at +6 F, so 3.5 to 5.5 F.
+# - **perm_snow HRUs, `tmin_cbh_adj`:** -1.5 to +1.5 F around its 0 F start.
+# - **Every other HRU:** keeps the value from the parameter file. Notebook 03
+#   holds these fixed (`partrans = fixed`). Their bounds are only widened, where
+#   needed, to contain that value, because PEST++ rejects a starting value outside
+#   its bounds even for a fixed parameter (the warm-bias `tmin_cbh_adj` goes down
+#   to about -4.8 F).
+
+# %%
+PERM_SNOW_BOUNDS = {
+    "tmax_cbh_adj": {"offset": 1.0, "upper_cap": 6.0},  # start +/- 1 F, <= +6 F
+    "tmin_cbh_adj": {"lower": -1.5, "upper": 1.5},  # -1.5 to +1.5 F
+}
+
+if PERM_SNOW_HRUS:
+    from assist.pest.perm_snow import hru_of_parameter
+
+    _hru = hru_of_parameter(par_starting_vals.parname)
+    _in_perm = _hru.isin(PERM_SNOW_HRUS).fillna(False).to_numpy(dtype=bool)
+    for _p, _rule in PERM_SNOW_BOUNDS.items():
+        _sel = par_starting_vals.parname.str.startswith(_p + ":").to_numpy()
+        _perm = _sel & _in_perm
+        _other = _sel & ~_in_perm
+        _v = par_starting_vals.loc[_perm, "parval1"].astype(float)
+        if "offset" in _rule:
+            _lo, _hi = _v - _rule["offset"], _v + _rule["offset"]
+        else:
+            _lo = pd.Series(_rule["lower"], index=_v.index)
+            _hi = pd.Series(_rule["upper"], index=_v.index)
+        if "upper_cap" in _rule:
+            _hi = _hi.clip(upper=_rule["upper_cap"])
+        assert (
+            (_lo <= _v) & (_v <= _hi)
+        ).all(), f"{_p}: perm_snow starting values fall outside their bounds"
+        par_starting_vals.loc[_perm, "parlbnd"] = _lo
+        par_starting_vals.loc[_perm, "parubnd"] = _hi
+        # Other HRUs are fixed in notebook 03; just make their bounds contain parval1.
+        _vo = par_starting_vals.loc[_other, "parval1"].astype(float)
+        _n_widened = int(
+            (
+                (_vo < par_starting_vals.loc[_other, "parlbnd"].astype(float))
+                | (_vo > par_starting_vals.loc[_other, "parubnd"].astype(float))
+            ).sum()
+        )
+        par_starting_vals.loc[_other, "parlbnd"] = np.minimum(
+            par_starting_vals.loc[_other, "parlbnd"].astype(float), _vo
+        )
+        par_starting_vals.loc[_other, "parubnd"] = np.maximum(
+            par_starting_vals.loc[_other, "parubnd"].astype(float), _vo
+        )
+        con.print(
+            f"perm_snow bounds {_p}: {int(_perm.sum())} parameters at "
+            f"{len(PERM_SNOW_HRUS)} HRUs | lower {_lo.min():.2f} to {_lo.max():.2f} | "
+            f"upper {_hi.min():.2f} to {_hi.max():.2f}. Other HRUs: "
+            f"{int(_other.sum())} parameters held at their parameter-file values "
+            f"(fixed in notebook 03), {_n_widened} bounds widened to contain them."
+        )
 
 
 # %% [markdown]

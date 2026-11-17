@@ -959,6 +959,78 @@ else:
     print("Gage-count weight scaling is off (GAGE_COUNT_WT_EXPONENT = 0).")
 
 # %% [markdown]
+# #### SWE at permanent-snow ("perm_snow") HRUs (optional zero weight)
+#
+# perm_snow HRUs carry glaciers and/or a snowpack that persists through the
+# summer months. They are listed in `project_config/perm_snow_hrus.csv` (columns
+# `hru_id`, `child_domain`), a master list for the project; listed HRUs that are
+# not in this model are reported and skipped. See notebook 02b, "Permanent-snow
+# HRUs", for how they were found.
+#
+# **Optional: zero weight (`PERM_SNOW_ZERO_WEIGHT_SWE`, off by default).** The
+# SWE targets come from gridded products (SNODAS, ERA5-Land, UA SWE) that show no
+# SWE at these HRUs in late summer, so they do not represent the glaciers. With
+# the snow tower (all temperature adjustments 0) the six SandyRiver Mt. Hood HRUs
+# supplied 99.95% of the `swe_monthly` phi, and that group was nearly the whole
+# objective function. With the perm_snow starting values from notebook 02b
+# (`tmax_cbh_adj` +4.5 F, `tmin_cbh_adj` 0 F) a forward run put their share at
+# 0.09% (Nov 2026), so they are left weighted by default. Check their phi in a
+# test run first (`swe_monthly` phi by HRU); if they dominate again, set
+# `PERM_SNOW_ZERO_WEIGHT_SWE = True`. Zero-weighted observations stay in the
+# control file, so they are still simulated and can be plotted and evaluated,
+# but they do not enter phi or the prior-data conflict check.
+#
+# This cell must run after the weights cell above, which recomputes every weight.
+
+# %%
+PERM_SNOW_ZERO_WEIGHT_SWE = False
+
+from assist.pest.perm_snow import (
+    perm_snow_list_path,
+    select_perm_snow_hrus,
+    swe_obs_mask,
+)
+import json
+
+with open(pestpp_model_dir / "parameters.json") as _f:
+    _model_nhm_ids = json.load(_f)["nhm_id"]
+perm_snow_path = perm_snow_list_path(project_context)
+perm_snow = select_perm_snow_hrus(perm_snow_path, _model_nhm_ids)
+PERM_SNOW_HRUS = perm_snow.selected
+
+if perm_snow.not_in_model:
+    con.print(
+        f"perm_snow: {len(perm_snow.not_in_model)} listed HRU(s) are not in this "
+        f"model and are skipped: {perm_snow.not_in_model}"
+    )
+if PERM_SNOW_HRUS and not PERM_SNOW_ZERO_WEIGHT_SWE:
+    _m = swe_obs_mask(obs, PERM_SNOW_HRUS)
+    con.print(
+        f"[bold]perm_snow:[/bold] {len(PERM_SNOW_HRUS)} HRU(s) {PERM_SNOW_HRUS} have "
+        "glaciers and/or snowpacks that persist through the summer months, so they "
+        "are handled differently during calibration (temperature adjustments, "
+        f"notebook 02b). Their {int(_m.sum())} SWE observations keep their weights "
+        "(PERM_SNOW_ZERO_WEIGHT_SWE = False); check their share of swe_monthly phi "
+        "in a test run."
+    )
+elif PERM_SNOW_HRUS:
+    _m = swe_obs_mask(obs, PERM_SNOW_HRUS)
+    _n_weighted = int((obs.loc[_m, "weight"] > 0).sum())
+    obs.loc[_m, "weight"] = 0.0
+    con.print(
+        f"[bold]perm_snow:[/bold] {len(PERM_SNOW_HRUS)} HRU(s) {PERM_SNOW_HRUS} have "
+        "glaciers and/or snowpacks that persist through the summer months, so they "
+        f"are handled differently during calibration. Their {int(_m.sum())} SWE "
+        f"observations ({_n_weighted} previously weighted) now have weight 0; they "
+        "stay in the control file for plotting and evaluation."
+    )
+else:
+    con.print(
+        f"perm_snow: no perm_snow HRUs in this model "
+        f"({perm_snow_path or 'not in a project'}); SWE weights unchanged."
+    )
+
+# %% [markdown]
 # #### Zero-weight validation observations
 
 # %%
@@ -1128,7 +1200,10 @@ pars.loc[pars.parlbnd <= 0, "partrans"] = "none"
 # - tmax_allsnow: a temperature in degrees F. With bounds of parval1 +/- 6 F
 #   (notebook 02b) its lower bound is positive, which would otherwise switch it
 #   to a log transform.
-NO_LOG_TYPES = ("hru_deplcrv", "tmax_allsnow")
+# - tmax_cbh_adj, tmin_cbh_adj: additive temperature corrections in degrees F,
+#   calibrated only at perm_snow HRUs (see below). The perm_snow tmax_cbh_adj
+#   bounds (3.5 to 5.5 F) are positive, which would otherwise log-transform it.
+NO_LOG_TYPES = ("hru_deplcrv", "tmax_allsnow", "tmax_cbh_adj", "tmin_cbh_adj")
 for _t in NO_LOG_TYPES:
     pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"] = "none"
     print(
@@ -1136,6 +1211,36 @@ for _t in NO_LOG_TYPES:
         pars.loc[pars.parnme.str.startswith(_t + ":"), "partrans"]
         .value_counts()
         .to_dict(),
+    )
+
+# %% [markdown]
+# #### Temperature adjustments: adjustable only at perm_snow HRUs
+#
+# Notebook 02b adds `tmax_cbh_adj` and `tmin_cbh_adj` to the template only when
+# the model has perm_snow HRUs (glaciers and/or snowpacks that persist through
+# the summer; see the SWE weights section above). At those HRUs they start at
+# +4.5 F and 0 F and may move within narrow bounds (`tmax_cbh_adj` 3.5 to 5.5 F,
+# `tmin_cbh_adj` -1.5 to +1.5 F). At every other HRU they are held **fixed**
+# at the parameter-file values (the warm-bias corrections), so this cell sets
+# `partrans = fixed` there. pyemu's prior draw keeps fixed parameters at
+# `parval1`, so notebook 06 needs no change.
+
+# %%
+from assist.pest.perm_snow import hru_of_parameter
+
+for _t in ("tmax_cbh_adj", "tmin_cbh_adj"):
+    _sel = pars.parnme.str.startswith(_t + ":")
+    if not _sel.any():
+        print(f"{_t}: not in the control file (no perm_snow HRUs), skipped")
+        continue
+    _in_perm = (
+        hru_of_parameter(pars.parnme).isin(PERM_SNOW_HRUS).fillna(False).astype(bool)
+    )
+    pars.loc[_sel & ~_in_perm, "partrans"] = "fixed"
+    con.print(
+        f"{_t}: {int((_sel & _in_perm).sum())} adjustable at perm_snow HRUs "
+        f"{PERM_SNOW_HRUS}, {int((_sel & ~_in_perm).sum())} fixed at the "
+        "parameter-file values elsewhere."
     )
 
 # %% [markdown]
