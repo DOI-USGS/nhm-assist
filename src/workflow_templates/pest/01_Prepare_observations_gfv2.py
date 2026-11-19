@@ -694,20 +694,33 @@ with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as of
 # ### HRU Runoff — Monthly (average daily rate in cfs for each month)
 
 # %%
-cdat = xr.open_dataset(obsdir / "hru_streamflow_monthly.nc")
+# Load and close so the file is not held open (hru_runoff_bias_check rewrites it).
+with xr.open_dataset(obsdir / "hru_streamflow_monthly.nc") as _runoff_file:
+    cdat = _runoff_file.load()
 # set up the indices in sequence
 inds = [
     f"runoff_mon:{i.year}_{i.month}:{j}"
     for i in cdat.indexes["time"]
     for j in cdat.indexes["hru_id"]
 ]
-# Bias adjustment: increase each monthly runoff value by 83% (multiply by 1.83)
-# before writing to allobs.dat. Applied to the observation values only; the
-# ensemble_std written to allobs_std.dat is left unadjusted.
-RUNOFF_BIAS_FACTOR = 1.83
-runoff_mon = (
-    cdat.ensemble_mean * RUNOFF_BIAS_FACTOR
-)  # (cdat.upper_bound + cdat.lower_bound) / 2
+# Bias correction is optional and is made in hru_runoff_bias_check, which adds
+# adj_mean (monthly factors from the calibration gages) to this file. Use it when it
+# exists; otherwise use the raw ensemble_mean. Only the observation values change;
+# the ensemble_std written to allobs_std.dat is left unadjusted.
+if "adj_mean" in cdat:
+    runoff_mon = cdat.adj_mean
+    con.print(
+        "[green]Runoff targets are bias corrected[/green]: using [bold]adj_mean[/bold] "
+        "from hru_streamflow_monthly.nc."
+    )
+else:
+    runoff_mon = cdat.ensemble_mean
+    con.print(
+        "[yellow]Runoff targets are NOT bias corrected[/yellow]: using the raw "
+        "[bold]ensemble_mean[/bold] (no adj_mean in hru_streamflow_monthly.nc). To bias "
+        "correct them, run hru_runoff_bias_check with APPLY_BIAS_CORRECTION = True, "
+        "then re-run this notebook."
+    )
 runoff_mon_std = cdat.ensemble_std
 
 varvals = np.ravel(runoff_mon, order="C")  # flattens the 2D array to a 1D array
