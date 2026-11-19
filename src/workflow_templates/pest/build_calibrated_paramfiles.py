@@ -47,7 +47,8 @@
 
 # %%
 # Folder holding the PEST++ IES output (*.pst, *.par.csv, *.phi.*.csv, parameters.json).
-run_dir = r"D:\path\to\PEST_IES_output"
+run_dir = r"<USER_PATH_HERE>"
+# e.g. run_dir = r"D:\calibration_results\SandyRiver_beta5"
 
 # Ensemble iteration to use. None = auto-detect the final iteration.
 iteration = None
@@ -102,10 +103,10 @@ from assist.pest.build_calibrated_paramfiles import (
 from assist.workspace.bridge import resolve_project_notebook_context
 from assist.workspace.service import get_active_model_root
 
-run_dir = pl.Path(run_dir)
+from assist.common.user_paths import require_user_path
+
+run_dir = require_user_path(run_dir, "run_dir", example=r"D:\calibration_results\SandyRiver_beta5")
 md = MetaData().metadata
-if not run_dir.exists():
-    raise FileNotFoundError(f"run_dir does not exist: {run_dir}")
 
 # The model directory chosen in the pixi setup (the project's active model).
 # It is found from the project this notebook sits in.

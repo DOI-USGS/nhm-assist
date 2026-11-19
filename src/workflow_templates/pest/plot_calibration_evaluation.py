@@ -93,7 +93,8 @@
 # %%
 # Folder holding the PEST++ IES output (*.pst, *.obs.csv, *.obs_data.csv,
 # *.obs+noise.csv, parameters.json).
-run_dir = r"D:\test_hw_calibration_results\Sandy_beta4_n"
+run_dir = r"<USER_PATH_HERE>"
+# e.g. run_dir = r"D:\calibration_results\SandyRiver_beta5"
 
 # PEST++ case name. None = taken from the .pst file in run_dir.
 case = None
@@ -153,9 +154,9 @@ con = Console()
 from assist.pest import calibration_evaluation as ce
 from assist.pest.build_calibrated_paramfiles import detect_case, detect_final_iteration
 
-run_dir = pl.Path(run_dir)
-if not run_dir.exists():
-    raise FileNotFoundError(f"run_dir does not exist: {run_dir}")
+from assist.common.user_paths import require_user_path
+
+run_dir = require_user_path(run_dir, "run_dir", example=r"D:\calibration_results\SandyRiver_beta5")
 
 out_dir = pl.Path(out_dir) if out_dir else run_dir / "calibration_evaluation"
 

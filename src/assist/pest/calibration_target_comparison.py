@@ -260,7 +260,7 @@ def _clip_pbias_axis(fig, metrics, group, rows, pos, labels, fr, fc) -> None:
                             line=dict(color="black", width=1)),
                 name=f"off scale, {lab}", legendgroup=lab, showlegend=False,
                 hovertemplate=f"{lab} %{{text}} (off scale)<extra></extra>"), row=fr, col=fc)
-def build_target_figure(metrics: dict, order: list) -> go.Figure:
+def build_target_figure(metrics: dict, order: list, different: set = None) -> go.Figure:
     """Two rows of panels: PBIAS for the targets in physical units (top) and
     mean error for the normalized targets (bottom), one panel per target
     group. Each gage row has one box per run (ensemble), that run's base as a
@@ -269,6 +269,8 @@ def build_target_figure(metrics: dict, order: list) -> go.Figure:
     gage order (bottom to top), normally the one used by the change-in-KGE
     figure."""
     labels = list(metrics)
+    different = set(different or ())
+    tag = lambda lab: lab + (" (different start)" if lab in different else "")
     allg = sorted({g for df in metrics.values() for g in df["gage"]})
     order = [g for g in order if g in allg] + [g for g in allg if g not in order]
     rows = [SHARED_LABEL] + order
@@ -303,7 +305,7 @@ def build_target_figure(metrics: dict, order: list) -> go.Figure:
                 if len(vals):
                     fig.add_trace(go.Box(
                         x=vals, y=np.full(len(vals), pos(row_i, ri)), orientation="h",
-                        width=width, boxpoints=False, name=lab, legendgroup=lab,
+                        width=width, boxpoints=False, name=tag(lab), legendgroup=lab,
                         showlegend=(fr == 1 and fc == 1 and first), marker_color=color,
                         fillcolor=_rgba(color, 0.35), line=dict(color=color, width=1.2),
                         hovertemplate=f"{lab}<br>{gage}<extra></extra>"), row=fr, col=fc)
@@ -319,9 +321,28 @@ def build_target_figure(metrics: dict, order: list) -> go.Figure:
                                 line=dict(color="black", width=1)),
                     hovertemplate=f"{lab} base %{{x:{fmt[stat]}}}<extra>%{{text}}</extra>"),
                     row=fr, col=fc)
-        # prior base, one gray circle per gage row (the runs share it)
+        # prior base. With shared starting values: one gray circle per gage row
+        # (the runs share it). Otherwise each run's own, in its colour.
+        if different:
+            for ri, lab in enumerate(labels):
+                b = metrics[lab]
+                b = b[(b["group"] == group) & (b["realization"] == "base")].set_index("gage")
+                qx, qy, qt = [], [], []
+                for row_i, gage in enumerate(rows):
+                    v = (combined(metrics[lab], group, shared[group])["prior_value"]
+                         if gage == SHARED_LABEL else b["prior_value"].get(gage, np.nan))
+                    if np.isfinite(v):
+                        qx.append(v); qy.append(pos(row_i, ri)); qt.append(gage)
+                if qx:
+                    fig.add_trace(go.Scatter(
+                        x=qx, y=qy, mode="markers", name=f"prior base, {lab}",
+                        legendgroup=lab, showlegend=False, text=qt,
+                        marker=dict(symbol="circle-open", size=11,
+                                    color=RUN_COLORS[ri % len(RUN_COLORS)], line=dict(width=2)),
+                        hovertemplate=f"{lab} prior base %{{x:{fmt[stat]}}}<extra>%{{text}}</extra>"),
+                        row=fr, col=fc)
         px, py, pt = [], [], []
-        for row_i, gage in enumerate(rows):
+        for row_i, gage in enumerate([] if different else rows):
             if gage == SHARED_LABEL:
                 v = combined(metrics[labels[0]], group, shared[group])["prior_value"]
             else:
@@ -355,7 +376,9 @@ def build_target_figure(metrics: dict, order: list) -> go.Figure:
         title=(f"Final fit to the other calibration targets, compared across runs "
                f"({', '.join(labels)})<br><sup>top: PBIAS (%), + = model too low; bottom: "
                f"mean error in normalized units, + = model too high. Box = ensemble, "
-               f"diamond = base, gray circle = prior base; HRU targets are averaged over "
+               f"diamond = base, "
+               f"{'open circle = each run’s own prior base (starting values differ)' if different else 'gray circle = prior base'}"
+               f"; HRU targets are averaged over "
                f"each gage's contributing HRUs; bottom row of each panel = mean over the "
                f"gages scored in every run</sup>"),
         height=2 * max(480, 40 * len(rows) * max(1, k / 2) + 100) + 180,
@@ -381,7 +404,8 @@ def write_target_comparison(out_dir, runs, order, eval_subdir: str = "calibratio
         metrics[r.label] = df
     by_gage = summarize_by_gage(metrics)
     allg = summarize_all_gages(metrics)
-    fig = build_target_figure(metrics, order)
+    fig = build_target_figure(
+        metrics, order, different={r.label for r in runs if getattr(r, "different_start", False)})
     paths = {"figure": out_dir / TARGETS_HTML, "by_gage": out_dir / TARGETS_BY_GAGE_CSV,
              "all_gages": out_dir / TARGETS_ALL_GAGES_CSV}
     fig.write_html(str(paths["figure"]), include_plotlyjs="cdn")

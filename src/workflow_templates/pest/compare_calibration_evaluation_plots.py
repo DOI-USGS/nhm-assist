@@ -8,17 +8,27 @@
 # wrote and **does not run the model**. The work is done by the functions in
 # `assist.pest.calibration_comparison`.
 #
-# ## Runs must start from the same parameter values
+# ## Runs should start from the same parameter values
 #
 # The change in KGE is measured from each run's own prior base (its
 # iteration-0 `base`, which is its starting parameter values, `parval1`). Two
-# runs' changes are only comparable when they start from the same place. So,
+# runs' changes are only like-for-like when they start from the same place. So,
 # **before anything else**, the starting value of every parameter in each
 # `compare_to` run is checked against the source, by parameter name:
 #
 # - **Same names and same values:** the run is compared.
-# - **Any parameter missing, added or with a different `parval1`:** a message
-#   says what differs and **the run is left out** of every table and plot.
+# - **Any parameter missing, added or with a different `parval1`:** an alert
+#   says what differs and lists the parameters (also written to
+#   `compare_starting_value_differences.csv`). What happens next is set by
+#   `allow_different_starting_values`:
+#   - `True` (default): the run **is still compared and plotted**, tagged
+#     **"(different start)"** in the legends and the figure titles. Its change
+#     in KGE is measured from **its own** prior base, so the comparison is not
+#     like-for-like: a difference between runs can come from where they
+#     started, not only from how well calibration did. In the PBIAS panels each
+#     run then gets its own prior circle, in its colour, instead of one shared
+#     gray circle.
+#   - `False`: the run is left out of every table and plot.
 #
 # The starting values are read from the run's control file
 # (`<case>.par_data.csv`), or from `starting_par_vals.dat` if that is missing.
@@ -54,6 +64,7 @@
 # | `compare_dkge_all_gages.csv` | the mean over gages, per run and group, over the shared gages and over all the gages each run scored |
 # | `compare_dkge_paired_tests.csv` | per compare run and group, a paired Wilcoxon test against the source across gages |
 # | `compare_run_checks.csv` | the starting-value and observation checks for every run |
+# | `compare_starting_value_differences.csv` | only when a run's starting values differ: every differing parameter, with the source and run `parval1` and the difference |
 # | `compare_targets_summary.html`, `compare_targets_*.csv` | the same comparison for the other calibration targets (see "Other calibration targets" below) |
 # | `runs/<label>/` | change-in-KGE tables recomputed from an archive, where that was needed |
 #
@@ -75,14 +86,26 @@
 # The source run: a folder holding the PEST++ IES output (*.pst,
 # *.par_data.csv, *.obs_data.csv, parameters.json) and its
 # calibration_evaluation/ folder.
-run_dir = r"D:\test_hw_calibration_results\Sandy_beta4_n"
+run_dir = r"<USER_PATH_HERE>"
+# e.g. run_dir = r"D:\calibration_results\SandyRiver_beta5"
 
-# One or more runs to compare with the source. Each must have the same starting
-# parameter values as the source, or it is left out.
+# One or more runs to compare with the source. Runs whose starting parameter
+# values differ from the source's are handled by
+# allow_different_starting_values below.
 compare_to = [
-    r"D:\test_hw_calibration_results\Sandy_beta3_n",
-    r"D:\test_hw_calibration_results\Sandy_beta2_n"
+    r"<USER_PATH_HERE>",
 ]
+# e.g. compare_to = [
+#     r"D:\calibration_results\SandyRiver_beta4",
+#     r"D:\calibration_results\SandyRiver_beta3",
+# ]
+
+# What to do with a compare_to run whose starting parameter values (parval1)
+# differ from the source's:
+#   True  - warn, list the parameters that differ, and still compare and plot
+#           it (tagged "(different start)" in the legends)
+#   False - leave it out of every table and plot
+allow_different_starting_values = True
 
 # Labels for the plots and tables, in the order [run_dir, *compare_to].
 # None = each run's folder name.
@@ -123,11 +146,13 @@ con = Console()
 from assist.pest import calibration_comparison as ccmp
 from assist.pest import calibration_evaluation as ce
 from assist.pest import calibration_target_comparison as ccmp_targets
+from assist.common.user_paths import require_user_path
 
-run_dir = pl.Path(run_dir)
-if not run_dir.exists():
-    raise FileNotFoundError(f"run_dir does not exist: {run_dir}")
-compare_to = [pl.Path(p) for p in (compare_to or [])]
+run_dir = require_user_path(run_dir, "run_dir", example=r"D:\calibration_results\SandyRiver_beta5")
+compare_to = [
+    require_user_path(p, "compare_to", example=r"D:\calibration_results\SandyRiver_beta4")
+    for p in (compare_to or [])
+]
 if not compare_to:
     raise SystemExit("compare_to is empty: list at least one run to compare with the source.")
 out_dir = pl.Path(out_dir) if out_dir else run_dir / ccmp.COMPARISON_SUBDIR
@@ -141,8 +166,11 @@ settings = ce.dkge_settings(
 # One row per run, the source first.
 #
 # - **`starting_values`**: `same` means every parameter has the same `parval1`
-#   as the source. `DIFFERENT` or `unreadable` means the run is **not
-#   compared** (`include = False`); the message says what differs.
+#   as the source. `DIFFERENT` means some differ: the run is still compared
+#   (`include = True`) when `allow_different_starting_values` is `True`, and
+#   left out otherwise. `unreadable` means the run is never compared. The
+#   parameters that differ are listed below the table, summarized by
+#   parameter type, and every one is in `compare_starting_value_differences.csv`.
 # - **`observed_5day`** (warning only; the run is still compared):
 #   - `same`: the observed 5-day targets match the source's exactly.
 #   - `same values, different targets`: every target the two runs share has
@@ -154,7 +182,13 @@ settings = ce.dkge_settings(
 #     changes in KGE were scored against different observations.
 
 # %%
-checks = ccmp.check_runs(run_dir, compare_to, labels=labels)
+_start_diffs = []
+checks = ccmp.check_runs(
+    run_dir, compare_to, labels=labels,
+    allow_different_start=allow_different_starting_values,
+    start_differences=_start_diffs,
+)
+start_differences = pd.concat(_start_diffs, ignore_index=True) if _start_diffs else pd.DataFrame()
 display(checks.set_index("label")[["role", "include", "starting_values", "observed_5day"]])
 
 for _, row in checks.iterrows():
@@ -162,16 +196,26 @@ for _, row in checks.iterrows():
         continue
     if not row["include"]:
         con.print(f"[bold red]NOT COMPARED[/bold red] {row['label']}: {row['message']}")
+    elif row["starting_values"] == "DIFFERENT":
+        con.print(f"[bold red]ALERT: DIFFERENT STARTING VALUES[/bold red] {row['label']}: {row['message']}")
     elif row["message"]:
         con.print(f"[bold yellow]WARNING[/bold yellow] {row['label']}: {row['message']}")
     else:
         con.print(f"[green]OK[/green] {row['label']}: same starting values and observed 5-day targets.")
 
+if not start_differences.empty:
+    print("\nParameters whose starting value (parval1) differs from the source, by parameter type")
+    display(ccmp.summarize_start_differences(start_differences).set_index(["run", "par_type"]))
+    print("First 25 differing parameters (all of them are written to "
+          f"{ccmp.COMPARISON_START_DIFF_CSV} in out_dir)")
+    display(start_differences.head(25).set_index(["run", "parnme"]))
+
 kept = checks[checks["include"]]
 if len(kept) < 2:
     raise SystemExit(
-        "No compare_to run has the same starting values as the source, so there is "
-        "nothing to compare. See the messages above."
+        "No compare_to run can be compared with the source, so there is nothing to "
+        "compare. See the messages above (set allow_different_starting_values = True "
+        "to compare runs whose starting values differ)."
     )
 
 # %% [markdown]
@@ -195,6 +239,7 @@ for _, row in kept.iterrows():
         checks.loc[checks["label"] == row["label"], ["include", "message"]] = [False, note]
         continue
     con.print(f"{row['label']}: {note}")
+    res.different_start = row["starting_values"] == "DIFFERENT"
     runs.append(res)
 
 if len(runs) < 2:
@@ -221,9 +266,11 @@ for r in runs[1:]:
 #    the same change for every member of its final ensemble. The three groups
 #    are the same as in the evaluation: all flows (KGE on the continuous monthly
 #    series) and high and low flows (KGE on the 5-day points of each bucket).
-#    Because the runs share starting values, they share the prior base, so the
+#    When the runs share starting values, they share the prior base, so the
 #    difference between two runs' changes is the difference between their
-#    final fits.
+#    final fits. For a run tagged **"(different start)"** this does not hold:
+#    its change is measured from its own prior base, so compare its final KGE
+#    (the right-hand labels) as well as its change.
 # 2. **Mean over gages.** For each run, each member's change averaged over a
 #    set of gages, and the base's change averaged over the same gages. It is
 #    computed for two gage sets, listed in `compare_dkge_all_gages.csv` as
@@ -295,7 +342,18 @@ for r in runs[1:]:
 #   change.
 
 # %%
-result = ccmp.write_comparison(out_dir, runs, checks, alternative=compare_alternative)
+result = ccmp.write_comparison(
+    out_dir, runs, checks, alternative=compare_alternative,
+    start_differences=start_differences,
+)
+if any(r.different_start for r in runs):
+    con.print(
+        "[bold red]Note:[/bold red] "
+        + ", ".join(r.label for r in runs if r.different_start)
+        + " started from different parameter values than the source. Their changes "
+        "in KGE are measured from their own prior base, so differences from the "
+        "source mix the effect of the starting point with the effect of calibration."
+    )
 
 print("Mean over gages, per run and group (compare runs on the 'shared' rows)")
 display(result["combined"].set_index(["group", "gage_set", "run"]).round(3))

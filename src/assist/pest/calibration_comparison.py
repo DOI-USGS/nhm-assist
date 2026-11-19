@@ -39,6 +39,7 @@ COMPARISON_TABLE_CSV = "compare_dkge_by_gage.csv"
 COMPARISON_TESTS_CSV = "compare_dkge_paired_tests.csv"
 COMPARISON_COMBINED_CSV = "compare_dkge_all_gages.csv"
 COMPARISON_CHECKS_CSV = "compare_run_checks.csv"
+COMPARISON_START_DIFF_CSV = "compare_starting_value_differences.csv"
 GROUPS = [ce.DKGE_ALL_GROUP] + [g for g, _p, _l in ce.DKGE_BUCKETS]
 RUN_COLORS = ["#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#8c564b",
               "#e377c2", "#17becf"]
@@ -114,6 +115,49 @@ def compare_series(ref: pd.Series, other: pd.Series, rtol: float = 1e-9,
     }
 
 
+def starting_value_differences(ref: pd.Series, other: pd.Series, label: str,
+                               rtol: float = 1e-9, atol: float = 1e-12) -> pd.DataFrame:
+    """Every parameter whose starting value differs between the source
+    (``ref``) and a run (``other``), one row each: ``run``, ``parnme``,
+    ``par_type`` (the name before the first ``:``), ``source_parval1``,
+    ``run_parval1``, ``difference`` (run - source) and ``status``
+    (``different value`` / ``only in source`` / ``only in run``)."""
+    ref = ref[~ref.index.duplicated()]
+    other = other[~other.index.duplicated()]
+    common = ref.index.intersection(other.index)
+    a, b = ref.loc[common].to_numpy(float), other.loc[common].to_numpy(float)
+    differ = ~(np.isclose(a, b, rtol=rtol, atol=atol) | (np.isnan(a) & np.isnan(b)))
+    frames = [pd.DataFrame({"parnme": common[differ], "source_parval1": a[differ],
+                            "run_parval1": b[differ], "status": "different value"})]
+    only_r = ref.index.difference(other.index)
+    only_o = other.index.difference(ref.index)
+    if len(only_r):
+        frames.append(pd.DataFrame({"parnme": only_r, "source_parval1": ref.loc[only_r].values,
+                                    "run_parval1": np.nan, "status": "only in source"}))
+    if len(only_o):
+        frames.append(pd.DataFrame({"parnme": only_o, "source_parval1": np.nan,
+                                    "run_parval1": other.loc[only_o].values, "status": "only in run"}))
+    out = pd.concat(frames, ignore_index=True)
+    out.insert(0, "run", label)
+    out.insert(2, "par_type", out["parnme"].astype(str).str.split(":").str[0])
+    out["difference"] = out["run_parval1"] - out["source_parval1"]
+    return out[["run", "parnme", "par_type", "source_parval1", "run_parval1",
+                "difference", "status"]]
+
+
+def summarize_start_differences(diffs: pd.DataFrame) -> pd.DataFrame:
+    """Per run and parameter type: how many parameters differ, and the
+    smallest and largest difference (run - source)."""
+    if diffs is None or diffs.empty:
+        return pd.DataFrame(columns=["run", "par_type", "n_params", "min_difference",
+                                     "max_difference", "status"])
+    return (diffs.groupby(["run", "par_type"])
+            .agg(n_params=("parnme", "size"), min_difference=("difference", "min"),
+                 max_difference=("difference", "max"),
+                 status=("status", lambda s: ", ".join(sorted(set(s)))))
+            .reset_index())
+
+
 def read_fiveday_obs(run_dir) -> pd.Series:
     """Observed value (``obsval``) of every 5-day streamflow target, from the
     run's ``<case>.obs_data.csv``. These are the observed ``base`` values the
@@ -126,13 +170,19 @@ def read_fiveday_obs(run_dir) -> pd.Series:
     return pd.Series(df["obsval"].astype(float).values, index=df["obsnme"].astype(str))
 
 
-def check_runs(source_dir, compare_to, labels=None) -> pd.DataFrame:
+def check_runs(source_dir, compare_to, labels=None,
+               allow_different_start: bool = False,
+               start_differences: list = None) -> pd.DataFrame:
     """Check every ``compare_to`` run against the source.
 
-    **Starting values (decides inclusion).** The ``parval1`` of every
-    parameter must match the source's, with the same parameter names. A run
-    that fails, or whose starting values cannot be read, gets
-    ``include = False``.
+    **Starting values.** The ``parval1`` of every parameter is compared with
+    the source's, by name. A run whose starting values cannot be read always
+    gets ``include = False``. A run whose starting values **differ** gets
+    ``include = False`` unless ``allow_different_start`` is true, in which
+    case it is kept (``include = True``, ``starting_values = "DIFFERENT"``)
+    and its message says it is compared anyway. If ``start_differences`` is
+    a list, a :func:`starting_value_differences` table for each differing run
+    is appended to it.
 
     **Observed 5-day values (warning only).** If the observed 5-day targets
     differ, the two runs' changes were scored against different observations,
@@ -172,6 +222,9 @@ def check_runs(source_dir, compare_to, labels=None) -> pd.DataFrame:
             c = compare_series(ref_par, par)
             if c["only_in_ref"] or c["only_in_other"] or c["n_differ"]:
                 row["starting_values"] = "DIFFERENT"
+                row["include"] = bool(allow_different_start)
+                if start_differences is not None:
+                    start_differences.append(starting_value_differences(ref_par, par, lab))
                 msgs.append(
                     f"Starting values differ from the source: {c['n_differ']} of "
                     f"{c['n_common']} shared parameters have a different parval1 "
@@ -179,7 +232,9 @@ def check_runs(source_dir, compare_to, labels=None) -> pd.DataFrame:
                     f"{c['only_in_ref']} parameters are only in the source and "
                     f"{c['only_in_other']} only in this run"
                     + (f"; e.g. {', '.join(c['examples'])}" if c["examples"] else "")
-                    + ". Not compared.")
+                    + (". Compared anyway (allow_different_starting_values = True): its "
+                       "change in KGE is measured from its own prior base, not the "
+                       "source's." if allow_different_start else ". Not compared."))
             else:
                 row["starting_values"] = "same"
                 row["include"] = True
@@ -234,6 +289,7 @@ class RunDKGE:
     settings: dict
     origin: str                # where the numbers came from
     notes: list = field(default_factory=list)
+    different_start: bool = False   # starting values differ from the source's
 
 
 def _read_outputs(folder: pl.Path):
@@ -456,6 +512,13 @@ def _rgba(hex_color: str, alpha: float) -> str:
 
 
 PBIAS_PRIOR_COLOR = "rgba(110,110,110,0.9)"
+DIFFERENT_START_TAG = " (different start)"
+
+
+def legend_name(run) -> str:
+    """A run's legend label, tagged when its starting values differ from the
+    source's."""
+    return run.label + (DIFFERENT_START_TAG if getattr(run, "different_start", False) else "")
 
 
 def gage_order(runs: list) -> list:
@@ -560,6 +623,7 @@ def build_comparison_figure(runs: list, tests: pd.DataFrame = None) -> go.Figure
                         horizontal_spacing=0.04, vertical_spacing=0.09,
                         subplot_titles=titles)
     has_pbias = all("pbias" in r.members.columns for r in runs)
+    any_diff = any(getattr(r, "different_start", False) for r in runs)
 
     def draw(value, fig_row, fmt):
         for ri, run in enumerate(runs):
@@ -578,7 +642,7 @@ def build_comparison_figure(runs: list, tests: pd.DataFrame = None) -> go.Figure
                         continue
                     fig.add_trace(go.Box(
                         x=vals, y=np.full(len(vals), pos(row_i, ri)), orientation="h",
-                        width=width, boxpoints=False, name=run.label,
+                        width=width, boxpoints=False, name=legend_name(run),
                         legendgroup=run.label,
                         showlegend=(fig_row == 1 and c == 1 and first_box),
                         marker_color=color, fillcolor=_rgba(color, 0.35),
@@ -604,8 +668,30 @@ def build_comparison_figure(runs: list, tests: pd.DataFrame = None) -> go.Figure
     _label_final_kge(fig, runs, rows, shared, pos)
     if has_pbias:
         draw("pbias", 2, "+.1f")
-        # prior base PBIAS: one gray marker per gage row (shared by all runs)
-        for c, group in enumerate(GROUPS, start=1):
+        # prior base PBIAS: one gray marker per gage row (shared by all runs).
+        # When a run's starting values differ, the runs do not share a prior,
+        # so each run gets its own open circle, in its colour, at its own row.
+        for c, group in (enumerate(GROUPS, start=1) if any_diff else []):
+            for ri, r in enumerate(runs):
+                color = RUN_COLORS[ri % len(RUN_COLORS)]
+                b = r.members[(r.members["group"] == group) & (r.members["realization"] == "base")]
+                b = b.set_index("gage")["pbias_prior"]
+                px, py, pt = [], [], []
+                for row_i, gage in enumerate(rows):
+                    v = (combined_from_members(r.members, group, gages=shared[group],
+                                               value="pbias")["prior_pbias"]
+                         if gage == SHARED_LABEL else b.get(gage, np.nan))
+                    if np.isfinite(v):
+                        px.append(v); py.append(pos(row_i, ri)); pt.append(gage)
+                if px:
+                    fig.add_trace(go.Scatter(
+                        x=px, y=py, mode="markers", name=f"prior base, {r.label}",
+                        legendgroup=r.label, showlegend=False, text=pt,
+                        marker=dict(symbol="circle-open", size=11, color=color,
+                                    line=dict(width=2)),
+                        hovertemplate=f"{r.label} prior base %{{x:+.1f}}%<extra>%{{text}}</extra>"),
+                        row=2, col=c)
+        for c, group in ([] if any_diff else enumerate(GROUPS, start=1)):
             px, py, pt = [], [], []
             for row_i, gage in enumerate(rows):
                 if gage == SHARED_LABEL:
@@ -644,12 +730,18 @@ def build_comparison_figure(runs: list, tests: pd.DataFrame = None) -> go.Figure
                                            else "rgba(160,160,160,0.25)", width=1))
     labels = ", ".join(r.label for r in runs)
     note = "" if has_pbias else " (PBIAS row empty: a run's tables predate PBIAS)"
+    prior_txt = ("open circle = each run's own prior base PBIAS" if any_diff
+                 else "gray circle = prior base PBIAS")
+    warn = (f"<br><span style='color:#b00'>{DIFFERENT_START_TAG.strip()} = starting "
+            f"parameter values differ from the source's: that run's change in KGE is "
+            f"measured from its own prior base, so it is not a like-for-like "
+            f"comparison</span>" if any_diff else "")
     fig.update_layout(
         title=(f"Change in KGE and final PBIAS, compared across runs ({labels}){note}<br>"
                f"<sup>box = ensemble, diamond = base realization, one colour per run; "
                f"right-hand labels = final KGE of each run's base; "
-               f"gray circle = prior base PBIAS; bottom row of each panel = mean over the "
-               f"gages scored in every run; source run: {src.label}</sup>"),
+               f"{prior_txt}; bottom row of each panel = mean over the "
+               f"gages scored in every run; source run: {src.label}{warn}</sup>"),
         height=2 * max(520, 46 * len(rows) * max(1, k / 2) + 120) + 160,
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0),
@@ -658,9 +750,12 @@ def build_comparison_figure(runs: list, tests: pd.DataFrame = None) -> go.Figure
 
 
 def write_comparison(out_dir, runs: list, checks: pd.DataFrame,
-                     alternative: str = "two-sided") -> dict:
+                     alternative: str = "two-sided",
+                     start_differences: pd.DataFrame = None) -> dict:
     """Write the comparison figure and tables to ``out_dir``. Returns the
-    tables and the paths written."""
+    tables and the paths written. ``start_differences`` (from
+    :func:`starting_value_differences`), when given and not empty, is written
+    to ``compare_starting_value_differences.csv``."""
     out_dir = pl.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     by_gage = comparison_by_gage(runs)
@@ -679,5 +774,8 @@ def write_comparison(out_dir, runs: list, checks: pd.DataFrame,
     combined.to_csv(paths["combined"], index=False)
     tests.to_csv(paths["tests"], index=False)
     checks.to_csv(paths["checks"], index=False)
+    if start_differences is not None and len(start_differences):
+        paths["start_differences"] = out_dir / COMPARISON_START_DIFF_CSV
+        start_differences.to_csv(paths["start_differences"], index=False)
     return {"figure": fig, "by_gage": by_gage, "combined": combined, "tests": tests,
             "paths": paths}
