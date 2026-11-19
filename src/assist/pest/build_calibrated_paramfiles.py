@@ -84,7 +84,9 @@ import pandas as pd
 from pyPRMS import ParameterFile, MetaData
 
 # Default place to hunt for a matching starting .param when one isn't supplied.
-DEFAULT_PARAM_SEARCH_ROOT = pl.Path(r"d:\nhm-workspace\Oregon_Recharge\models")
+# None: the caller must pass --param-search-root (a project's models/ folder)
+# or --starting-param.
+DEFAULT_PARAM_SEARCH_ROOT = None
 
 # Columns in *.phi.actual.csv that are summary stats, not realizations.
 _PHI_META = ("iteration", "total_runs", "mean", "standard_deviation", "min", "max")
@@ -600,6 +602,12 @@ def main(argv=None) -> int:
     md = MetaData().metadata
     starting = args.starting_param
     if starting is None:
+        if args.param_search_root is None:
+            raise SystemExit(
+                "no starting .param given. Pass --starting-param pointing at the model's "
+                "inputs/source_data/myparam.param, or --param-search-root pointing at "
+                "a project's models/ folder (e.g. D:\\nhm-workspace\\my_project\\models)."
+            )
         starting = discover_starting_param(run_dir, args.param_search_root, md)
         if starting is None:
             raise SystemExit(

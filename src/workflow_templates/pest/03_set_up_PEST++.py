@@ -76,7 +76,6 @@ from assist.pest.pest_utils import (
 
 config = load_subdomain_config(root_dir)
 
-sys.path.insert(0, r"D:\nhm-assist\pestpp_ies_calibration\dependencies")
 import pyemu
 import platform
 

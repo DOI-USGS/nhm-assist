@@ -33,8 +33,8 @@ Recharge is always calendar-year. The evaluation script reads the same file.
 
 Still worth a one-time cross-check: parse the date token in streamflow
 observation names in the final `.pst` and confirm the non-zero-weight years
-match that flag. (`src/assist/pest/_gage_years.py` is a reporting script and
-does not reflect the split.)
+match that flag. (The old `src/assist/pest/_gage_years.py` reporting script,
+removed 2026-11-19, did not reflect the split.)
 
 ### 2. Run the posterior ensemble forward
 
