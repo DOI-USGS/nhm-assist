@@ -283,8 +283,8 @@ cal_par_list = [
     "ssr2gw_rate",
     "tmax_allrain_offset",
     "tmax_allsnow",
-    "tmax_cbh_adj",
-    "tmin_cbh_adj",
+    # "tmax_cbh_adj",  # not calibrated; see "Permanent-snow HRUs" below
+    # "tmin_cbh_adj",  # (CALIBRATE_PERM_SNOW_TEMP_ADJ adds them back if True)
 ]
 
 # %% [markdown]
@@ -313,21 +313,31 @@ cal_par_list = [
 #
 # **What this does when perm_snow HRUs are found in this model:**
 #
-# 1. Adds `tmax_cbh_adj` and `tmin_cbh_adj` to the adjustable parameters.
-# 2. Sets their starting values at the perm_snow HRUs to +4.5 F (`tmax_cbh_adj`)
-#    and 0 F (`tmin_cbh_adj`) in every month, in both the template and
-#    `parameters.json`. If the parameter file had other values there, it warns
-#    and says which values were replaced.
-# 3. The bounds are set further down ("Bounds for perm_snow HRUs"):
-#    `tmax_cbh_adj` = starting value +/- 1 F with an upper limit of +6 F, and
-#    `tmin_cbh_adj` = -1.5 to +1.5 F. Every other HRU keeps the values from the
-#    parameter file; notebook 03 holds those fixed.
+# 1. Sets `tmax_cbh_adj` and `tmin_cbh_adj` at the perm_snow HRUs to
+#    `PERM_SNOW_TMAX_ADJ` (default +4.5 F) and `PERM_SNOW_TMIN_ADJ` (default 0 F)
+#    in every month, in both the template and `parameters.json`. If the
+#    parameter file had other values there, it warns and says which values were
+#    replaced. Every other HRU keeps the values from the parameter file.
+# 2. By default (`CALIBRATE_PERM_SNOW_TEMP_ADJ = False`) `tmax_cbh_adj` and
+#    `tmin_cbh_adj` are **not calibrated**: they are written into the template
+#    as fixed values, so every forward run uses the values above at the
+#    perm_snow HRUs and the parameter-file values everywhere else. On
+#    SandyRiver `Sandy_beta5_n` (Nov 2026), calibrating them at the six perm_snow
+#    HRUs moved them only about as much as ensemble noise (median 0.3 F for
+#    tmax, 0.45 F for tmin, in no consistent direction), so they were taken back
+#    out of the calibration.
+# 3. With `CALIBRATE_PERM_SNOW_TEMP_ADJ = True` they are added to the adjustable
+#    parameters, and the bounds at the perm_snow HRUs are set further down
+#    ("Bounds for perm_snow HRUs"): `tmax_cbh_adj` = starting value +/- 1 F with
+#    an upper limit of +6 F, and `tmin_cbh_adj` = starting value +/- 1.5 F.
+#    Notebook 03 then holds them fixed at every other HRU.
 #
 # Notebook 03 can also give the perm_snow HRUs' SWE observations zero weight
 # (`PERM_SNOW_ZERO_WEIGHT_SWE`, off by default).
 #
 # With no list file, or no listed HRU in this model, nothing changes:
-# `tmax_cbh_adj` and `tmin_cbh_adj` stay out of the calibration.
+# `tmax_cbh_adj` and `tmin_cbh_adj` stay out of the calibration at their
+# parameter-file values.
 
 # %%
 from assist.pest.perm_snow import (
@@ -337,6 +347,20 @@ from assist.pest.perm_snow import (
     set_perm_snow_start_values,
     update_parameters_json,
 )
+
+# Temperature adjustments (degrees F, every month) at the perm_snow HRUs. Edit
+# these to change them. +4.5 F / 0 F stopped the snow tower on SandyRiver.
+PERM_SNOW_TMAX_ADJ = PERM_SNOW_START_VALUES["tmax_cbh_adj"]  # +4.5 F
+PERM_SNOW_TMIN_ADJ = PERM_SNOW_START_VALUES["tmin_cbh_adj"]  # 0 F
+
+# False: hold them fixed at the values above (not calibrated).
+# True: calibrate them at the perm_snow HRUs within narrow bounds (see below).
+CALIBRATE_PERM_SNOW_TEMP_ADJ = False
+
+perm_snow_start_values = {
+    "tmax_cbh_adj": float(PERM_SNOW_TMAX_ADJ),
+    "tmin_cbh_adj": float(PERM_SNOW_TMIN_ADJ),
+}
 
 perm_snow_path = perm_snow_list_path(project_context)
 perm_snow = select_perm_snow_hrus(perm_snow_path, pars["nhm_id"])
@@ -373,27 +397,38 @@ if PERM_SNOW_HRUS:
         "zero-weight SWE in notebook 03)."
     )
 
-    for _p in PERM_SNOW_START_VALUES:
-        if _p not in cal_par_list:
-            cal_par_list.append(_p)
-
-    _changed = set_perm_snow_start_values(pars, PERM_SNOW_HRUS)
-    update_parameters_json(parameters_json_file, PERM_SNOW_HRUS)
-    if _changed.empty:
-        con.print(
-            "Starting values already +4.5 F (tmax_cbh_adj) and 0 F (tmin_cbh_adj) "
-            "at every perm_snow HRU."
+    _vals_txt = (
+        f"tmax_cbh_adj = {PERM_SNOW_TMAX_ADJ:+g} F and "
+        f"tmin_cbh_adj = {PERM_SNOW_TMIN_ADJ:+g} F in every month"
+    )
+    if CALIBRATE_PERM_SNOW_TEMP_ADJ:
+        for _p in perm_snow_start_values:
+            if _p not in cal_par_list:
+                cal_par_list.append(_p)
+        _how = "calibrated at the perm_snow HRUs within narrow bounds (set below)"
+    else:
+        for _p in perm_snow_start_values:
+            if _p in cal_par_list:
+                cal_par_list.remove(_p)
+        _how = (
+            "NOT calibrated (CALIBRATE_PERM_SNOW_TEMP_ADJ = False): held fixed in "
+            "the template at these values"
         )
+
+    _changed = set_perm_snow_start_values(pars, PERM_SNOW_HRUS, perm_snow_start_values)
+    update_parameters_json(parameters_json_file, PERM_SNOW_HRUS, perm_snow_start_values)
+    if _changed.empty:
+        con.print(f"Values already {_vals_txt} at every perm_snow HRU.")
     else:
         con.print(
             f"[bold yellow]Warning:[/bold yellow] {param_file.name} has other "
             "values at perm_snow HRUs. They were identified in previous calibration "
             "attempts as perm_snow HRUs and are listed in "
-            f"{perm_snow_path.name}, so their starting values are being changed "
-            "to tmax_cbh_adj = +4.5 F and tmin_cbh_adj = 0 F in every month (in the "
-            "template and parameters.json), and their bounds are reset below."
+            f"{perm_snow_path.name}, so their values are being changed to "
+            f"{_vals_txt} (in the template and parameters.json)."
         )
         con.print(_changed.round(2).to_string(index=False))
+    con.print(f"tmax_cbh_adj and tmin_cbh_adj are {_how}.")
 else:
     con.print(
         "No perm_snow HRUs in this model: tmax_cbh_adj and tmin_cbh_adj are not "
@@ -568,13 +603,15 @@ for _p, _rule in BOUND_OVERRIDES.items():
 # %% [markdown]
 # #### Bounds for perm_snow HRUs
 #
-# Only runs when perm_snow HRUs were selected above. These replace the Range
-# bounds (-3 to +3 F from `par_cal_bounds_use.csv`) for `tmax_cbh_adj` and
-# `tmin_cbh_adj`:
+# Only runs when perm_snow HRUs were selected above **and**
+# `CALIBRATE_PERM_SNOW_TEMP_ADJ = True`. These replace the Range bounds (-3 to
+# +3 F from `par_cal_bounds_use.csv`) for `tmax_cbh_adj` and `tmin_cbh_adj`:
 #
-# - **perm_snow HRUs, `tmax_cbh_adj`:** starting value (+4.5 F) +/- 1 F, with
-#   the upper bound capped at +6 F, so 3.5 to 5.5 F.
-# - **perm_snow HRUs, `tmin_cbh_adj`:** -1.5 to +1.5 F around its 0 F start.
+# - **perm_snow HRUs, `tmax_cbh_adj`:** starting value (`PERM_SNOW_TMAX_ADJ`,
+#   default +4.5 F) +/- 1 F, with the upper bound capped at +6 F, so 3.5 to
+#   5.5 F by default. A starting value above +6 F is rejected.
+# - **perm_snow HRUs, `tmin_cbh_adj`:** starting value (`PERM_SNOW_TMIN_ADJ`,
+#   default 0 F) +/- 1.5 F.
 # - **Every other HRU:** keeps the value from the parameter file. Notebook 03
 #   holds these fixed (`partrans = fixed`). Their bounds are only widened, where
 #   needed, to contain that value, because PEST++ rejects a starting value outside
@@ -584,10 +621,14 @@ for _p, _rule in BOUND_OVERRIDES.items():
 # %%
 PERM_SNOW_BOUNDS = {
     "tmax_cbh_adj": {"offset": 1.0, "upper_cap": 6.0},  # start +/- 1 F, <= +6 F
-    "tmin_cbh_adj": {"lower": -1.5, "upper": 1.5},  # -1.5 to +1.5 F
+    "tmin_cbh_adj": {"offset": 1.5},  # start +/- 1.5 F (-1.5 to +1.5 F at 0 F)
 }
 
-if PERM_SNOW_HRUS:
+if PERM_SNOW_HRUS and not CALIBRATE_PERM_SNOW_TEMP_ADJ:
+    con.print(
+        "perm_snow bounds: skipped, tmax_cbh_adj and tmin_cbh_adj are not calibrated."
+    )
+elif PERM_SNOW_HRUS:
     from assist.pest.perm_snow import hru_of_parameter
 
     _hru = hru_of_parameter(par_starting_vals.parname)

@@ -1216,7 +1216,9 @@ for _t in NO_LOG_TYPES:
 # %% [markdown]
 # #### Temperature adjustments: adjustable only at perm_snow HRUs
 #
-# Notebook 02b adds `tmax_cbh_adj` and `tmin_cbh_adj` to the template only when
+# By default they are not calibrated at all (`CALIBRATE_PERM_SNOW_TEMP_ADJ =
+# False` in notebook 02b), and this cell only reports that. Otherwise:
+# notebook 02b adds `tmax_cbh_adj` and `tmin_cbh_adj` to the template only when
 # the model has perm_snow HRUs (glaciers and/or snowpacks that persist through
 # the summer; see the SWE weights section above). At those HRUs they start at
 # +4.5 F and 0 F and may move within narrow bounds (`tmax_cbh_adj` 3.5 to 5.5 F,
@@ -1231,7 +1233,10 @@ from assist.pest.perm_snow import hru_of_parameter
 for _t in ("tmax_cbh_adj", "tmin_cbh_adj"):
     _sel = pars.parnme.str.startswith(_t + ":")
     if not _sel.any():
-        print(f"{_t}: not in the control file (no perm_snow HRUs), skipped")
+        print(
+            f"{_t}: not in the control file (not calibrated; see notebook 02b's "
+            "perm_snow section), skipped"
+        )
         continue
     _in_perm = (
         hru_of_parameter(pars.parnme).isin(PERM_SNOW_HRUS).fillna(False).astype(bool)
