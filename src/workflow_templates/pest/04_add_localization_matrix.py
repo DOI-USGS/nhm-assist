@@ -78,6 +78,7 @@ config = load_subdomain_config(config_root)
 # con.print(config)
 
 
+# sys.path.insert(0, str(root_dir / "pestpp_ies_calibration" / "dependencies"))
 import pyemu
 import platform
 

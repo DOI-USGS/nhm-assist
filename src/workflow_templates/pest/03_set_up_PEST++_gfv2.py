@@ -78,6 +78,7 @@ config = load_subdomain_config(config_root)
 # con.print(config)
 
 
+# sys.path.insert(0, str(root_dir / "pestpp_ies_calibration" / "dependencies"))
 import pyemu
 import platform
 
@@ -657,6 +658,7 @@ obs.loc[obs.obgnme.str.startswith("obgnme")]
 # | `soil_moist_ann` | 0.10 | absolute (normalized) |
 # | `soil_moist_mean_mon` | 0.10 | absolute (normalized) |
 # | `actet_mean_mon` | 0.2 x observation value | relative (in/day) |
+# | `actet_mon` | 0.2 x observation value | relative (in/day) |
 # | `runoff_mon` | 0.3 x observation value | relative (cfs) |
 # | `swe_monthly` | larger of 0.2 x observation value and 0.01 | relative with absolute backstop |
 #
@@ -717,6 +719,7 @@ SD_FLOORS = {
     "soil_moist_mean_mon": {"abs": 0.10},
     # groups with units: floor relative to each observation's value
     "actet_mean_mon": {"rel": 0.2},
+    "actet_mon": {"rel": 0.2},
     "runoff_mon": {"rel": 0.3},
     # relative floor, plus an absolute backstop for snow-free months (value ~ 0)
     "swe_monthly": {"rel": 0.2, "abs": 0.01},

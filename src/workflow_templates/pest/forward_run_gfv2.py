@@ -842,6 +842,24 @@ with open(rootdir / of_name, encoding="utf-8", mode='w') as ofp:
     [ofp.write(f'actet_mean_mon:{i}          {j}\n') for i,j in zip(inds,varvals, strict=True)]
 
 # %% [markdown]
+# #### Monthly time series (`actet_mon`)
+# Written right after `actet_mean_mon`, the same order as allobs.dat in 01.
+# `actet_monthly` was resampled from calibration-year days only, so the
+# validation-year months between them are empty (NaN) bins. Keep only the
+# calibration-year months, which are exactly the time steps in AET_monthly.nc.
+# %%
+actet_monthly_cal = actet_monthly.sel(
+    time=np.isin(_year_labels(actet_monthly["time"], water_years), aet_cal_years)
+)
+actet_monthly_cal = _snap_tiny_to_zero(actet_monthly_cal)
+# %%
+# time outer, HRU inner (C order), matching notebook 01
+inds = [f'{i.year}_{i.month}:{j}' for i in actet_monthly_cal.indexes['time'] for j in actet_monthly_cal['nhm_id'].values]
+varvals = np.ravel(actet_monthly_cal, order = 'C')# flattens the 2D array to a 1D array
+# %%
+with open(rootdir / of_name, encoding="utf-8", mode='a') as ofp:
+    [ofp.write(f'actet_mon:{i}          {j}\n') for i,j in zip(inds,varvals, strict=True)]
+# %% [markdown]
 # with open(rootdir / of_name, encoding="utf-8", mode='a') as ofp:
 #    [ofp.write(f'g_min_actet_mean_mon:{i}          {j}\n') for i,j in zip(inds,varvals, strict=True)]
 

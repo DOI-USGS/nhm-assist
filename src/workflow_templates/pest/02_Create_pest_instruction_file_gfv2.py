@@ -231,7 +231,7 @@ destination = pestpp_model_dir / "forward_run.py"
 shutil.copy2(source, destination)
 
 # convert the
-param_file = config["model_dir"] / "myparam.param"
+param_file = config["model_dir"] / "myparam_pest_parval1.param"
 parameters_json_file = pestpp_model_dir / "parameters.json"
 
 params = pws.parameters.PrmsParameters.load(param_file)

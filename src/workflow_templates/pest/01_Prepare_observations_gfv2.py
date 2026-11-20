@@ -360,41 +360,10 @@ ofstd = open(pestpp_model_dir / "allobs_std.dat", "w")  # the
 # value, and append to `allobs.dat`. Bounds are tracked in `obs_bounds_df` for
 # later export.
 #
-# ### Actual Evapotranspiration (AET) — Monthly
-# Values are in inches/day (daily average rate for the month).
-
-# %%
-# # ! We are not using monthly for now. Starting with only AET mean_monthly targets for "General" calibration.
-# cdat = xr.open_dataset(obsdir / "AET_monthly.nc")
-# # set up the indices in sequence
-# inds = [
-#     f"actet_mon:{i.year}_{i.month}:{j}"
-#     for i in cdat.indexes["time"]
-#     for j in cdat.indexes["nhm_id"]
-# ]
-
-# # Write the observations to the observations.dat file for use in creating the instruction file
-# _actet_mon = cdat.ensemble_mean  # (cdat.upper_bound + cdat.lower_bound) / 2
-# varvals = np.ravel(_actet_mon, order="C")  # flattens the 2D array to a 1D array
-# with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
-#     ofp.write("obsname    obsval\n")  # writing a header for the file
-#     [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
-# _______________________________________________________________________________________________________________
-# # ! we don't needs this anymore
-# obsvals_max = np.ravel(
-#     cdat.upper_bound, order="C"
-# )  # flattens the 2D array to a 1D array
-# obsvals_min = np.ravel(
-#     cdat.lower_bound, order="C"
-# )  # flattens the 2D array to a 1D array
-# obs_bounds_df = pd.DataFrame(
-#     {
-#         "obsname": inds,
-#         "less_than": obsvals_max,
-#         "greater_than": obsvals_min,
-#     }
-# )
-
+# ### Actual Evapotranspiration (AET)
+# Values are in inches/day (daily average rate for the month). Two AET targets are
+# written: the mean-monthly climatology first, then the monthly time series.
+# The order matters: the forward run writes them to modelobs.dat in the same order.
 # %% [markdown]
 # ### AET — Mean Monthly (climatological average by month)
 
@@ -422,6 +391,27 @@ with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as of
     [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 
 
+# %% [markdown]
+# ### AET — Monthly (calibration-year time series)
+# `AET_monthly.nc` already holds only the calibration (odd) years (notebook 00), so
+# every time step in the file becomes a target. Written after `actet_mean_mon`;
+# the forward run must emit the two blocks in the same order.
+# %%
+cdat = xr.open_dataset(obsdir / "AET_monthly.nc")
+# set up the indices in sequence (time outer, HRU inner; matches the forward run)
+inds = [
+    f"actet_mon:{i.year}_{i.month}:{j}"
+    for i in cdat.indexes["time"]
+    for j in cdat.indexes["hru_id"]
+]
+actet_mon = cdat.ensemble_mean
+actet_mon_std = cdat.ensemble_std
+varvals = np.ravel(actet_mon, order="C")  # flattens the 2D array to a 1D array
+stdvals = np.ravel(actet_mon_std, order="C")
+with open(pestpp_model_dir / "allobs.dat", encoding="utf-8", mode="a") as ofp:
+    [ofp.write(f"{i}          {j}\n") for i, j in zip(inds, varvals, strict=True)]
+with open(pestpp_model_dir / "allobs_std.dat", encoding="utf-8", mode="a") as ofstd:
+    [ofstd.write(f"{i}          {j}\n") for i, j in zip(inds, stdvals, strict=True)]
 # %%
 # aet_mean_obs.sel(month= 1)
 
@@ -1354,7 +1344,7 @@ cal_years, val_years = _streamflow_cal_val_years(
 )
 
 # read in param file
-param_file = config["model_dir"] / "myparam.param"
+param_file = config["model_dir"] / "myparam_pest_parval1.param"
 # parameters_json_file = pestpp_model_dir / "parameters.json"
 pardat = pws.parameters.PrmsParameters.load(param_file)
 paramfile_poi_gage_id_list = pardat.parameters.get("poi_gage_id").tolist()

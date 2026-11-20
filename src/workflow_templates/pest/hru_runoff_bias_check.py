@@ -10,7 +10,7 @@
 #   `00_Subset_NHM_baselines_gfv2` (`ensemble_mean`, `lower_bound`, `upper_bound`
 #   on `hru_id`). The older `00_Subset_NHM_baselines` layout is not supported.
 # - `sf_efc.nc` daily gage discharge (notebook 1, `1_create_streamflow_observations`).
-# - `myparam.param` for the stream network (`tosegment`, `hru_segment`,
+# - `myparam_pest_parval1.param` for the stream network (`tosegment`, `hru_segment`,
 #   `poi_gage_segment`, `poi_gage_id`, `nhm_id`).
 #
 # **Units.** Both quantities are in cfs. The gage value is the mean of the daily
@@ -116,7 +116,7 @@ MIN_GAGES_FOR_MONTHLY = 3
 CURRENT_FACTOR = 1.83
 MIN_LOO_IMPROVEMENT = 0.10
 
-APPLY_BIAS_CORRECTION = False
+APPLY_BIAS_CORRECTION = True
 
 # %% [markdown]
 # ## Load gage observations, HRU runoff targets and stream network
@@ -141,7 +141,7 @@ discharge = sf_ds["discharge"]
 print("discharge units:", discharge.attrs.get("units"))
 
 params = pws.parameters.PrmsParameters.load(
-    config["model_dir"] / "myparam.param"
+    config["model_dir"] / "myparam_pest_parval1.param"
 ).parameters
 
 # %%

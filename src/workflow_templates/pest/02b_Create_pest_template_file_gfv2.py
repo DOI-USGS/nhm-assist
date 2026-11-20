@@ -78,6 +78,7 @@ config = load_subdomain_config(config_root)
 # con.print(config)
 
 
+# sys.path.insert(0, str(root_dir / "pestpp_ies_calibration" / "dependencies"))
 import pyemu
 import platform
 
@@ -165,11 +166,11 @@ for file in model_file_list:
 
 # %% [markdown]
 # ## Read the NHM Parameter File
-# Load `myparam.param`, convert to JSON format (`parameters.json`), and reload.
+# Load `myparam_pest_parval1.param`, convert to JSON format (`parameters.json`), and reload.
 # The JSON format is what `forward_run.py` reads during PEST++ runs.
 
 # %%
-param_file = config["model_dir"] / "myparam.param"
+param_file = config["model_dir"] / "myparam_pest_parval1.param"
 parameters_json_file = pestpp_model_dir / "parameters.json"
 
 pardat = pws.parameters.PrmsParameters.load(param_file)
@@ -444,7 +445,7 @@ else:
 
 # %% [markdown]
 # ### Populate starting values from the parameter file
-# Extract current parameter values from `myparam.param` for each adjustable parameter
+# Extract current parameter values from `myparam_pest_parval1.param` for each adjustable parameter
 # and write them to `par_starting_vals`.
 
 # %%

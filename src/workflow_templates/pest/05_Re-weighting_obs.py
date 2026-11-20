@@ -1,4 +1,4 @@
-# %%
+﻿# %%
 import os
 import sys
 import pathlib as pl
@@ -78,6 +78,7 @@ config = load_subdomain_config(config_root)
 # con.print(config)
 
 
+# sys.path.insert(0, str(root_dir / "pestpp_ies_calibration" / "dependencies"))
 import pyemu
 import platform
 
@@ -142,13 +143,13 @@ num_reals = pst.pestpp_options["ies_num_reals"]
 # with a group-level proportional allocation that PEST++ enforces internally.
 #
 # **Output files:**
-# - `phi_factors.csv` — Two-column file mapping observation group patterns to their
+# - `phi_factors.csv` â€” Two-column file mapping observation group patterns to their
 #   target phi fraction (must sum to 1.0).
-# - `prior_mc_reweight.pst` — Updated control file referencing the phi factors.
-# - `prior_mc_reweight_gsa.pst` — Variant control file configured for global
+# - `prior_mc_reweight.pst` â€” Updated control file referencing the phi factors.
+# - `prior_mc_reweight_gsa.pst` â€” Variant control file configured for global
 #   sensitivity analysis (Morris method).
-# - `loc.mat` — Updated localization matrix with zero-weighted groups removed.
-# - `postprocessing/reweighting_<subdomain>.pdf` — Pie chart comparing original vs.
+# - `loc.mat` â€” Updated localization matrix with zero-weighted groups removed.
+# - `postprocessing/reweighting_<subdomain>.pdf` â€” Pie chart comparing original vs.
 #   target phi contributions.
 #
 # **How phi factors work in PEST++ IES:**
@@ -174,16 +175,17 @@ num_reals = pst.pestpp_options["ies_num_reals"]
 
 # %%
 phi_new_comps = {
-    "actet_mean_mon": 0.04,
-    "recharge_ann": 0.04,
-    "runoff_mon": 0.04,
-    "swe_monthly": 0.08,
-    "soil_moist_ann": 0.04,
-    "soil_moist_mean_mon": 0.04,
+    "actet_mean_mon": 0.06,
+    "actet_mon": 0.06,
+    "recharge_ann": 0.08,
+    "runoff_mon": 0.1,
+    "swe_monthly": 0.12,
+    "soil_moist_ann": 0.07,
+    "soil_moist_mean_mon": 0.07,
     "streamflow_mon": 0.12,
     "streamflow_mean_mon": 0.12,
-    "scnd": 0.12,
-    "_low": 0.36,
+    "scnd": 0.05,
+    "_low": 0.15,
 }
 
 # %%
