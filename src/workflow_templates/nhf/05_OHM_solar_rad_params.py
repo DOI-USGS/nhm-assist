@@ -361,9 +361,10 @@ tmax_allstar_dir = "D:/nhm-workspace/Oregon_Recharge/fabrics/OHM_2026_02_21/para
 tmax_allsnow_df = pd.read_csv(f"{tmax_allstar_dir}/tmax_allsnow.csv")
 tmax_allrain_offset_df = pd.read_csv(f"{tmax_allstar_dir}/tmax_allrain_offset.csv")
 
-# Reshape (nhru x 12)
-tmax_allsnow_vals = tmax_allsnow_df["tmax_allsnow"].values.reshape((nhru, 12))
-tmax_allrain_offset_vals = tmax_allrain_offset_df["tmax_allrain_offset"].values.reshape((nhru, 12))
+# Reshape (nhru x 12). The tmax_allstar CSVs are written month-major (Fortran order,
+# all HRUs for month 1, then month 2, ...) by notebook 04, so read them with order="F".
+tmax_allsnow_vals = tmax_allsnow_df["tmax_allsnow"].values.reshape((nhru, 12), order="F")
+tmax_allrain_offset_vals = tmax_allrain_offset_df["tmax_allrain_offset"].values.reshape((nhru, 12), order="F")
 tmax_allrain = tmax_allsnow_vals + tmax_allrain_offset_vals
 
 # pptadj computation
@@ -513,10 +514,12 @@ for p in [90, 95, 99, 99.5, 99.9, 100]:
 
 # %%
 # Write dday_slope.csv
+# Month-major row order (all HRUs for month 1, then month 2, ...), the paramdb
+# convention and the same order as dday_intcp.csv. The model build reads it this way.
 dday_slope_out = []
-for ihru in range(nhru):
-    for imon in range(12):
-        dday_slope_out.append({"$id": ihru * 12 + imon + 1, "dday_slope": dday_slope_monthly[imon, ihru]})
+for imon in range(12):
+    for ihru in range(nhru):
+        dday_slope_out.append({"$id": imon * nhru + ihru + 1, "dday_slope": dday_slope_monthly[imon, ihru]})
 
 pd.DataFrame(dday_slope_out).to_csv(output_dir / "dday_slope.csv", index=False)
 print(f"Wrote dday_slope.csv: {len(dday_slope_out)} rows")
@@ -573,10 +576,12 @@ print(f"  Range: {jh_coef.min():.6f} — {jh_coef.max():.6f}")
 
 # %%
 # Write jh_coef.csv
+# Month-major row order (all HRUs for month 1, then month 2, ...), the paramdb
+# convention and the same order as dday_intcp.csv. The model build reads it this way.
 jh_coef_out = []
-for ihru in range(nhru):
-    for imon in range(12):
-        jh_coef_out.append({"$id": ihru * 12 + imon + 1, "jh_coef": jh_coef[ihru, imon]})
+for imon in range(12):
+    for ihru in range(nhru):
+        jh_coef_out.append({"$id": imon * nhru + ihru + 1, "jh_coef": jh_coef[ihru, imon]})
 
 pd.DataFrame(jh_coef_out).to_csv(output_dir / "jh_coef.csv", index=False)
 print(f"Wrote jh_coef.csv: {len(jh_coef_out)} rows")
