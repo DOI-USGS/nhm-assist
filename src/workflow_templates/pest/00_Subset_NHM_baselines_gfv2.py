@@ -881,9 +881,36 @@ AET_mean_monthly.close()
 
 # %% [markdown]
 # ###  Subset HRU Streamflow (RUNOFF NHM) baseline data--The MWBM term, "runoff" is total contribution to streamflow from each HRU. We are re-terming this in the subset file to "hru_streamflow" to clearly describe HRU contributions to streamflow.
+#
+# **Per-basin runoff members.** The runoff target is an ensemble of three
+# products (ERA5-Land, GLDAS-2.1 Noah, MWBM ClimGrid). A basin can leave members
+# out, based on what was learned calibrating it, in
+# `project_config/basin_target_choices.yaml` (`<domain>: runoff: drop_members`).
+# When it does, `ensemble_mean`, `lower_bound`, `upper_bound`, `ensemble_std`
+# and `n_sources` are rebuilt from the remaining members with the same
+# definitions as the delivered file (mean, min, max, population std, count),
+# and the choice and its reason are written into the file's attributes. The
+# member variables stay in the file. `hru_runoff_bias_check` reads the same
+# file and applies the same choice, so its correction factors fit these
+# targets. A basin with no entry uses all members.
+#
+# SandyRiver drops GLDAS: it was discovered during calibration that this creates
+# a better value for the mean (the evidence is in the YAML entry).
 
 # %%
+from assist.pest import basin_target_choices as btc
+
 RUN_all = xr.open_dataset(baselines_dir / "runoff_targets.nc", chunks="auto")
+runoff_choice = btc.runoff_choice(
+    btc.basin_choices_path(project_context),
+    config["subdomain"],
+    available=btc.available_runoff_members(RUN_all),
+)
+if runoff_choice.changed:
+    con.print(f"[bold yellow]{runoff_choice.describe()}[/bold yellow]")
+    con.print(f"  from {runoff_choice.source}")
+else:
+    con.print(runoff_choice.describe())
 # RUN_all
 
 # %%
@@ -894,6 +921,7 @@ c_da = (
     .sel(hru_id=nhm_ids)
     .sortby("hru_id")
 )
+c_da = btc.rebuild_runoff_ensemble(c_da.load(), runoff_choice)
 c_da.to_netcdf(obsdir / f"hru_streamflow_monthly.nc")
 RUN_all.close()
 c_da.close()
