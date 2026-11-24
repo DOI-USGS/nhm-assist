@@ -35,6 +35,10 @@
 # | `dkge_metrics.csv` | the change in continuous monthly KGE for every gage with 5-day targets |
 # | `dkge_wilcoxon.csv` | the Wilcoxon signed-rank test on the per-gage median change |
 # | `calib_eval_dkge_summary.html` | the change in KGE for all gages in one figure |
+# | `calib_eval_targets_summary.html` | the final fit (PBIAS or mean error) to every other target group, all gages in one figure |
+# | `target_metrics_by_gage.csv` | per gage and target group: base and prior values, ensemble median and 5th/95th percentiles |
+# | `target_metrics_all_gages.csv` | the mean over gages per target group, signed and absolute |
+# | `target_metrics_members.csv` | every realization's value, per gage and target group |
 #
 # The plot groups are `actet_mean_mon`, `recharge_ann`, `soil_moist_ann`,
 # `soil_moist_mean_mon`, `runoff_mon`, `swe_monthly`, `streamflow_mon`,
@@ -93,7 +97,7 @@
 # %%
 # Folder holding the PEST++ IES output (*.pst, *.obs.csv, *.obs_data.csv,
 # *.obs+noise.csv, parameters.json).
-run_dir = r"<USER_PATH_HERE>"
+run_dir = r"D:\test_hw_calibration_results\SandyRiver_pestcal_20261123_1255"
 # e.g. run_dir = r"D:\calibration_results\SandyRiver_beta5"
 
 # PEST++ case name. None = taken from the .pst file in run_dir.
@@ -335,7 +339,8 @@ written = ce.plot_calibration_evaluation(
 # final ensemble. It uses only the odd (calibration) water years that are in
 # the PEST++ files, so it measures **calibration improvement, not validation
 # skill**. It is computed for all flows and, separately, for high and low flows
-# (see below). Other target groups are not scored.
+# (see below). The other target groups are scored in the section after
+# this one, "Other calibration targets: final fit".
 #
 # ### The score: KGE on a continuous monthly series
 #
@@ -582,6 +587,107 @@ else:
         f"{ex['base_dkge']:+.3f};  ensemble median {ex['median_dkge']:+.3f};  "
         f"base at the {ex['base_percentile']:.0f}th percentile of {ex['n_members']} members"
     )
+
+# %% [markdown]
+# ## Other calibration targets: final fit
+#
+# The change in KGE above scores only the 5-day streamflow. This section
+# scores every other calibration target group on its **final fit**, with one
+# statistic per group, for every plotted gage. It is the single-run version of
+# the "Other calibration targets" figure in `compare_calibration_evaluation_plots`
+# and uses the same functions (`assist.pest.calibration_target_comparison`).
+#
+# ### Statistic per target group
+#
+# | Target group | Values | Statistic |
+# |---|---|---|
+# | `streamflow_mon`, `streamflow_mean_mon` | gage streamflow, cfs | PBIAS (%) |
+# | `runoff_mon` | HRU runoff, cfs | PBIAS (%) |
+# | `actet_mean_mon` | actual ET, in/day | PBIAS (%) |
+# | `swe_monthly` | SWE, inches | PBIAS (%) |
+# | `recharge_ann`, `soil_moist_ann`, `soil_moist_mean_mon` | normalized 0-1 within each HRU | mean error |
+#
+# - **PBIAS** $= 100 \times \sum (O - S) / \sum O$, the same convention as the
+#   change-in-KGE table and notebook 6: **positive means the model is too
+#   low**, negative too high. For SWE the summer zeros add nothing to either
+#   sum, so it is effectively the bias over the snow months.
+# - **Mean error** $= \overline{S - O}$, in normalized units: **positive means
+#   the model is too high**, e.g. +0.08 is 8 % of the HRU's range above the
+#   target. These targets are min-max scaled within each HRU (and, for the
+#   mean-monthly soil moisture, within each calendar month), so a percent bias
+#   would not be a volume bias. **Note the opposite sign to PBIAS.**
+#
+# ### How a value is calculated, for one gage and target group
+#
+# 1. **Aggregate to the gage**, exactly as in the per-gage plots above. An HRU
+#    target is the **mean over the gage's contributing HRUs** at each time
+#    step, for the observed values and every simulated realization alike. Each
+#    HRU counts equally, whatever its area. The monthly streamflow targets are
+#    the gage's own series.
+# 2. **Observed reference**: the obs+noise ensemble's `base` realization (the
+#    control-file observation value).
+# 3. **Matching points only**: a time step is used only where the observed
+#    value, the realization and the prior base (`starting`) are all present.
+#    At least 3 points are needed.
+# 4. **Score** the realization (`value`) and the prior base (`prior_value`) on
+#    those points.
+#
+# This is repeated for every member of the final ensemble (the boxes) and for
+# the final `base` realization (the diamonds). The gray open circle is the
+# prior base, so the distance from circle to diamond is how far calibration
+# moved the fit, and which side of 0 it ended on.
+#
+# ### Reading the figure
+#
+# - Top row: PBIAS panels. Bottom row: mean-error panels. One row per gage.
+# - Gages are in the same order as the change-in-KGE summary (all-flows median
+#   change, bottom to top), followed by gages without a 5-day score.
+# - The bottom row of each panel, **`all gages (mean)`**, averages the signed
+#   value over the gages scored, so a wet gage and a dry gage can cancel. The
+#   table below also gives the mean of the absolute values (`base_abs`,
+#   `prior_abs`), which does not.
+# - HRU targets exist at every HRU, so they are scored at every plotted gage,
+#   including gages with no streamflow target. Nested gages share HRUs, so
+#   their values are not independent.
+# - PBIAS has no lower limit. If any value falls below ?300 %, the axis is cut
+#   there and each base value beyond it is drawn as a **left-pointing
+#   triangle** at the edge; hover gives the true value.
+
+# %%
+from assist.pest import calibration_target_comparison as ctc
+
+target_members = ctc.target_metrics_from_targets(td, params, plot_gages)
+target_metrics = {run_dir.name: target_members}
+target_by_gage = ctc.summarize_by_gage(target_metrics)
+target_all_gages = ctc.summarize_all_gages(target_metrics)
+
+dk_all = dkge_table[dkge_table["group"] == ce.DKGE_ALL_GROUP]
+target_order = dk_all.sort_values("median_dkge", na_position="first")["gage"].astype(str).tolist()
+target_fig = ctc.build_target_figure(target_metrics, target_order)
+
+target_paths = {
+    "figure": out_dir / ctc.EVAL_TARGETS_HTML,
+    "by_gage": out_dir / ctc.EVAL_TARGETS_BY_GAGE_CSV,
+    "all_gages": out_dir / ctc.EVAL_TARGETS_ALL_GAGES_CSV,
+    "members": out_dir / ctc.TARGETS_MEMBERS_CSV,
+}
+target_fig.write_html(str(target_paths["figure"]), include_plotlyjs="cdn")
+target_by_gage.to_csv(target_paths["by_gage"], index=False)
+target_all_gages.to_csv(target_paths["all_gages"], index=False)
+target_members.to_csv(target_paths["members"], index=False)
+
+print("Mean over gages per target group (PBIAS %: + = too low; mean error: + = too high)")
+display(target_all_gages.drop(columns="run").set_index("group").round(3))
+print("Per gage: final base, prior base and ensemble spread")
+display(
+    target_by_gage.drop(columns="run").set_index(["group", "gage"])
+    [["stat", "prior_value", "base_value", "median_value", "p05", "p95", "n_points"]]
+    .round(3)
+)
+con.print(f"[green]Wrote[/green] {', '.join(p.name for p in target_paths.values())} to {out_dir}")
+
+# %%
+target_fig.show()
 
 # %% [markdown]
 # ## Verification

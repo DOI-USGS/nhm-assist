@@ -63,6 +63,11 @@ TARGETS_BY_GAGE_CSV = "compare_targets_by_gage.csv"
 TARGETS_ALL_GAGES_CSV = "compare_targets_all_gages.csv"
 TARGETS_MEMBERS_CSV = "target_metrics_members.csv"
 TARGETS_CACHE_JSON = "target_metrics_source.json"
+# Single-run outputs, written by the plot_calibration_evaluation workflow.
+EVAL_TARGETS_HTML = "calib_eval_targets_summary.html"
+EVAL_TARGETS_BY_GAGE_CSV = "target_metrics_by_gage.csv"
+EVAL_TARGETS_ALL_GAGES_CSV = "target_metrics_all_gages.csv"
+SINGLE_RUN_LABEL = "all gages (mean)"
 
 
 def mean_error(obs, sim) -> float:
@@ -108,6 +113,13 @@ def compute_target_metrics(run_dir, gages, eval_subdir: str = "calibration_evalu
     run_dir = pl.Path(run_dir)
     td = ce.load_targets(run_dir / eval_subdir / ce.TARGETS_ARCHIVE)
     params = ce.load_run_parameters(run_dir)
+    return target_metrics_from_targets(td, params, gages)
+
+
+def target_metrics_from_targets(td, params, gages) -> pd.DataFrame:
+    """:func:`compute_target_metrics` for targets already loaded with
+    :func:`assist.pest.calibration_evaluation.load_targets` and the run's
+    ``parameters.json``. Same long-format table."""
     nhm_id = [int(x) for x in np.asarray(params["nhm_id"])]
     poi = {str(x) for x in np.asarray(params["poi_gage_id"])}
     frames = []
@@ -273,8 +285,10 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
     tag = lambda lab: lab + (" (different start)" if lab in different else "")
     allg = sorted({g for df in metrics.values() for g in df["gage"]})
     order = [g for g in order if g in allg] + [g for g in allg if g not in order]
-    rows = [SHARED_LABEL] + order
     k = len(labels)
+    single = k == 1
+    mean_label = SINGLE_RUN_LABEL if single else SHARED_LABEL
+    rows = [mean_label] + order
     step = 0.8 / k
     width = step * 0.85
     pos = lambda row_i, run_i: row_i - (run_i - (k - 1) / 2.0) * step
@@ -284,7 +298,7 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
     shared = {g: shared_target_gages(metrics, g) for g in TARGET_GROUPS}
     titles = [""] * (2 * ncol)
     for g, (r, c) in layout.items():
-        titles[(r - 1) * ncol + (c - 1)] = f"{TARGET_LABELS[g]}<br><sup>{len(shared[g])} shared gages</sup>"
+        titles[(r - 1) * ncol + (c - 1)] = f"{TARGET_LABELS[g]}<br><sup>{len(shared[g])} {'gages scored' if single else 'shared gages'}</sup>"
     fig = make_subplots(rows=2, cols=ncol, shared_yaxes=True, horizontal_spacing=0.03,
                         vertical_spacing=0.1, subplot_titles=titles)
     fmt = {"pbias": "+.1f", "mean_error": "+.3f"}
@@ -300,7 +314,7 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
             first = True
             bx, by, bt = [], [], []
             for row_i, gage in enumerate(rows):
-                vals = (cmb["values"].values if gage == SHARED_LABEL
+                vals = (cmb["values"].values if gage == mean_label
                         else ens.loc[ens["gage"] == gage, "value"].dropna().values)
                 if len(vals):
                     fig.add_trace(go.Box(
@@ -310,7 +324,7 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
                         fillcolor=_rgba(color, 0.35), line=dict(color=color, width=1.2),
                         hovertemplate=f"{lab}<br>{gage}<extra></extra>"), row=fr, col=fc)
                     first = False
-                v = cmb["base_value"] if gage == SHARED_LABEL else base.get(gage, np.nan)
+                v = cmb["base_value"] if gage == mean_label else base.get(gage, np.nan)
                 if np.isfinite(v):
                     bx.append(v); by.append(pos(row_i, ri)); bt.append(gage)
             if bx:
@@ -330,7 +344,7 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
                 qx, qy, qt = [], [], []
                 for row_i, gage in enumerate(rows):
                     v = (combined(metrics[lab], group, shared[group])["prior_value"]
-                         if gage == SHARED_LABEL else b["prior_value"].get(gage, np.nan))
+                         if gage == mean_label else b["prior_value"].get(gage, np.nan))
                     if np.isfinite(v):
                         qx.append(v); qy.append(pos(row_i, ri)); qt.append(gage)
                 if qx:
@@ -343,7 +357,7 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
                         row=fr, col=fc)
         px, py, pt = [], [], []
         for row_i, gage in enumerate([] if different else rows):
-            if gage == SHARED_LABEL:
+            if gage == mean_label:
                 v = combined(metrics[labels[0]], group, shared[group])["prior_value"]
             else:
                 v = np.nan
@@ -372,15 +386,18 @@ def build_target_figure(metrics: dict, order: list, different: set = None) -> go
     for i in range(len(rows) - 1):
         fig.add_hline(y=i + 0.5, line=dict(color="rgba(80,80,80,0.5)" if i == 0
                                            else "rgba(160,160,160,0.25)", width=1))
+    heading = (f"Final fit to the other calibration targets ({labels[0]})" if single else
+               f"Final fit to the other calibration targets, compared across runs "
+               f"({', '.join(labels)})")
+    mean_note = ("mean over the gages scored" if single
+                 else "mean over the gages scored in every run")
     fig.update_layout(
-        title=(f"Final fit to the other calibration targets, compared across runs "
-               f"({', '.join(labels)})<br><sup>top: PBIAS (%), + = model too low; bottom: "
+        title=(f"{heading}<br><sup>top: PBIAS (%), + = model too low; bottom: "
                f"mean error in normalized units, + = model too high. Box = ensemble, "
                f"diamond = base, "
                f"{'open circle = each run’s own prior base (starting values differ)' if different else 'gray circle = prior base'}"
                f"; HRU targets are averaged over "
-               f"each gage's contributing HRUs; bottom row of each panel = mean over the "
-               f"gages scored in every run</sup>"),
+               f"each gage's contributing HRUs; bottom row of each panel = {mean_note}</sup>"),
         height=2 * max(480, 40 * len(rows) * max(1, k / 2) + 100) + 180,
         width=max(1500, 300 * ncol), template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0),
