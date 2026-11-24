@@ -411,7 +411,9 @@ def create_hru_label(hru_gdf, cluster_zoom):
     )
 
     for idx, row in hru_gdf.iterrows():
-        text = f'{row["hru_id"]}'
+        # Label with the nhm_id, matching the HRU popups. hru_id is only the
+        # model-local position in the parameter file.
+        text = f'{row["nhm_id"]}'
         label_lat = row["hru_lat"]
         label_lon = row["hru_lon"]
         marker_label = folium.map.Marker(

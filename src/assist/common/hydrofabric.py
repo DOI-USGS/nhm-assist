@@ -8,6 +8,7 @@ Implementations come from the nhf side, which already tolerates both the GFv1.1
 and GFv2 geopackage column layouts; the nhm versions assume GFv1.1 columns and
 cannot read a GFv2 model.
 """
+from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -510,6 +511,7 @@ def create_poi_df(
     default_gages_file,
     waterdata_gage_nobs_min,
     seg_gdf,
+    fabric_version="1.1",
 ):
     """
     Create dataframe containing gages listed in parameter file.
@@ -580,16 +582,18 @@ def create_poi_df(
     poi = poi.merge(npoigages_info, left_on="poi_gage_id", right_on="poi_gage_id", how="left")
     poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame
 
-    # The byHWobs calibration-gages CSV is a fixed NHM data dependency with a
-    # native `poi_id` header; the loader canonicalizes it to `poi_gage_id`.
-    byHWobs_poi_df = _load_byhwobs_cal_gages(root_dir)
-
-    # Identify the byHWobs calibration gages in our current poi database (ammended
-    # in the model prams file to include more gages). nhm's map_template reads
-    # nhm_calib in create_streamflow_poi_markers.
+    # Flag the calibration gages in nhm_calib, which nhm's map_template reads in
+    # create_streamflow_poi_markers. GFv1.1 fabrics use the fixed NHM byHWobs
+    # list (a CSV with a native `poi_id` header; the loader canonicalizes it to
+    # `poi_gage_id`). GFv2 fabrics were not calibrated against that list, so they
+    # use the model's own npoigages_cal_list_<domain>.xlsx instead.
+    if str(fabric_version).startswith("2"):
+        cal_gage_ids = _load_ohm_cal_gages(Path(model_dir) / "metadata")
+    else:
+        cal_gage_ids = set(_load_byhwobs_cal_gages(root_dir)["poi_gage_id"])
     poi_df["nhm_calib"] = "N"
     poi_df.loc[
-        poi_df["poi_gage_id"].isin(byHWobs_poi_df["poi_gage_id"]), "nhm_calib"
+        poi_df["poi_gage_id"].astype(str).str.strip().isin(cal_gage_ids), "nhm_calib"
     ] = "Y"
 
     """
@@ -867,6 +871,7 @@ def make_hf_map_elements(
         default_gages_file=default_gages_file,
         waterdata_gage_nobs_min=waterdata_gage_nobs_min,
         seg_gdf=seg_gdf,
+        fabric_version=fabric_version,
     )
     waterdata_gages_aoi = fetch_waterdata_gage_info(
         root_dir=root_dir,
@@ -1006,6 +1011,33 @@ def evaluate_and_fix_nhru_geometry(gpkg_path, layer="nhru", fix=True):
         print("  All geometries are valid. No fix needed.")
 
     return report
+
+def _load_ohm_cal_gages(metadata_dir):
+    """Gage ids flagged ``ohm_cal == "yes"`` in the GFv2 calibration list.
+
+    The list is ``npoigages_cal_list_<domain>.xlsx`` (or ``.xls``) in the model's
+    ``metadata`` folder; the domain name differs by model, so the file is found by
+    pattern. Returns an empty set, with a printed notice, when there is no such
+    file or more than one, so no gage is marked as calibrated by guesswork.
+    """
+    metadata_dir = Path(metadata_dir)
+    files = sorted(
+        f
+        for ext in ("xlsx", "xls")
+        for f in metadata_dir.glob(f"npoigages_cal_list_*.{ext}")
+        if not f.name.startswith("~$")  # Excel lock files
+    )
+    if len(files) != 1:
+        found = "none found" if not files else ", ".join(f.name for f in files)
+        print(
+            f"No calibration gages marked on the map: expected exactly one "
+            f"npoigages_cal_list_<domain>.xlsx in {metadata_dir} ({found})."
+        )
+        return set()
+    cal_df = pd.read_excel(files[0], dtype={"poi_gage_id": str})
+    flag = cal_df["ohm_cal"].astype(str).str.strip().str.lower()
+    return set(cal_df.loc[flag == "yes", "poi_gage_id"].astype(str).str.strip())
+
 
 def _load_byhwobs_cal_gages(root_dir):
     """Load the fixed NHM byHWobs calibration-gages CSV.

@@ -83,6 +83,13 @@ def test_map_elements_survived_and_is_verbatim_nhf():
             "        fabric_version=fabric_version,\n    )",
         ),
         (
+            # fabric_version is threaded into create_poi_df so GFv2 fabrics read
+            # their calibration gages from npoigages_cal_list_<domain>.xlsx.
+            "        seg_gdf=seg_gdf,\n    )\n    waterdata_gages_aoi",
+            "        seg_gdf=seg_gdf,\n        fabric_version=fabric_version,\n    )\n"
+            "    waterdata_gages_aoi",
+        ),
+        (
             "        #hru_cal_level_txt,",
             "        hru_cal_level_txt,",
         ),

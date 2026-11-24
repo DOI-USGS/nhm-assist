@@ -47,13 +47,23 @@ INTENDED_EDITS = {
         ),
         # nhm's create_streamflow_poi_markers reads nhm_calib -> notebook 6,
         # KeyError: 'nhm_calib'.
+        # GFv2 fabrics take their calibration gages from the model's own
+        # npoigages_cal_list_<domain>.xlsx instead of the v1.1 byHWobs list, so
+        # create_poi_df needs fabric_version.
+        (
+            "    seg_gdf,\n):",
+            '    seg_gdf,\n    fabric_version="1.1",\n):',
+        ),
         (
             '    poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame\n',
             '    poi_df = pd.DataFrame(poi)  # Creates a Pandas DataFrame\n'
-            '    byHWobs_poi_df = _load_byhwobs_cal_gages(root_dir)\n'
+            '    if str(fabric_version).startswith("2"):\n'
+            '        cal_gage_ids = _load_ohm_cal_gages(Path(model_dir) / "metadata")\n'
+            '    else:\n'
+            '        cal_gage_ids = set(_load_byhwobs_cal_gages(root_dir)["poi_gage_id"])\n'
             '    poi_df["nhm_calib"] = "N"\n'
             '    poi_df.loc[\n'
-            '        poi_df["poi_gage_id"].isin(byHWobs_poi_df["poi_gage_id"]), "nhm_calib"\n'
+            '        poi_df["poi_gage_id"].astype(str).str.strip().isin(cal_gage_ids), "nhm_calib"\n'
             '    ] = "Y"\n',
         ),
     ],
@@ -80,9 +90,18 @@ def test_copy_is_ast_identical_to_nhf(name, nhf_baseline):
 def test_signature_matches_nhf(name, nhf_baseline):
     import assist.common.hydrofabric as common
 
-    assert inspect.signature(getattr(common, name)) == inspect.signature(
-        getattr(nhf_baseline, name)
-    )
+    current = inspect.signature(getattr(common, name))
+    baseline = inspect.signature(getattr(nhf_baseline, name))
+    if name == "create_poi_df":
+        # Deliberate addition, see INTENDED_EDITS: GFv2 calibration gages.
+        assert list(current.parameters) == [*baseline.parameters, "fabric_version"]
+        assert current.parameters["fabric_version"].default == "1.1"
+        current = current.replace(
+            parameters=[
+                p for p in current.parameters.values() if p.name != "fabric_version"
+            ]
+        )
+    assert current == baseline
 
 
 def test_default_gages_uses_the_canonical_gage_lookup():
