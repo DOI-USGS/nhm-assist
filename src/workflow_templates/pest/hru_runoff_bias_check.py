@@ -9,6 +9,10 @@
 # - `hru_streamflow_monthly.nc` in `pestpp_ies/observation_data/`, as written by
 #   `00_Subset_NHM_baselines_gfv2` (`ensemble_mean`, `lower_bound`, `upper_bound`
 #   on `hru_id`). The older `00_Subset_NHM_baselines` layout is not supported.
+#   This file sets the model's HRUs and is the file the correction is written to.
+# - `runoff_targets.nc`, the full OHM runoff target file that notebook 00 subsets
+#   from (`data_dependencies/pestpp_ies_dependencies/OHM_targets/`). With
+#   `COMPARISON_PERIOD = "full_record"` (the default) the comparison is made on it.
 # - `sf_efc.nc` daily gage discharge (notebook 1, `1_create_streamflow_observations`).
 # - `myparam_pest_parval1.param` for the stream network (`tosegment`, `hru_segment`,
 #   `poi_gage_segment`, `poi_gage_id`, `nhm_id`).
@@ -25,10 +29,46 @@
 #
 # **Nested gages.** Each gage uses *all* HRUs upstream of it, including HRUs that
 # also drain to upstream gages. Gages are cumulative, not independent.
+#
+# ## Comparison period: as much record as the full ensemble allows
+#
+# `hru_streamflow_monthly.nc` holds only the calibration years (the odd water
+# years of the runoff period in the calibration config table: 72 months for
+# SandyRiver, WY2009-WY2019). That is a thin basis for a bias factor, and it
+# drops every gage whose record misses those years. The bias is a property of
+# the runoff targets, not of the calibration years, so by default this notebook
+# compares on the **full OHM runoff target file** instead, over every month in
+# which **every ensemble member in use** has a value at every model HRU. In those
+# months `ensemble_mean` is the mean of the same members as the calibration
+# targets, so it is the same quantity. Each gage is then compared over every one
+# of those months that its own record covers: the largest overlap of the
+# complete ensemble and the streamflow record.
+#
+# - **Which members.** All three (ERA5-Land, GLDAS-2.1 Noah, MWBM ClimGrid)
+#   unless the basin drops some in `project_config/basin_target_choices.yaml`.
+#   Notebook 00 applies the same file when it writes the calibration targets, so
+#   the factors fitted here always match the targets they are applied to.
+#   **SandyRiver drops GLDAS**: it was discovered during calibration that this
+#   creates a better value for the mean (evidence in the YAML entry).
+# - The months are found from the data, not set by hand. For the OHM targets
+#   checked on 2026-11-23: with all three members, **January 2000 to December
+#   2020** (252 months; GLDAS starts in January 2000 and MWBM ends in December
+#   2020). With ERA5-Land and MWBM only (SandyRiver), **January 1979 to
+#   December 2020** (504 months), which adds calibration gages whose records end
+#   before 2000. Months where a member in use is missing are not used, because
+#   the mean there would be over fewer members.
+# - Calendar months, not whole water years, are kept, because the factors are
+#   fitted per calendar month and per gage total. Odd and even water years are
+#   both used.
+# - The factors are still **applied** to the calibration targets in
+#   `hru_streamflow_monthly.nc`; only the period they are estimated from changes.
+# - `COMPARISON_PERIOD = "calibration_subset"` gives the previous behaviour,
+#   comparing on `hru_streamflow_monthly.nc` itself.
 
 # %%
 import os
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -77,11 +117,14 @@ config = load_subdomain_config(config_root)
 # | Setting | Default | Meaning |
 # |---|---|---|
 # | `RUNOFF_FACTOR` | `1.0` | Multiplier on the HRU runoff sum. `1.0` compares the raw targets, which shows the bias. Set `1.83` to see the targets as written by `01_Prepare_observations_gfv2`. |
-# | `RUNOFF_VARIABLE` | `ensemble_mean` | Which variable of `hru_streamflow_monthly.nc` to sum. |
+# | `RUNOFF_VARIABLE` | `ensemble_mean` | Which runoff variable to sum. |
+# | `COMPARISON_PERIOD` | `"full_record"` | `"full_record"`: compare on the full OHM `runoff_targets.nc`, in every month where at least `MIN_SOURCES` members have a value at every model HRU (see "Comparison period" above). `"calibration_subset"`: compare on `hru_streamflow_monthly.nc` (calibration years only). |
+# | `MIN_SOURCES` | `None` | Ensemble members required in a month at every model HRU (`"full_record"` only). `None` = every member in use (see "Which members" above), so the mean is the same quantity as the calibration targets. |
+# | `OHM_TARGETS_DIR` | `None` | Folder holding `runoff_targets.nc`. `None` = `data_dependencies/pestpp_ies_dependencies/OHM_targets`, the folder notebook 00 reads. |
 # | `SHOW_BOUNDS` | `True` | Also sum `lower_bound` / `upper_bound` (if in the file) and draw them as a band. |
 # | `MIN_VALID_DAY_FRACTION` | `0.8` | A gage month needs at least this share of days with data, else it is left out. |
 # | `MIN_HRU_COVERAGE` | `1.0` | Share of a gage's contributing HRUs that must have a target. `1.0` skips gages with any contributing HRU outside the target file. Lower it to keep them (the sum then undercounts). |
-# | `GAGES` | `None` | `None` = every gage with observations. Or a list of gage ids. |
+# | `GAGES` | `None` | `None` = every gage with observations. Or a list of gage ids. Gages on the excluded-gage list (`project_config/runoff_bias_excluded_gages.csv`, see "Excluded gages" below) are always left out. |
 #
 # **Suggested correction factor** (section near the end; uses the calibration gages only,
 # always against the raw targets, whatever `RUNOFF_FACTOR` is):
@@ -104,6 +147,9 @@ config = load_subdomain_config(config_root)
 # %%
 RUNOFF_FACTOR = 1.0
 RUNOFF_VARIABLE = "ensemble_mean"
+COMPARISON_PERIOD = "full_record"   # "full_record" or "calibration_subset"
+MIN_SOURCES = None
+OHM_TARGETS_DIR = None
 SHOW_BOUNDS = True
 MIN_VALID_DAY_FRACTION = 0.8
 MIN_HRU_COVERAGE = 1.0
@@ -136,6 +182,75 @@ if RUNOFF_VARIABLE not in runoff_ds or "hru_id" not in runoff_ds.dims:
     )
 print(runoff_ds[RUNOFF_VARIABLE].attrs.get("units"), runoff_ds[RUNOFF_VARIABLE].dims)
 
+# Runoff members for this basin (project_config/basin_target_choices.yaml), the
+# same choice notebook 00 applied when it wrote hru_streamflow_monthly.nc.
+from assist.pest import basin_target_choices as btc
+
+runoff_choice = btc.runoff_choice(
+    btc.basin_choices_path(project_context),
+    config["subdomain"],
+    available=btc.available_runoff_members(runoff_ds) or btc.RUNOFF_MEMBERS,
+)
+con.print(
+    f"[bold yellow]{runoff_choice.describe()}[/bold yellow]" if runoff_choice.changed
+    else runoff_choice.describe()
+)
+_file_members = runoff_ds[RUNOFF_VARIABLE].attrs.get("members_used")
+if runoff_choice.changed and _file_members != ",".join(runoff_choice.members):
+    raise ValueError(
+        f"hru_streamflow_monthly.nc was built from members {_file_members or 'all (no rebuild)'}, "
+        f"but basin_target_choices.yaml now asks for {runoff_choice.members}. Re-run "
+        "00_Subset_NHM_baselines_gfv2 so the calibration targets and this check use the "
+        "same members."
+    )
+if not runoff_choice.changed and _file_members:
+    raise ValueError(
+        f"hru_streamflow_monthly.nc was rebuilt from members {_file_members}, but "
+        "basin_target_choices.yaml has no runoff choice for this basin. Re-run "
+        "00_Subset_NHM_baselines_gfv2."
+    )
+
+# The data the comparison is made on. The correction is always written to runoff_ds.
+_compare_vars = [v for v in (RUNOFF_VARIABLE, "lower_bound", "upper_bound") if v in runoff_ds]
+if COMPARISON_PERIOD == "calibration_subset":
+    compare_ds = runoff_ds[_compare_vars]
+    period_note = "calibration years in hru_streamflow_monthly.nc"
+elif COMPARISON_PERIOD == "full_record":
+    _ohm_dir = (
+        root_dir / "data_dependencies" / "pestpp_ies_dependencies" / "OHM_targets"
+        if OHM_TARGETS_DIR is None else Path(OHM_TARGETS_DIR)
+    )
+    _full_path = _ohm_dir / "runoff_targets.nc"
+    if not _full_path.is_file():
+        raise FileNotFoundError(
+            f"{_full_path} not found. Set OHM_TARGETS_DIR to the folder notebook 00 "
+            "reads runoff_targets.nc from, or set COMPARISON_PERIOD = 'calibration_subset'."
+        )
+    with xr.open_dataset(_full_path) as _full:
+        _ids = runoff_ds["hru_id"].values
+        _missing = np.setdiff1d(_ids, _full["hru_id"].values)
+        if _missing.size:
+            raise KeyError(f"{_missing.size} model HRUs are not in {_full_path.name}, e.g. {_missing[:5]}")
+        _keep = _compare_vars + ["n_sources"] + btc.available_runoff_members(_full)
+        compare_ds = btc.rebuild_runoff_ensemble(
+            _full[_keep].sel(hru_id=_ids).load(), runoff_choice
+        )
+    _need = len(runoff_choice.members) if MIN_SOURCES is None else int(MIN_SOURCES)
+    _all_members = (compare_ds["n_sources"] >= _need).all(dim="hru_id")
+    compare_ds = compare_ds.sel(time=_all_members.values)[_compare_vars]
+    if compare_ds.sizes["time"] == 0:
+        raise ValueError(f"No month has at least {_need} members at every model HRU.")
+    _t = pd.DatetimeIndex(compare_ds.indexes["time"])
+    _gaps = int((np.diff(_t.year * 12 + _t.month) > 1).sum())
+    period_note = (
+        f"{_t.min():%Y-%m} to {_t.max():%Y-%m}, {len(_t)} months with >= {_need} of "
+        f"{', '.join(runoff_choice.members)} at all {len(_ids)} HRUs"
+        + (f" ({_gaps} gaps)" if _gaps else "")
+    )
+else:
+    raise ValueError("COMPARISON_PERIOD must be 'full_record' or 'calibration_subset'.")
+con.print(f"Comparison period: [bold]{period_note}[/bold]")
+
 sf_ds = xr.open_dataset(config["nc_files_dir"] / "sf_efc.nc")
 discharge = sf_ds["discharge"]
 print("discharge units:", discharge.attrs.get("units"))
@@ -153,6 +268,50 @@ if GAGES is not None:
 con.print(f"{len(gages_with_obs)} gages with observations")
 
 # %% [markdown]
+# ## Excluded gages
+# Some gages have observations that should not be used to judge the runoff
+# targets: a very short record, a record that is mostly estimated, or flow that
+# is regulated or diverted. Those gages are listed once per project in
+# **`project_config/runoff_bias_excluded_gages.csv`**, with columns
+# `poi_gage_id`, `child_domain` (the model the gage was found in), `reason` and
+# `date`. A listed gage is left out of **every** section of this notebook,
+# including the calibration-gage factors, in every model that contains it. The
+# list lives in `project_config` because a model's `pestpp_ies` folder is often
+# deleted and rebuilt.
+#
+# The list only affects this check. It does not change the streamflow
+# calibration targets written by notebook 01.
+#
+# > **If you find a gage in this notebook that should be left out because of the
+# > quality of its observations, add a row for it to
+# > `runoff_bias_excluded_gages.csv` with the reason, then re-run from here.**
+
+# %%
+excluded_path = rbc.excluded_gages_path(project_context)
+excluded = rbc.read_excluded_gages(excluded_path)
+excluded_reason = dict(zip(excluded["poi_gage_id"], excluded["reason"]))
+_dropped = [g for g in gages_with_obs if g in excluded_reason]
+gages_with_obs = [g for g in gages_with_obs if g not in excluded_reason]
+
+if excluded_path is None:
+    con.print("Not running inside a project, so there is no excluded-gage list.")
+elif not excluded_path.exists():
+    con.print(f"No excluded-gage list at {excluded_path}; every gage is used.")
+else:
+    con.print(f"Excluded-gage list: {excluded_path} ({len(excluded)} gage(s) listed)")
+    for g in _dropped:
+        con.print(f"  [bold yellow]excluded[/bold yellow] {g}: {excluded_reason[g] or 'no reason given'}")
+    _absent = [g for g in excluded_reason if g not in _dropped]
+    if _absent:
+        con.print(f"  listed but not a gage with observations in this model (ignored): {', '.join(_absent)}")
+con.print(f"{len(gages_with_obs)} gages used in this check")
+con.print(
+    "[italic]If a gage below should be left out because of the quality of its "
+    f"observations, add it to {rbc.EXCLUDED_GAGES_FILENAME} in project_config "
+    "(poi_gage_id, child_domain, reason, date) and re-run from this cell.[/italic]"
+)
+
+# %% [markdown]
 # ## Sum HRU runoff over each gage's contributing HRUs
 # The coverage table lists, per gage, how many contributing HRUs have a target.
 # Gages with contributing HRUs outside the target file are handled per
@@ -160,7 +319,7 @@ con.print(f"{len(gages_with_obs)} gages with observations")
 
 # %%
 hru_sum, coverage = rbc.hru_sum_by_gage(
-    runoff_ds[RUNOFF_VARIABLE], gages_with_obs, params, MIN_HRU_COVERAGE
+    compare_ds[RUNOFF_VARIABLE], gages_with_obs, params, MIN_HRU_COVERAGE
 )
 coverage
 
@@ -168,9 +327,9 @@ coverage
 bounds_sum = {}
 if SHOW_BOUNDS:
     for b in ("lower_bound", "upper_bound"):
-        if b in runoff_ds:
+        if b in compare_ds:
             bounds_sum[b], _ = rbc.hru_sum_by_gage(
-                runoff_ds[b], gages_with_obs, params, MIN_HRU_COVERAGE
+                compare_ds[b], gages_with_obs, params, MIN_HRU_COVERAGE
             )
         else:
             con.print(f"[yellow]{b} is not in hru_streamflow_monthly.nc; no band drawn.[/yellow]")
@@ -184,10 +343,14 @@ not_compared = coverage[coverage["n_compared_months"] == 0]
 settings = rbc.settings_summary(
     RUNOFF_FACTOR=RUNOFF_FACTOR,
     RUNOFF_VARIABLE=RUNOFF_VARIABLE,
+    COMPARISON_PERIOD=COMPARISON_PERIOD,
+    comparison_months=period_note,
+    runoff_members=", ".join(runoff_choice.members),
     SHOW_BOUNDS=SHOW_BOUNDS,
     MIN_VALID_DAY_FRACTION=MIN_VALID_DAY_FRACTION,
     MIN_HRU_COVERAGE=MIN_HRU_COVERAGE,
     GAGES="all gages with observations" if GAGES is None else list(GAGES),
+    excluded_gages=", ".join(_dropped) or "none",
     CAL_GAGES="ohm_cal == yes in the calibration list" if CAL_GAGES is None else list(CAL_GAGES),
     MIN_MONTHS_PER_GAGE=MIN_MONTHS_PER_GAGE,
     MAX_MONTHLY_CV=MAX_MONTHLY_CV,
@@ -327,7 +490,7 @@ if not cal_ids:
     raise ValueError("No calibration gages: no ohm_cal == 'yes' rows, and CAL_GAGES is empty.")
 
 comp_cal, cal_report = rbc.select_calibration_gages(
-    comp_raw, cal_ids, coverage, MIN_MONTHS_PER_GAGE
+    comp_raw, cal_ids, coverage, MIN_MONTHS_PER_GAGE, excluded=excluded_reason
 )
 n_cal = comp_cal["poi_gage_id"].nunique()
 con.print(f"{n_cal} of {len(cal_ids)} calibration gages can be used")
@@ -560,6 +723,8 @@ if APPLY_BIAS_CORRECTION:
             "bias_correction": "multiplicative, by calendar month",
             "bias_factors_jan_to_dec": _factors_jan_dec,
             "bias_factor_source": "hru_runoff_bias_check (calibration gages)",
+            "bias_factor_period": f"{COMPARISON_PERIOD}: {period_note}",
+            "bias_factor_members": ",".join(runoff_choice.members),
             "bias_factor_created": _stamp,
         }
     _changed = True
@@ -601,7 +766,10 @@ if _changed:
 #   regulation change gage flow without the target being wrong. This check cannot tell
 #   a biased target from a definition difference.
 # - **It reflects the compared period only** (the months with both gage and target data),
-#   so wet or dry years in that period affect it.
+#   so wet or dry years in that period affect it. With `"full_record"` that is the whole
+#   span where every member in use has data (1979-2020 for SandyRiver, 2000-2020 with
+#   all three members) instead of the six calibration years, but gages differ in how
+#   much of it they cover, and a gage whose record falls outside it is not used. Gage totals are over each gage's own months.
 # - **Seasonal bias remains after a single factor.** See the table of left-over bias
 #   above. Months marked as not consistent have no reliable seasonal factor.
 # - **Applying it changes the calibration targets, not the model.** In
@@ -627,6 +795,7 @@ suggest.to_csv(out_dir / "suggested_correction_factors.csv", index_label="month"
 gage_tbl.to_csv(out_dir / "calibration_gage_factors.csv", index_label="poi_gage_id")
 monthly.to_csv(out_dir / "calibration_gage_factors_by_month.csv", index_label="poi_gage_id")
 cal_report.to_csv(out_dir / "calibration_gage_report.csv", index=False)
+excluded[excluded["poi_gage_id"].isin(_dropped)].to_csv(out_dir / "excluded_gages.csv", index=False)
 if not loo_gage.empty:
     loo_gage.to_csv(out_dir / "leave_one_gage_out.csv", index=False)
 print("wrote tables to", out_dir)

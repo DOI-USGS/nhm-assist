@@ -29,6 +29,11 @@ from assist.pest.calibration_evaluation import contributing_hru_positions
 MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+# Gages left out of the bias check because of the quality of their
+# observations. One list per project, in project_config/, like perm_snow_hrus.csv.
+EXCLUDED_GAGES_FILENAME = "runoff_bias_excluded_gages.csv"
+EXCLUDED_GAGES_COLUMNS = ("poi_gage_id", "child_domain", "reason", "date")
+
 
 def gage_monthly_cfs(discharge, min_valid_fraction: float = 0.8) -> pd.DataFrame:
     """Monthly mean daily discharge per gage (cfs), month-start index.
@@ -197,19 +202,58 @@ def read_calibration_gages(metadata_dir, subdomain):
     return None, None
 
 
+def excluded_gages_path(project_context) -> Path | None:
+    """Path of the project's excluded-gage list, or None outside a project."""
+    if not project_context or not project_context.get("project_config_root"):
+        return None
+    return Path(project_context["project_config_root"]) / EXCLUDED_GAGES_FILENAME
+
+
+def read_excluded_gages(path) -> pd.DataFrame:
+    """The excluded-gage list, one row per gage (empty if ``path`` is None or missing).
+
+    Columns: ``poi_gage_id`` (read as text, so leading zeros are kept),
+    ``child_domain`` (the model the gage was found in), ``reason`` and ``date``.
+    The list is a master list for the project: a gage is excluded from every
+    model that contains it, whatever its ``child_domain``. Lines starting with
+    ``#`` are comments.
+    """
+    cols = list(EXCLUDED_GAGES_COLUMNS)
+    if path is None or not Path(path).is_file():
+        return pd.DataFrame(columns=cols)
+    df = pd.read_csv(path, dtype=str, comment="#", skipinitialspace=True).fillna("")
+    df.columns = [c.strip() for c in df.columns]
+    missing = [c for c in ("poi_gage_id", "reason") if c not in df.columns]
+    if missing:
+        raise ValueError(f"{path} is missing column(s) {missing}; expected {cols}.")
+    for c in cols:
+        if c not in df.columns:
+            df[c] = ""
+        df[c] = df[c].astype(str).str.strip()
+    df = df[df["poi_gage_id"] != ""]
+    dup = df["poi_gage_id"][df["poi_gage_id"].duplicated()].unique().tolist()
+    if dup:
+        raise ValueError(f"{path} lists gage(s) {dup} more than once.")
+    return df[cols].reset_index(drop=True)
+
+
 def select_calibration_gages(comp_raw: pd.DataFrame, cal_ids, coverage: pd.DataFrame,
-                             min_months: int = 12):
+                             min_months: int = 12, excluded=None):
     """Restrict a comparison to the calibration gages with enough months.
 
     Returns ``(comp_cal, report)``. ``report`` has one row per requested gage with
     its compared-month count and why it was used or left out, so no calibration
-    gage disappears silently.
+    gage disappears silently. ``excluded`` maps gage id to the reason it is on
+    the excluded-gage list; those gages are reported as excluded with that reason.
     """
+    excluded = {str(k).strip(): v for k, v in (excluded or {}).items()}
     counts = comp_raw.groupby("poi_gage_id").size() if len(comp_raw) else pd.Series(dtype=int)
     rows = []
     for g in [str(x).strip() for x in cal_ids]:
         n = int(counts.get(g, 0))
-        if n >= min_months:
+        if g in excluded:
+            n, status = 0, f"excluded: on {EXCLUDED_GAGES_FILENAME} ({excluded[g] or 'no reason given'})"
+        elif n >= min_months:
             status = "used"
         elif n > 0:
             status = f"excluded: {n} compared months < MIN_MONTHS_PER_GAGE ({min_months})"
